@@ -198,3 +198,93 @@ def remove_course(mentor_id, course_id):
         db.session.commit()
         flash("دوره از منتور جدا شد.", "success")
     return redirect(url_for("mentors.edit_form", mentor_id=m.id))
+# ---- [BEGIN mentor payments API] -------------------------------------------
+from datetime import datetime
+from flask import request
+from sqlalchemy import func, case
+from app.extensions import db
+from app.models.payment import Payment
+from app.models.mentor import Mentor
+
+def _to_int(x):
+    s = str(x or "0").replace(",", "").replace("٬", "").strip()
+    try:
+        return int(float(s))
+    except Exception:
+        return 0
+
+def _parse_dt(v):
+    if not v:
+        return None
+    try:
+        return datetime.fromisoformat(v)
+    except Exception:
+        return None
+
+@bp.route("/<int:mentor_id>/payments", methods=["GET"])
+def api_list_payments(mentor_id):
+    Mentor.query.get_or_404(mentor_id)
+
+    q = Payment.query.filter_by(mentor_id=mentor_id).order_by(
+        Payment.paid_at.desc().nullslast(), Payment.id.desc()
+    )
+    items = [{
+        "id": p.id,
+        "mentor_id": p.mentor_id,
+        "amount": int(p.amount or 0),
+        "kind": p.kind,
+        "status": p.status,
+        "paid_at": p.paid_at.isoformat() if p.paid_at else None,
+        "note": p.note,
+        "title": p.title,
+        "type": p.type,
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+    } for p in q.all()]
+
+    income = func.coalesce(func.sum(case((Payment.kind == "INCOME", Payment.amount), else_=0)), 0)
+    expense = func.coalesce(func.sum(case((Payment.kind == "EXPENSE", Payment.amount), else_=0)), 0)
+    s = db.session.query(income.label("income"), expense.label("expense"))\
+                  .filter(Payment.mentor_id == mentor_id).one()
+    totals = {
+        "income": int(s.income or 0),
+        "expense": int(s.expense or 0),
+        "balance": int((s.income or 0) - (s.expense or 0))
+    }
+    return {"ok": True, "items": items, "totals": totals}
+
+@bp.route("/<int:mentor_id>/payments", methods=["POST"])
+def api_add_payment(mentor_id):
+    Mentor.query.get_or_404(mentor_id)
+    data = (request.get_json(silent=True) or request.form)
+
+    kind = (data.get("kind") or "EXPENSE").upper()   # INCOME | EXPENSE
+    if kind not in ("INCOME", "EXPENSE"):
+        return {"ok": False, "error": "kind must be INCOME or EXPENSE"}, 400
+
+    status = (data.get("status") or "PAID").upper()  # PAID | DUE
+    if status not in ("PAID", "DUE"):
+        return {"ok": False, "error": "status must be PAID or DUE"}, 400
+
+    p = Payment(
+        mentor_id=mentor_id,
+        student_id=None,
+        kind=kind,
+        status=status,
+        type=("OUT" if kind == "EXPENSE" else "IN"),
+        amount=_to_int(data.get("amount")),
+        title=data.get("title"),
+        note=data.get("note"),
+        paid_at=_parse_dt(data.get("paid_at")),
+    )
+    db.session.add(p)
+    db.session.commit()
+    return {"ok": True, "id": p.id}
+
+@bp.route("/<int:mentor_id>/payments/<int:pay_id>", methods=["DELETE"])
+def api_delete_payment(mentor_id, pay_id):
+    Mentor.query.get_or_404(mentor_id)
+    p = Payment.query.filter_by(id=pay_id, mentor_id=mentor_id).first_or_404()
+    db.session.delete(p)
+    db.session.commit()
+    return {"ok": True}
+# ---- [END mentor payments API] ---------------------------------------------
