@@ -1,0 +1,60 @@
+@font-face {
+  font-family: "Vazirmatn";
+  src: local("Vazirmatn"); /* اگر محلی داری اینجا اضافه کن؛ در غیر اینصورت از CDN بعداً */
+  font-display: swap;
+}
+
+html { font-size: 100%; }
+body {
+  margin: 0;
+  direction: rtl;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--color-primary-700); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.container { max-width: 1080px; margin: 0 auto; padding: var(--sp-6); }
+.hidden { display: none !important; }
+.text-muted { color: var(--color-muted); }
+
+/* فرم‌ها و دکمه‌ها (ساده و تمیز) */
+.input, .select {
+  width: 100%; box-sizing: border-box;
+  background: #fff; border: 1px solid #E5E7EB; border-radius: var(--radius);
+  padding: 10px 12px; font-size: var(--fs-base);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.input:focus, .select:focus {
+  outline: none; border-color: var(--color-primary-700);
+  box-shadow: 0 0 0 3px rgba(2,173,130,0.15);
+}
+.input.is-invalid { border-color: var(--color-danger); }
+.help { font-size: var(--fs-sm); margin-top: 6px; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border-radius: var(--radius); border: 1px solid transparent;
+  padding: 8px 14px; font-weight: 600; cursor: pointer;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.btn-primary { background: var(--color-primary-700); color: #fff; }
+.btn-primary:hover { background: #05624c; }
+.btn-ghost { background: transparent; border-color: #E5E7EB; color: var(--color-text); }
+.btn-ghost:hover { background: #fff; }
+
+.card {
+  background: #fff; border-radius: var(--radius); box-shadow: var(--elev-1);
+  padding: var(--sp-6);
+}
+
+/* Alert / Flash */
+.alert {
+  border-radius: var(--radius);
+  padding: 10px 12px; margin: 10px 0;
+  border: 1px solid transparent;
+}
+.alert-success { background: #ECFDF5; border-color: #A7F3D0; color: #065F46; }
+.alert-danger  { background: #FEF2F2; border-color: #FECACA; color: #991B1B; }
+.alert-info    { background: #EFF6FF; border-color: #BFDBFE; color: #1E3A8A; }

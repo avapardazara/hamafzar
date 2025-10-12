@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% set page_title = page_title|default('لیست') %}
+
+{% block title %}{{ page_title }}{% endblock %}
+{% block page_title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="toolbar" style="display:grid;grid-template-columns:1fr 160px;gap:8px;">
+    <form method="get">
+      <input name="q" value="{{ q|default('') }}"
+             placeholder="{{ search_placeholder|default('جستجو: نام / ایمیل / موبایل') }}"
+             style="padding:10px;border:1px solid #D3D5DF;border-radius:8px;width:100%;">
+    </form>
+    {% if add_href %}
+      <a class="btn btn-primary" href="{{ add_href }}">{{ add_label|default('+ افزودن') }}</a>
+    {% endif %}
+  </div>
+
+  <div class="table-responsive">
+    <table class="table-rtl students-table" style="table-layout:fixed;">
+      <colgroup>{% block colgroup %}{% endblock %}</colgroup>
+      <thead><tr>{% block thead %}{% endblock %}</tr></thead>
+      <tbody>
+        {% block tbody %}
+          <tr><td colspan="99" class="muted">موردی یافت نشد.</td></tr>
+        {% endblock %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .table-responsive { overflow-x: auto; }
+  .table-rtl {
+    width: 100%; border-collapse: collapse; direction: rtl; table-layout: fixed;
+    background: #fff; border-radius: 12px; overflow: hidden;
+  }
+  .table-rtl thead th {
+    font-size: var(--fs-sm,13px); color: #64748B; font-weight: 600;
+    padding: 12px 14px; border-bottom: 1px solid #EEF2F7; text-align: right; white-space: nowrap;
+  }
+  .table-rtl td {
+    padding: 12px 14px; border-bottom: 1px solid #F1F5F9; text-align: right;
+    vertical-align: middle; white-space: nowrap; box-sizing: border-box;
+  }
+  .table-rtl tbody tr:hover td { background: #FBFDFF; }
+  .students-table td img { max-width: none !important; height: auto; }
+  .cell-name { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: inherit; min-width: 0; }
+  .avatar-mini { width: 36px !important; height: 36px !important; border-radius: 50%; object-fit: cover; box-shadow: 0 2px 4px rgba(0,0,0,.08); flex: 0 0 36px; }
+  .ellipsis { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .actions { display: inline-flex; gap: 6px; align-items: center; }
+  .actions form { display: inline; }
+  .muted { color: #94A3B8; text-align: center; padding: 16px; }
+</style>
+{% endblock %}

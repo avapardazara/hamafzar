@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}ورود | هم‌افزار{% endblock %}
+{% block page_title %}ورود به سامانه{% endblock %}
+{% block page_actions %}{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/auth.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 480px; margin: 40px auto;">
+  <form method="post" action="{{ url_for('auth.login') }}" novalidate>
+    <div style="margin-bottom: var(--sp-5);">
+      <label for="username">نام کاربری (موبایل/ایمیل)</label>
+      <input id="username" name="username" class="input" autocomplete="username" required maxlength="120" />
+      <div class="help text-muted">نام کاربری معمولاً شماره موبایله.</div>
+    </div>
+
+    <div style="margin-bottom: var(--sp-5);">
+      <label for="password">رمز عبور</label>
+      <input id="password" type="password" name="password" class="input" autocomplete="current-password" required />
+      <div class="help text-muted">اگر اولین باره وارد می‌شی، رمز اولیه = کدملی (در محیط توسعه).</div>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom: var(--sp-5);">
+      <input type="checkbox" id="remember" name="remember" />
+      <label for="remember" style="margin:0;">مرا به خاطر بسپار</label>
+    </div>
+
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-primary" type="submit">ورود</button>
+      <a class="btn btn-ghost" href="#">فراموشی رمز؟</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

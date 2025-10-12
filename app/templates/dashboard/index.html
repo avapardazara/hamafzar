@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}داشبورد | هم‌افزار{% endblock %}
+{% block page_title %}داشبورد{% endblock %}
+{% block page_actions %}{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-bottom: var(--sp-6);">
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+    {% for k in data.kpis %}
+      <div class="card" style="box-shadow:none; border:1px solid #EEF2F7; min-width: 240px;">
+        <div style="font-size: var(--fs-sm); color: var(--color-muted);">{{ k.label }}</div>
+        <div style="font-size: var(--fs-2xl); font-weight: 700; margin-top: 6px;">{{ k.value }}</div>
+        <div class="text-muted" style="font-size: var(--fs-xs);">{{ k.hint }}</div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 12px;">
+    <h2 style="margin:0; font-size: var(--fs-xl);">رویدادهای نزدیک</h2>
+  </div>
+  {% if data.upcoming and data.upcoming|length %}
+    <ul style="list-style:none; padding:0; margin:0;">
+      {% for ev in data.upcoming %}
+        <li style="padding:10px 0; border-bottom:1px solid #F1F5F9;">
+          <strong>{{ ev.title }}</strong>
+          <div class="text-muted" style="font-size: var(--fs-sm);">{{ ev.when }}</div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="text-muted" style="margin:0;">رویداد نزدیکی ثبت نشده.</p>
+  {% endif %}
+</div>
+{% endblock %}

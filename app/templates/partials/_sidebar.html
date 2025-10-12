@@ -1,0 +1,12 @@
+<div class="nav-card">
+  <div class="title">هم‌افزار</div>
+  <nav class="nav">
+    <a href="{{ url_for('dashboard.index') }}" class="{{ 'active' if request.endpoint=='dashboard.index' else '' }}">🏠 داشبورد</a>
+    <a href="{{ url_for('courses.list') }}" class="{{ 'active' if request.blueprint=='courses' else '' }}">📚 دوره‌ها</a>
+    <a href="{{ url_for('mentors.list') }}" class="{{ 'active' if request.blueprint=='mentors' else '' }}">👨‍🏫 منتورها</a>
+    <a href="{{ url_for('students.list') }}" class="{{ 'active' if request.blueprint=='students' else '' }}">👨‍🎓 کارآموزها</a>
+    <a href="{{ url_for('finance.index') }}" class="{{ 'active' if request.blueprint=='finance' else '' }}">💳 مالی</a>
+    <a href="{{ url_for('admin.users_index') }}" class="{{ 'active' if request.blueprint=='admin' else '' }}">👥 کاربران</a>
+    <a href="{{ url_for('auth.logout') }}">🚪 خروج</a>
+  </nav>
+</div>

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}منتورها{% endblock %}
+{% block page_title %}منتورها{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-bottom: var(--sp-6);">
+  <form method="get" action="{{ url_for('mentors.list') }}" style="display:flex; gap:12px; flex-wrap:wrap;">
+    <input class="input" name="q" placeholder="جست‌وجو: نام / ایمیل / موبایل" value="{{ q or '' }}" style="flex:1; min-width:280px;">
+    <button class="btn btn-primary" type="submit">جست‌وجو</button>
+    <a class="btn btn-ghost" href="{{ url_for('mentors.list') }}">پاک‌سازی</a>
+    <a class="btn" href="{{ url_for('mentors.new_form') }}" style="margin-right:auto;">➕ منتور جدید</a>
+  </form>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table-rtl mentors-table">
+      <colgroup>
+        <col>  {# ردیف #}
+        <col>  {# نام #}
+        <col>  {# ایمیل #}
+        <col>  {# موبایل #}
+        <col>  {# اکشن #}
+      </colgroup>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>نام</th>
+          <th>ایمیل</th>
+          <th>موبایل</th>
+          <th>اکشن</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in items %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td class="ellipsis">
+            <a class="cell-name" href="{{ url_for('mentors.edit_form', mentor_id=m.id) }}">
+              {% if m.avatar %}
+                <img class="avatar-mini"
+                     src="{{ url_for('uploaded_file', filename=m.avatar) }}"
+                     alt="{{ m.full_name }}">
+              {% else %}
+                <div class="avatar-mini avatar-fallback">👤</div>
+              {% endif %}
+              <span class="ellipsis">{{ m.full_name }}</span>
+            </a>
+          </td>
+          <td class="ellipsis">{{ m.email or '—' }}</td>
+          <td class="ellipsis">{{ m.phone or '—' }}</td>
+          <td>
+            <div class="actions">
+              <a class="btn btn-ghost" href="{{ url_for('mentors.edit_form', mentor_id=m.id) }}">ویرایش</a>
+              <form method="post" action="{{ url_for('mentors.delete', mentor_id=m.id) }}" onsubmit="return confirm('حذف شود؟');">
+                <button class="btn btn-ghost" type="submit">حذف</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="muted">منتوری یافت نشد.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+  .mentors-table { width:100%; border-collapse:collapse; table-layout:fixed; direction:rtl; background:#fff; border-radius:12px; overflow:hidden; }
+  .mentors-table thead th { font-size:13px; font-weight:700; color:#7C8A9A; background:#F8FAFC; text-align:right; padding:12px 14px; border-bottom:1px solid #EEF2F7; }
+  .mentors-table td { padding:12px 14px; border-bottom:1px solid #F1F5F9; text-align:right; vertical-align:middle; white-space:nowrap; box-sizing:border-box; }
+  .mentors-table tbody tr:hover td { background:#FBFDFF; }
+  .cell-name { display:inline-flex; align-items:center; gap:8px; text-decoration:none; color:inherit; min-width:0; }
+  .avatar-mini { width:36px; height:36px; border-radius:50%; object-fit:cover; box-shadow:0 1px 3px rgba(0,0,0,0.08); flex:0 0 36px; }
+  .avatar-fallback { background:#E5E7EB; color:#6B7280; display:inline-flex; align-items:center; justify-content:center; font-weight:700; }
+  .ellipsis { display:inline-block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .actions { display:inline-flex; gap:6px; align-items:center; }
+</style>
+{% endblock %}

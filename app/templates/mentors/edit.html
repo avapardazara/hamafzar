@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}پروفایل منتور{% endblock %}
+{% block page_title %}پروفایل منتور{% endblock %}
+
+{% block content %}
+
+<div id="mentor-profile" data-mentor-id="{{ m.id }}"></div>
+
+<div class="card">
+  <div class="tabs" style="display:flex; gap:8px; border-bottom:1px solid #EEF2F7; padding-bottom:8px;">
+    <button class="tab active" data-tab="basic">مشخصات</button>
+    <button class="tab" data-tab="courses">دوره‌ها</button>
+    <button class="tab" data-tab="skills" disabled>مهارت‌ها</button>
+    <button class="tab" data-tab="finance" disabled>مالی</button>
+  </div>
+
+  <!-- تب: مشخصات -->
+  <div id="tab-basic" class="tab-panel" style="display:block;">
+    <div style="display:grid; grid-template-columns: 240px 1fr; gap:16px; align-items:start;">
+      <!-- آواتار -->
+      <div>
+        <div style="display:flex; flex-direction:column; gap:10px; align-items:flex-start;">
+          <div style="width:140px; height:140px; border-radius:14px; overflow:hidden; border:1px solid #E5E7EB;">
+            {% if m.avatar %}
+              <img id="avatarPreview" src="{{ url_for('uploaded_file', filename=m.avatar) }}" style="width:100%;height:100%;object-fit:cover;">
+            {% else %}
+              <img id="avatarPreview" src="{{ url_for('static', filename='images/avatar-default.png') }}" style="width:100%;height:100%;object-fit:cover;">
+            {% endif %}
+          </div>
+
+          <form method="post" action="{{ url_for('mentors.upload_avatar', mentor_id=m.id) }}" enctype="multipart/form-data">
+            <input type="file" name="avatar" id="avatarInput" accept="image/*">
+            <button class="btn btn-primary" type="submit" style="margin-top:6px;">بارگذاری عکس</button>
+          </form>
+
+          {% if m.avatar %}
+          <form method="post" action="{{ url_for('mentors.delete_avatar', mentor_id=m.id) }}">
+            <button class="btn btn-ghost" type="submit">حذف عکس</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- فرم مشخصات -->
+      <form method="post" action="{{ url_for('mentors.update_basic', mentor_id=m.id) }}" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div>
+          <label class="label">نام</label>
+          <input class="input" name="first_name" value="{{ m.first_name or '' }}">
+        </div>
+        <div>
+          <label class="label">نام خانوادگی</label>
+          <input class="input" name="last_name" value="{{ m.last_name or '' }}">
+        </div>
+        <div>
+          <label class="label">موبایل</label>
+          <input class="input" name="phone" value="{{ m.phone or '' }}">
+        </div>
+        <div>
+          <label class="label">ایمیل</label>
+          <input class="input" type="email" name="email" value="{{ m.email or '' }}">
+        </div>
+        <div style="grid-column:1 / -1;">
+          <label class="label">بیو</label>
+          <textarea class="input" name="bio" rows="3">{{ m.bio or '' }}</textarea>
+        </div>
+        <div style="grid-column:1 / -1; display:flex; gap:8px; justify-content:flex-start; margin-top:4px;">
+          <button class="btn btn-primary" type="submit">ذخیره مشخصات</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- تب: دوره‌ها -->
+  <div id="tab-courses" class="tab-panel" style="display:none;">
+    <div style="display:grid; grid-template-columns: 1fr 280px; gap:16px;">
+
+      <!-- جدول دوره‌های منتور -->
+      <div class="table-responsive">
+        <table class="table-rtl">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>عنوان دوره</th>
+              <th>وضعیت</th>
+              <th>اکشن</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in taught %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td class="ellipsis">{{ c.title }}</td>
+                <td class="ellipsis">{{ c.status or '—' }}</td>
+                <td>
+                  <form method="post" action="{{ url_for('mentors.remove_course', mentor_id=m.id, course_id=c.id) }}"
+                        onsubmit="return confirm('حذف ارتباط با دوره؟');">
+                    <button class="btn btn-ghost" type="submit">حذف</button>
+                  </form>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="4" class="muted">هنوز دوره‌ای ثبت نشده.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- افزودن دوره به منتور -->
+      <div class="card">
+        <form method="post" action="{{ url_for('mentors.add_course', mentor_id=m.id) }}" style="display:grid; gap:10px;">
+          <label class="label">انتخاب دوره</label>
+          <select class="input" name="course_id">
+            {% for c in all_courses %}
+              <option value="{{ c.id }}">{{ c.title }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn btn-primary" type="submit">افزودن</button>
+        </form>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- تب‌های بعدی را بعداً فعال می‌کنیم -->
+  <div id="tab-skills" class="tab-panel" style="display:none;">
+    <div class="muted">به‌زودی…</div>
+  </div>
+  <div id="tab-finance" class="tab-panel" style="display:none;">
+    <div class="muted">به‌زودی…</div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  // Tabs (مشابه دانشجو)
+  function initTabs(){
+    const tabs = document.querySelectorAll('.tabs .tab');
+    const panels = document.querySelectorAll('.tab-panel');
+    function show(key){
+      panels.forEach(p => p.style.display = 'none');
+      tabs.forEach(b => b.classList.remove('active'));
+      const btn = Array.from(tabs).find(b => b.dataset.tab === key);
+      if(btn) btn.classList.add('active');
+      const panel = document.getElementById('tab-' + key);
+      if(panel) panel.style.display = 'block';
+    }
+    tabs.forEach(btn => btn.addEventListener('click', () => show(btn.dataset.tab)));
+    const first = Array.from(tabs).find(b => b.classList.contains('active')) || tabs[0];
+    if(first) show(first.dataset.tab);
+  }
+
+  // Live preview for avatar
+  const input = document.getElementById('avatarInput');
+  const preview = document.getElementById('avatarPreview');
+  if(input && preview){
+    input.addEventListener('change', () => {
+      const f = input.files && input.files[0];
+      if(!f) return;
+      const url = URL.createObjectURL(f);
+      preview.src = url;
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', initTabs);
+})();
+</script>
+
+<style>
+  /* هم‌خوان با استایل‌های دانشجو */
+  .table-rtl {
+    width:100%; border-collapse:collapse; table-layout:fixed; direction:rtl; background:#fff;
+  }
+  .table-rtl thead th {
+    background:#F8FAFC; border-bottom:1px solid #EEF2F7; padding:12px 14px; text-align:right; font-weight:700; color:#7C8A9A;
+  }
+  .table-rtl td {
+    border-bottom:1px solid #F1F5F9; padding:12px 14px; white-space:nowrap; text-align:right; vertical-align:middle;
+  }
+  .ellipsis { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .muted { color:#6B7280; }
+  .label { display:block; margin-bottom:6px; color:#6B7280; font-size:13px; }
+  .input { width:100%; padding:10px 12px; border:1px solid #D3D5DF; border-radius:8px; }
+  .tabs .tab.active { font-weight:700; color:#0f766e; }
+</style>
+{% endblock %}

@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% block title %}لیست کارآموزها | هم‌افزار{% endblock %}
+{% block page_title %}کارآموزها{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-bottom: var(--sp-6);">
+  <form method="get" action="{{ url_for('students.list') }}" style="display:flex; gap:12px; flex-wrap:wrap;">
+    <input class="input" name="q" placeholder="جست‌وجو: نام، موبایل، کدملی" value="{{ q or '' }}" style="flex:1; min-width:280px;">
+    <button class="btn btn-primary" type="submit">جست‌وجو</button>
+    <a class="btn btn-ghost" href="{{ url_for('students.list') }}">پاک‌سازی</a>
+    <a class="btn" href="{{ url_for('students.create_form') }}" style="margin-right:auto;">➕ افزودن کارآموز</a>
+  </form>
+</div>
+
+<div class="card">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+    <div class="text-muted">نتیجه: {{ total }} رکورد</div>
+  </div>
+
+  {% if items %}
+    <div class="table-responsive">
+      <table class="table-rtl students-table">
+        <colgroup>
+          <col>
+          <col>
+          <col>
+          <col>
+          <col>
+          <col>
+        </colgroup>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>نام</th>
+            <th>کدملی</th>
+            <th>موبایل</th>
+            <th>ایمیل</th>
+            <th>اکشن</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in items %}
+          <tr>
+            <td>{{ loop.index + (page-1)*per_page }}</td>
+
+            <td>
+              <a href="{{ url_for('students.profile', student_id=s.id) }}" class="cell-name">
+                {% if s.avatar_path %}
+                  <img loading="lazy"
+                       src="{{ url_for('uploaded_file', filename=s.avatar_path) }}"
+                       alt="{{ s.full_name }}"
+                       class="avatar-mini">
+                {% else %}
+                  <div class="avatar-mini avatar-fallback">
+                    {{ s.first_name[0] if s.first_name else '👤' }}
+                  </div>
+                {% endif %}
+                <span class="ellipsis">{{ s.full_name }}</span>
+              </a>
+            </td>
+            <td><span class="ellipsis">{{ s.national_code or '-' }}</span></td>
+            <td><span class="ellipsis">{{ s.phone or '-' }}</span></td>
+            <td><span class="ellipsis">{{ s.email or '-' }}</span></td>
+            <td>
+              <div class="actions">
+                <a class="btn btn-ghost" href="{{ url_for('students.edit_form', student_id=s.id) }}">ویرایش</a>
+                <form method="post" action="{{ url_for('students.delete', student_id=s.id) }}" onsubmit="return confirm('حذف شود؟');" style="display:inline;">
+                  <button class="btn btn-ghost" type="submit">حذف</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% set pages = (total // per_page) + (1 if total % per_page else 0) %}
+    {% if pages > 1 %}
+      <div class="pagination">
+        {% for p in range(1, pages+1) %}
+          {% if p == page %}
+            <span class="btn btn-ghost active">{{ p }}</span>
+          {% else %}
+            <a class="btn btn-ghost" href="{{ url_for('students.list', q=q, page=p) }}">{{ p }}</a>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% else %}
+    <p class="text-muted" style="margin:0;">موردی پیدا نشد.</p>
+  {% endif %}
+</div>
+
+{% block scripts %}
+<style>
+  
+  /* 🌿 جدول مینیمال دقیق با هم‌ترازی کامل th و td */
+  .students-table {
+    width: 100%;
+    border-collapse: collapse;
+    border-spacing: 0;
+    table-layout: fixed;         /* عرض ستون‌ها بر اساس colgroup کنترل می‌شود */
+    direction: rtl;
+    background: #fff;
+    border-radius: 12px;
+    overflow: hidden; 
+  }
+.students-table td .ellipsis {
+  display: block;             /* یا inline-block، هر دو اوکی‌اند؛ block مطمئن‌تره */
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+  .students-table colgroup col:nth-child(1) { width: 5%; }   /* # */
+  .students-table colgroup col:nth-child(2) { width: 25%; }  /* نام */
+  .students-table colgroup col:nth-child(3) { width: 15%; }  /* کدملی */
+  .students-table colgroup col:nth-child(4) { width: 15%; }  /* موبایل */
+  .students-table colgroup col:nth-child(5) { width: 25%; }  /* ایمیل */
+  .students-table colgroup col:nth-child(6) { width: 15%; }  /* اکشن */
+
+  /* 📋 عنوان‌ها (header) */
+  .students-table thead th {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 13px;
+    font-weight: 700;
+    color: #7C8A9A;
+    background: #F8FAFC;
+    text-align: right;
+    padding: 12px 14px;
+    border-bottom: 1px solid #EEF2F7;
+    box-sizing: border-box;
+  }
+
+  /* 🧱 بدنه جدول (body) */
+  .students-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid #F1F5F9;
+    text-align: right;
+    vertical-align: middle;
+    white-space: nowrap;
+    box-sizing: border-box;
+  }
+
+  /* hover */
+  .students-table tbody tr:hover td {
+    background: #FBFDFF;
+  }
+
+  /* 👥 سلول نام + آواتار */
+  .cell-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    color: inherit;
+    min-width: 0;
+  }
+
+  .avatar-mini {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 50%;
+    object-fit: cover;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    flex: 0 0 36px;
+  }
+
+  .avatar-fallback {
+    background: #E5E7EB;
+    color: #6B7280;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+  }
+
+  .ellipsis {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ⚙️ دکمه‌های اکشن */
+.actions {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-start;
+  vertical-align: middle;
+}
+
+  /* 🔢 صفحه‌بندی */
+  .pagination {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    margin-top: 14px;
+  }
+
+  .pagination .active {
+    background: #EEF2F7;
+  }
+  .students-table td:last-child {
+  overflow: visible !important;   /* نذار دکمه بریده بشه */
+}
+
+.students-table td .actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  height: 100%;
+  padding: 4px 0;
+}
+
+.students-table td .actions .btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.students-table td .actions .btn:hover {
+  background-color: #F1F5F9;
+}
+.students-table th,
+.students-table td {
+  padding: 14px 14px;           /* قبلاً 12px بود؛ 2px اضافه شد */
+  box-sizing: border-box;
+}
+</style>
+{% endblock %}
+
+
+{% endblock %}

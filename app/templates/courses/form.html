@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ 'ویرایش دوره' if course else 'ایجاد دوره' }} | هم‌افزار{% endblock %}
+{% block page_title %}{{ 'ویرایش دوره' if course else 'ایجاد دوره' }}{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:700px; margin:auto;">
+  <form method="post" action="{{ url_for('courses.update', course_id=course.id) if course else url_for('courses.create') }}" class="form-rtl">
+    <div class="grid two" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <div class="full" style="grid-column:1/-1;">
+        <label class="label">عنوان دوره *</label>
+        <input type="text" name="title" required
+               value="{{ (form.title if form else None) or (course.title if course else '') }}"
+               class="input">
+      </div>
+
+      <div>
+        <label class="label">نام منتور</label>
+        <input type="text" name="mentor_name"
+               value="{{ (form.mentor_name if form else None) or (course.mentor_name if course else '') }}"
+               class="input">
+      </div>
+
+      <div>
+        <label class="label">وضعیت</label>
+        <select name="status" class="input">
+          {% set st = (form.status if form else None) or (course.status if course else 'ACTIVE') %}
+          <option value="ACTIVE" {{ 'selected' if st=='ACTIVE' else '' }}>فعال</option>
+          <option value="ARCHIVED" {{ 'selected' if st=='ARCHIVED' else '' }}>آرشیو</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:14px;">
+      <a class="btn btn-ghost" href="{{ url_for('courses.list_') }}">انصراف</a>
+      <button class="btn btn-primary" type="submit">{{ 'ثبت تغییرات' if course else 'ایجاد دوره' }}</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.form-rtl .label { font-size:12px; color:#7C8A9A; margin-bottom:6px; display:block; }
+.form-rtl .input  { width:100%; padding:10px 12px; border:1px solid #D3D5DF; border-radius:8px; }
+.grid.two .full { grid-column:1 / -1; }
+</style>
+{% endblock %}

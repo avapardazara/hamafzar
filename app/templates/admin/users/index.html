@@ -1,0 +1,52 @@
+{% extends "layouts/resource_list.html" %}
+{% set page_title = 'کاربران' %}
+{# اگر ساخت ادمین جدید داری، لینک بده؛ در غیر این صورت add_href را حذف کن #}
+{% set add_href = url_for('admin.users_index') %}
+{% set add_label = '+ ادمین جدید' %}
+{% set search_placeholder = 'جستجو: نام‌کاربری / ایمیل' %}
+
+{% block colgroup %}
+  <col style="width:6%;">   {# # #}
+  <col style="width:24%;">  {# نام‌کاربری #}
+  <col style="width:30%;">  {# ایمیل #}
+  <col style="width:20%;">  {# نقش #}
+  <col style="width:20%;">  {# اکشن #}
+{% endblock %}
+
+{% block thead %}
+  <th>#</th>
+  <th>نام کاربری</th>
+  <th>ایمیل</th>
+  <th>نقش</th>
+  <th>اکشن</th>
+{% endblock %}
+
+{% block tbody %}
+  {% for u in users %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td><span class="ellipsis">{{ u.username }}</span></td>
+      <td><span class="ellipsis">{{ u.email or '—' }}</span></td>
+      <td><span class="ellipsis">{{ (u.role or '').upper() }}</span></td>
+      <td>
+        <div class="actions">
+          <a class="btn btn-ghost" href="{{ url_for('admin.route_to_profile_edit', user_id=u.id) }}">ویرایش پروفایل</a>
+          <a class="btn btn-ghost" href="{{ url_for('admin.users_index') }}"
+             onclick="event.preventDefault(); openCreds('{{ u.id }}','{{ u.username }}','{{ u.email }}')">تغییر رمز/یوزرنیم</a>
+        </div>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="muted">کاربری یافت نشد.</td></tr>
+  {% endfor %}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+  function openCreds(id, username, email){
+    // اینجا می‌تونی مدال/فرم تغییر رمز را باز کنی
+    console.log('edit creds for', id, username, email);
+  }
+</script>
+{% endblock %}

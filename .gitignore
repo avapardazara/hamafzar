@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+env/
+venv/
+
+# OS/IDE
+.DS_Store
+.idea/
+.vscode/
+*.code-workspace
+
+# Flask/Instance
+instance/
+*.db
+*.sqlite3
+
+# Env/Secrets
+.env
+.env.*
+!.env.example
+
+# Logs & caches
+logs/
+*.log
+.cache/
+dist/
+build/
+
+# Frontend
+node_modules/
+*.map

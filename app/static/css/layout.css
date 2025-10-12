@@ -1,0 +1,23 @@
+.layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: var(--sp-6);
+  padding: var(--sp-6);
+}
+.sidebar {
+  position: sticky; top: var(--sp-6);
+  height: calc(100vh - var(--sp-12));
+}
+.nav-card {
+  background: #fff; border-radius: var(--radius); box-shadow: var(--elev-1); padding: var(--sp-4);
+}
+.nav-card .title { font-weight: 700; margin-bottom: var(--sp-3); font-size: var(--fs-lg); }
+.nav a {
+  display: block; padding: 10px 12px; border-radius: 10px; color: var(--color-text);
+}
+.nav a.active, .nav a:hover { background: #F3F4F6; }
+.content { min-height: 60vh; }
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: var(--sp-4);
+}

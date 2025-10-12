@@ -1,0 +1,86 @@
+.avatar-upload:hover img,
+.avatar-upload:hover #avatarPlaceholder {
+  transform: scale(1.05);
+  transition: transform 0.2s ease;
+}
+.avatar-mini {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: transform 0.15s ease;
+}
+.avatar-mini:hover {
+  transform: scale(1.05);
+}
+/* جدول RTL تمیز */
+.table-responsive {
+  overflow-x: auto;
+}
+.table-rtl {
+  width: 100%;
+  border-collapse: collapse;
+  direction: rtl;
+  table-layout: fixed;          /* تا ellipsis جواب بده */
+}
+.table-rtl th, .table-rtl td {
+  padding: 10px;
+  border-bottom: 1px solid #EEF2F7;
+  text-align: right;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.table-rtl thead th {
+  font-size: var(--fs-sm);
+  color: var(--color-muted);
+  font-weight: 600;
+}
+
+/* سلول نام + آواتار */
+.cell-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: inherit;
+  min-width: 0; /* برای ellipsis داخل flex */
+}
+
+/* آواتار کوچک ثابت */
+.avatar-mini {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+  flex: 0 0 36px;
+}
+.avatar-fallback {
+  background: #E5E7EB;
+  color: #6B7280;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+/* متن‌هایی که باید کوتاه بشن */
+.ellipsis {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+/* صفحه‌بندی */
+.pagination {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 14px;
+}
+.pagination .active {
+  background: #EEF2F7;
+}

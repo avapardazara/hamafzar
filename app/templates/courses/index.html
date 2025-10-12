@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}مدیریت دوره‌ها | هم‌افزار{% endblock %}
+{% block page_title %}مدیریت دوره‌ها{% endblock %}
+
+{% block content %}
+<div class="card">
+  <form method="get" class="toolbar" style="display:grid; grid-template-columns:1fr 120px; gap:8px; align-items:center;">
+    <input type="text" name="q" value="{{ q }}" placeholder="جستجو: عنوان/منتور" style="padding:8px 10px;border:1px solid #D3D5DF;border-radius:6px;">
+    <a class="btn btn-primary" href="{{ url_for('courses.new_form') }}">+ دوره جدید</a>
+  </form>
+
+  <div class="table-responsive">
+    <table class="data-table" style="direction:rtl; table-layout:fixed; width:100%;">
+      <colgroup>
+        <col style="width:6%">
+        <col>
+        <col style="width:22%">
+        <col style="width:14%">
+        <col style="width:16%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>عنوان</th>
+          <th>منتور</th>
+          <th>وضعیت</th>
+          <th>اکشن</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in items %}
+        <tr>
+          <td>{{ loop.index + (pagination.page-1)*pagination.per_page }}</td>
+          <td class="ellipsis"><span class="ellipsis">{{ c.title }}</span></td>
+          <td class="ellipsis"><span class="ellipsis">{{ c.mentor_name or '—' }}</span></td>
+          <td>{{ 'فعال' if c.status=='ACTIVE' else 'آرشیو' }}</td>
+          <td>
+            <div class="actions" style="display:inline-flex; gap:6px;">
+              <a class="btn btn-ghost" href="{{ url_for('courses.edit_form', course_id=c.id) }}">ویرایش</a>
+              {% if c.status != 'ARCHIVED' %}
+              <form method="post" action="{{ url_for('courses.archive', course_id=c.id) }}" onsubmit="return confirm('بایگانی شود؟');" style="display:inline;">
+                <button class="btn btn-ghost" type="submit">بایگانی</button>
+              </form>
+              {% endif %}
+              <form method="post" action="{{ url_for('courses.delete', course_id=c.id) }}" onsubmit="return confirm('حذف دائم شود؟');" style="display:inline;">
+                <button class="btn btn-ghost" type="submit">حذف</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="muted">دوره‌ای یافت نشد.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if pagination.pages > 1 %}
+  <div class="pagination" style="display:flex; gap:6px; justify-content:center; margin-top:12px;">
+    {% if pagination.has_prev %}
+    <a class="btn btn-ghost" href="{{ url_for('courses.list_', q=q, page=pagination.prev_num) }}">قبلی</a>
+    {% endif %}
+    <span class="btn btn-ghost active">صفحه {{ pagination.page }} از {{ pagination.pages }}</span>
+    {% if pagination.has_next %}
+    <a class="btn btn-ghost" href="{{ url_for('courses.list_', q=q, page=pagination.next_num) }}">بعدی</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

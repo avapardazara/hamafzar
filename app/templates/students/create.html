@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}افزودن کارآموز | هم‌افزار{% endblock %}
+{% block page_title %}افزودن کارآموز{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 900px;">
+  <form method="post" action="{{ url_for('students.create') }}" enctype="multipart/form-data">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+      <div style="grid-column:1 / -1; text-align:center;">
+<div class="avatar-upload" style="position:relative; display:inline-block;">
+  <label for="avatar" style="cursor:pointer;">
+    {% if s and s.avatar_path %}
+<img id="avatarPreview" 
+   src="{{ url_for('uploaded_file', filename=s.avatar_path) }}" 
+   alt="Avatar"
+   style="width:120px;height:120px;border-radius:50%;object-fit:cover;box-shadow:var(--elev-1);">
+    {% else %}
+      <div id="avatarPlaceholder" 
+           style="width:120px;height:120px;border-radius:50%;background:#F3F4F6;display:flex;align-items:center;justify-content:center;font-size:32px;color:#9CA3AF;box-shadow:var(--elev-1);">
+        👤
+      </div>
+    {% endif %}
+  </label>
+  <input type="file" name="avatar" id="avatar" accept="image/*" style="display:none;" onchange="previewAvatar(event)">
+  {% if s and s.avatar_path %}
+    <div style="margin-top:6px;">
+      <label style="font-size:13px;color:#EF4444;cursor:pointer;">
+        <input type="checkbox" name="delete_avatar" value="1"> حذف تصویر
+      </label>
+    </div>
+  {% endif %}
+</div>
+</div>
+      <div>
+        <label>نام</label>
+        <input name="first_name" class="input" required />
+      </div>
+      <div>
+        <label>نام خانوادگی</label>
+        <input name="last_name" class="input" required />
+      </div>
+      <div>
+        <label>کد ملی</label>
+        <input name="national_code" class="input" />
+      </div>
+      <div>
+        <label>موبایل</label>
+        <input name="phone" class="input" />
+      </div>
+      <div>
+        <label>ایمیل</label>
+        <input name="email" type="email" class="input" />
+      </div>
+      <div style="grid-column:1 / -1;">
+        <label>آدرس</label>
+        <input name="address" class="input" />
+      </div>
+      <div style="grid-column:1 / -1;">
+        <label>یادداشت</label>
+        <textarea name="notes" class="input" rows="3"></textarea>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:8px; margin-top:16px;">
+      <button class="btn btn-primary" type="submit">ذخیره</button>
+      <a class="btn btn-ghost" href="{{ url_for('students.list') }}">بازگشت</a>
+    </div>
+  </form>
+</div>
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/pages/students.js') }}"></script>
+{% endblock %}
+{% endblock %}
