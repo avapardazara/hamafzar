@@ -1,9 +1,19 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
 from flask_login import login_required
 from app.extensions import db
 from app.utils.media import save_uploaded_image
 from app.models.mentor import Mentor
 from app.models.course import Course
+from datetime import datetime
+from sqlalchemy import func, case
+from app.models.payment import Payment
+from pathlib import Path
+from werkzeug.utils import secure_filename
+
+ALLOWED_IMAGE_EXTS = {"png", "jpg", "jpeg", "webp", "gif"}
+
+def _is_allowed_image(filename: str) -> bool:
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_IMAGE_EXTS
 
 bp = Blueprint("mentors", __name__, url_prefix="/mentors")
 ALLOWED_IMG = {"png", "jpg", "jpeg", "webp"}
@@ -20,7 +30,8 @@ def list():
         like = f"%{q}%"
         base = base.filter(
             db.or_(
-                Mentor.full_name.like(like),
+                Mentor.first_name.like(like),
+                Mentor.last_name.like(like),
                 Mentor.email.like(like),
                 Mentor.phone.like(like),
             )
@@ -44,6 +55,12 @@ def view(mentor_id):
 @login_required
 def new_form():
     return render_template("mentors/form.html", m=None)
+@bp.get("/<int:mentor_id>/form")
+@login_required
+def edit_form_page(mentor_id):
+    """نمایش فرم ویرایش با مقادیر پرشده"""
+    m = Mentor.query.get_or_404(mentor_id)
+    return render_template("mentors/form.html", m=m)
 
 # -------------------------------
 # ساخت
@@ -51,15 +68,16 @@ def new_form():
 @bp.post("/new")
 @login_required
 def create():
-    full_name = (request.form.get("full_name") or "").strip()
+    first_name = (request.form.get("first_name") or "").strip()
+    last_name = (request.form.get("last_name") or "").strip()
     email     = (request.form.get("email") or "").strip()
     phone     = (request.form.get("phone") or "").strip()
 
-    if not full_name:
+    if not first_name:
         flash("نام الزامی است.", "error")
         return redirect(url_for("mentors.new_form"))
 
-    m = Mentor(full_name=full_name, email=email, phone=phone)
+    m = Mentor(first_name=first_name,last_name=last_name, email=email, phone=phone)
 
     # آپلود آواتار در لحظه‌ی ساخت (اختیاری)
     avatar_file = request.files.get("avatar")
@@ -79,7 +97,11 @@ def create():
 @login_required
 def edit_form(mentor_id):
     m = Mentor.query.get_or_404(mentor_id)
-    return render_template("mentors/form.html", m=m)
+    # داده‌های لازم برای تب «دوره‌ها»
+    taught = Course.query.filter_by(mentor_id=m.id).order_by(Course.id.desc()).all()
+    all_courses = Course.query.order_by(Course.title.asc()).all()
+    # این‌جا حتماً edit.html را رندر کن (نه form.html)
+    return render_template("mentors/edit.html", m=m, taught=taught, all_courses=all_courses)
 
 # -------------------------------
 # ذخیره‌ی ویرایش
@@ -88,7 +110,8 @@ def edit_form(mentor_id):
 @login_required
 def update(mentor_id):
     m = Mentor.query.get_or_404(mentor_id)
-    m.full_name = (request.form.get("full_name") or "").strip()
+    m.first_name = (request.form.get("first_name") or "").strip()
+    m.last_name = (request.form.get("last_name") or "").strip()
     m.email     = (request.form.get("email") or "").strip()
     m.phone     = (request.form.get("phone") or "").strip()
 
@@ -120,11 +143,15 @@ def delete(mentor_id):
 @login_required
 def update_basic(mentor_id):
     m = Mentor.query.get_or_404(mentor_id)
-    m.first_name = (request.form.get("first_name") or "").strip()
-    m.last_name  = (request.form.get("last_name") or "").strip()
-    m.phone      = (request.form.get("phone") or "").strip()
-    m.email      = (request.form.get("email") or "").strip()
-    m.bio        = (request.form.get("bio") or "").strip()
+    m.first_name = request.form.get("first_name") or m.first_name
+    m.last_name  = request.form.get("last_name")  or m.last_name
+    m.email      = request.form.get("email")      or m.email
+    m.phone      = request.form.get("phone")      or m.phone
+    
+    fn = (m.first_name or "").strip()
+    ln = (m.last_name or "").strip()
+    m.full_name = (f"{fn} {ln}").strip() or None
+
     db.session.commit()
     flash("مشخصات منتور ذخیره شد.", "success")
     return redirect(url_for("mentors.edit_form", mentor_id=m.id))
@@ -132,36 +159,59 @@ def update_basic(mentor_id):
 # -------------------------------
 # آپلود آواتار
 # -------------------------------
-@bp.post("/<int:mentor_id>/avatar")
-@login_required
+@bp.route("/<int:mentor_id>/avatar", methods=["POST"])
 def upload_avatar(mentor_id):
-    m = Mentor.query.get_or_404(mentor_id)
-    f = request.files.get("avatar")
-    if not f or not f.filename:
-        flash("فایلی انتخاب نشده.", "error")
-        return redirect(url_for("mentors.edit_form", mentor_id=m.id))
+    mentor = Mentor.query.get_or_404(mentor_id)
 
-    avatar_rel = save_uploaded_image(f, subdir="mentors")
-    if not avatar_rel:
-        flash("فرمت فایل معتبر نیست.", "error")
-        return redirect(url_for("mentors.edit_form", mentor_id=m.id))
+    file = request.files.get("avatar")
+    if not file or file.filename == "":
+        flash("فایلی انتخاب نشده است.", "warning")
+        return redirect(url_for("mentors.edit_form", mentor_id=mentor_id))
 
-    m.avatar = avatar_rel
+    if not _is_allowed_image(file.filename):
+        flash("فرمت تصویر معتبر نیست. فرمت‌های مجاز: png, jpg, jpeg, webp, gif", "danger")
+        return redirect(url_for("mentors.edit_form", mentor_id=mentor_id))
+
+    # مسیر ذخیره‌سازی: uploads/avatars/mentors/<id>/
+    upload_root = Path(current_app.root_path).parent / "uploads"
+    target_dir = upload_root / "avatars" / "mentors" / str(mentor_id)
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    # نام امن + افزودن timestamp برای یکتا بودن
+    stem = Path(secure_filename(file.filename)).stem
+    ext = Path(file.filename).suffix.lower()
+    from datetime import datetime
+    new_name = f"{stem}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}{ext}"
+    abs_path = target_dir / new_name
+
+    file.save(str(abs_path))
+
+    # مسیر نسبی‌ای که با files.uploaded_file سرو می‌شه:
+    rel_path = str(abs_path.relative_to(upload_root)).replace("\\", "/")
+    mentor.avatar = rel_path
     db.session.commit()
-    flash("عکس پروفایل به‌روزرسانی شد.", "success")
-    return redirect(url_for("mentors.edit_form", mentor_id=m.id))
 
+    flash("تصویر پروفایل با موفقیت به‌روزرسانی شد.", "success")
+    return redirect(url_for("mentors.edit_form", mentor_id=mentor_id))
 # -------------------------------
 # حذف آواتار
 # -------------------------------
-@bp.post("/<int:mentor_id>/avatar/delete")
-@login_required
+@bp.route("/<int:mentor_id>/avatar/delete", methods=["POST"])
 def delete_avatar(mentor_id):
-    m = Mentor.query.get_or_404(mentor_id)
-    m.avatar = None
-    db.session.commit()
-    flash("عکس پروفایل حذف شد.", "success")
-    return redirect(url_for("mentors.edit_form", mentor_id=m.id))
+    mentor = Mentor.query.get_or_404(mentor_id)
+    if mentor.avatar:
+        # تلاش برای حذف فایل (اختیاری؛ اگر نبود اشکالی ندارد)
+        try:
+            upload_root = Path(current_app.root_path).parent / "uploads"
+            p = upload_root / mentor.avatar
+            if p.is_file():
+                p.unlink()
+        except Exception:
+            pass
+        mentor.avatar = None
+        db.session.commit()
+        flash("تصویر پروفایل حذف شد.", "success")
+    return redirect(url_for("mentors.edit_form", mentor_id=mentor_id))
 
 # -------------------------------
 # نسبت دادن دوره
@@ -199,12 +249,6 @@ def remove_course(mentor_id, course_id):
         flash("دوره از منتور جدا شد.", "success")
     return redirect(url_for("mentors.edit_form", mentor_id=m.id))
 # ---- [BEGIN mentor payments API] -------------------------------------------
-from datetime import datetime
-from flask import request
-from sqlalchemy import func, case
-from app.extensions import db
-from app.models.payment import Payment
-from app.models.mentor import Mentor
 
 def _to_int(x):
     s = str(x or "0").replace(",", "").replace("٬", "").strip()

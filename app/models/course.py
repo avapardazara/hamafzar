@@ -8,7 +8,8 @@ class Course(db.Model):
     mentor_name = db.Column(db.String(120))          # فعلاً ساده؛ بعداً به Mentor FK وصل می‌کنیم
     status      = db.Column(db.String(20), default="ACTIVE")  # ACTIVE/ARCHIVED
     created_at  = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-
+    mentor_id = db.Column(db.Integer, db.ForeignKey("mentors.id"), nullable=True)
+    mentor = db.relationship("Mentor", backref="courses", lazy=True)
 class Enrollment(db.Model):
     __tablename__ = "enrollments"
     id          = db.Column(db.Integer, primary_key=True)

@@ -13,7 +13,9 @@
     <button class="tab" data-tab="skills" disabled>مهارت‌ها</button>
     <button class="tab" data-tab="finance" disabled>مالی</button>
   </div>
-
+{% set _parts = (m.full_name.split(' ') if (m.full_name) else []) %}
+{% set _fn = m.first_name or (_parts[0] if _parts|length > 0 else '') %}
+{% set _ln = m.last_name  or (_parts[1:]|join(' ') if _parts|length > 1 else '') %}
   <!-- تب: مشخصات -->
   <div id="tab-basic" class="tab-panel" style="display:block;">
     <div style="display:grid; grid-template-columns: 240px 1fr; gap:16px; align-items:start;">
@@ -22,7 +24,7 @@
         <div style="display:flex; flex-direction:column; gap:10px; align-items:flex-start;">
           <div style="width:140px; height:140px; border-radius:14px; overflow:hidden; border:1px solid #E5E7EB;">
             {% if m.avatar %}
-              <img id="avatarPreview" src="{{ url_for('uploaded_file', filename=m.avatar) }}" style="width:100%;height:100%;object-fit:cover;">
+              <img id="avatarPreview" src="{{ url_for('files.uploaded_file', filename=m.avatar) }}" style="width:100%;height:100%;object-fit:cover;">
             {% else %}
               <img id="avatarPreview" src="{{ url_for('static', filename='images/avatar-default.png') }}" style="width:100%;height:100%;object-fit:cover;">
             {% endif %}
@@ -45,11 +47,11 @@
       <form method="post" action="{{ url_for('mentors.update_basic', mentor_id=m.id) }}" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
         <div>
           <label class="label">نام</label>
-          <input class="input" name="first_name" value="{{ m.first_name or '' }}">
+          <input class="input" name="first_name" value="{{_fn}}">
         </div>
         <div>
           <label class="label">نام خانوادگی</label>
-          <input class="input" name="last_name" value="{{ m.last_name or '' }}">
+          <input class="input" name="last_name" value="{{_ln}}">
         </div>
         <div>
           <label class="label">موبایل</label>
@@ -58,10 +60,6 @@
         <div>
           <label class="label">ایمیل</label>
           <input class="input" type="email" name="email" value="{{ m.email or '' }}">
-        </div>
-        <div style="grid-column:1 / -1;">
-          <label class="label">بیو</label>
-          <textarea class="input" name="bio" rows="3">{{ m.bio or '' }}</textarea>
         </div>
         <div style="grid-column:1 / -1; display:flex; gap:8px; justify-content:flex-start; margin-top:4px;">
           <button class="btn btn-primary" type="submit">ذخیره مشخصات</button>

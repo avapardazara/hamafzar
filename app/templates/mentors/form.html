@@ -9,40 +9,82 @@
 
 {% block content %}
 <form method="post" enctype="multipart/form-data" class="card" style="direction:rtl;">
-  <div style="display:grid; grid-template-columns:160px 1fr; gap:20px; align-items:start;">
-    <!-- Avatar -->
-    <div>
-      <label class="avatar-uploader" style="cursor:pointer; display:block; width:120px; height:120px; border-radius:50%; overflow:hidden; position:relative; background:#F3F4F6;">
-        <img id="avatarPreview"
-             src="{{ (m.avatar|avatar_url) if m else url_for('static','', filename='images/avatar-default.png') }}"
-             style="width:100%; height:100%; object-fit:cover;"
-             alt="">
-        <input type="file" name="avatar" id="avatarInput" accept="image/*" style="display:none;">
+   <div class="form-group">
+    <div class="avatar-upload" style="position:relative; display:inline-block;">
+  <label for="avatar" style="cursor:pointer;">
+     {% if m.avatar %}
+      <img id="avatarPreview"
+           src="{{ url_for('files.uploaded_file', filename=m.avatar) }}"
+           alt="Avatar"
+           style="width:120px;height:120px;border-radius:50%;object-fit:cover;box-shadow:var(--elev-1);">
+    {% else %}
+      <div id="avatarPlaceholder"
+           style="width:120px;height:120px;border-radius:50%;background:#F3F4F6;display:flex;align-items:center;justify-content:center;font-size:32px;color:#9CA3AF;box-shadow:var(--elev-1);">
+        👤
+      </div>
+    {% endif %}
+  </label>
+
+  <input type="file"
+         name="avatar"
+         id="avatar"
+         accept="image/*"
+         style="display:none;"
+         onchange="previewAvatar(event)">
+
+  {% if m and m.avatar_path %}
+    <div style="margin-top:6px;">
+      <label style="font-size:13px;color:#EF4444;cursor:pointer;">
+        <input type="checkbox" name="delete_avatar" value="1"> حذف تصویر
       </label>
-      <div class="muted" style="margin-top:8px;">تصویر پروفایل</div>
     </div>
+  {% endif %}
+</div>
 
-    <!-- Fields -->
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-      <div>
-        <label>نام و نام خانوادگی</label>
-        <input name="full_name" value="{{ m.full_name if m else '' }}" required>
+<script>
+  function previewAvatar(event) {
+    const file = event.target.files[0];
+    const preview = document.getElementById('avatarPreview');
+    const placeholder = document.getElementById('avatarPlaceholder');
+    if (file) {
+      const url = URL.createObjectURL(file);
+      if (preview) {
+        preview.src = url;
+      } else if (placeholder) {
+        const img = document.createElement('img');
+        img.id = 'avatarPreview';
+        img.src = url;
+        img.style.width = '120px';
+        img.style.height = '120px';
+        img.style.borderRadius = '50%';
+        img.style.objectFit = 'cover';
+        img.style.boxShadow = 'var(--elev-1)';
+        placeholder.replaceWith(img);
+      }
+    }
+  }
+</script>
+
+        <label>نام</label>
+        <input type="text" name="first_name" class="input" value="{{ m.first_name or '' }}" required>
       </div>
-      <div>
+      <div class="form-group">
+        <label>نام خانوادگی</label>
+        <input type="text" name="last_name" class="input" value="{{ m.last_name or '' }}" required>
+      </div>
+      <div class="form-group" style="grid-column:1 / span 2;">
         <label>ایمیل</label>
-        <input name="email" value="{{ m.email if m else '' }}">
+        <input type="email" name="email" class="input" value="{{ m.email or '' }}">
       </div>
-      <div>
-        <label>موبایل</label>
-        <input name="phone" value="{{ m.phone if m else '' }}">
+      <div class="form-group" style="grid-column:1 / span 2;">
+        <label>شماره تماس</label>
+        <input type="text" name="phone" class="input" value="{{ m.phone or '' }}">
       </div>
-    </div>
-  </div>
 
-  <div style="display:flex; gap:8px; margin-top:16px;">
-    <button class="btn btn-primary" type="submit">ثبت</button>
-    <a class="btn btn-ghost" href="{{ url_for('mentors.list') }}">بازگشت</a>
-  </div>
+      <div class="form-actions" style="grid-column:1 / span 2; display:flex; gap:12px; justify-content:flex-start;">
+        <button type="submit" class="btn btn-primary">ثبت منتور</button>
+        <a class="btn btn-ghost" href="{{ url_for('mentors.list') }}">بازگشت به لیست</a>
+      </div>
 </form>
 
 <style>

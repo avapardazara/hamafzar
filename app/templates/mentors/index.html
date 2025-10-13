@@ -24,7 +24,7 @@
       </colgroup>
       <thead>
         <tr>
-          <th>#</th>
+          <th>ردیف</th>
           <th>نام</th>
           <th>ایمیل</th>
           <th>موبایل</th>
@@ -51,7 +51,7 @@
           <td class="ellipsis">{{ m.phone or '—' }}</td>
           <td>
             <div class="actions">
-              <a class="btn btn-ghost" href="{{ url_for('mentors.edit_form', mentor_id=m.id) }}">ویرایش</a>
+              <a class="btn btn-ghost" href="{{ url_for('mentors.edit_form_page', mentor_id=m.id) }}">ویرایش</a>
               <form method="post" action="{{ url_for('mentors.delete', mentor_id=m.id) }}" onsubmit="return confirm('حذف شود؟');">
                 <button class="btn btn-ghost" type="submit">حذف</button>
               </form>
@@ -67,6 +67,11 @@
 </div>
 
 <style>
+  .mentors-table  colgroup col:nth-child(1) { width: 5%; }   /* # */
+  .mentors-table  colgroup col:nth-child(2) { width: 25%; }  /* نام */
+  .mentors-table  colgroup col:nth-child(3) { width: 25%; }  /* ایمیل */
+  .mentors-table  colgroup col:nth-child(4) { width: 20%; }  /* موبایل */
+  .mentors-table  colgroup col:nth-child(5) { width: 25%; }  /* اکشن */
   .mentors-table { width:100%; border-collapse:collapse; table-layout:fixed; direction:rtl; background:#fff; border-radius:12px; overflow:hidden; }
   .mentors-table thead th { font-size:13px; font-weight:700; color:#7C8A9A; background:#F8FAFC; text-align:right; padding:12px 14px; border-bottom:1px solid #EEF2F7; }
   .mentors-table td { padding:12px 14px; border-bottom:1px solid #F1F5F9; text-align:right; vertical-align:middle; white-space:nowrap; box-sizing:border-box; }
@@ -74,7 +79,7 @@
   .cell-name { display:inline-flex; align-items:center; gap:8px; text-decoration:none; color:inherit; min-width:0; }
   .avatar-mini { width:36px; height:36px; border-radius:50%; object-fit:cover; box-shadow:0 1px 3px rgba(0,0,0,0.08); flex:0 0 36px; }
   .avatar-fallback { background:#E5E7EB; color:#6B7280; display:inline-flex; align-items:center; justify-content:center; font-weight:700; }
-  .ellipsis { display:inline-block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ellipsis { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .actions { display:inline-flex; gap:6px; align-items:center; }
 </style>
 {% endblock %}
