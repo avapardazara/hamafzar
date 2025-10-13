@@ -268,12 +268,39 @@ def _parse_dt(v):
         return None
 
 @bp.route("/<int:mentor_id>/payments", methods=["GET"])
+@login_required
 def api_list_payments(mentor_id):
     Mentor.query.get_or_404(mentor_id)
 
-    q = Payment.query.filter_by(mentor_id=mentor_id).order_by(
-        Payment.paid_at.desc().nullslast(), Payment.id.desc()
-    )
+    kind = (request.args.get("kind") or "").upper()        # INCOME | EXPENSE | ''
+    status = (request.args.get("status") or "").upper()    # PAID | DUE | ''
+    date_from = request.args.get("from")                   # ISO: YYYY-MM-DD یا هر چیزی که datetime.fromisoformat بفهمه
+    date_to   = request.args.get("to")
+
+    q = Payment.query.filter_by(mentor_id=mentor_id)
+
+    if kind in ("INCOME", "EXPENSE"):
+        q = q.filter(Payment.kind == kind)
+    if status in ("PAID", "DUE"):
+        q = q.filter(Payment.status == status)
+
+    # بازه تاریخ روی paid_at
+    def _parse_date(d):
+        from datetime import datetime
+        try:
+            return datetime.fromisoformat(d)
+        except Exception:
+            return None
+
+    _from = _parse_date(date_from)
+    _to   = _parse_date(date_to)
+    if _from:
+        q = q.filter(Payment.paid_at >= _from)
+    if _to:
+        q = q.filter(Payment.paid_at <= _to)
+
+    q = q.order_by(Payment.paid_at.desc().nullslast(), Payment.id.desc())
+
     items = [{
         "id": p.id,
         "mentor_id": p.mentor_id,
@@ -282,19 +309,29 @@ def api_list_payments(mentor_id):
         "status": p.status,
         "paid_at": p.paid_at.isoformat() if p.paid_at else None,
         "note": p.note,
-        "title": p.title,
-        "type": p.type,
-        "created_at": p.created_at.isoformat() if p.created_at else None,
+        "title": getattr(p, "title", None),
+        "type": getattr(p, "type", None),
+        "created_at": p.created_at.isoformat() if getattr(p, "created_at", None) else None,
     } for p in q.all()]
+
+    # Totals با همان فیلترها
+    base = Payment.query.filter(Payment.mentor_id == mentor_id)
+    if kind in ("INCOME", "EXPENSE"):
+        base = base.filter(Payment.kind == kind)
+    if status in ("PAID", "DUE"):
+        base = base.filter(Payment.status == status)
+    if _from:
+        base = base.filter(Payment.paid_at >= _from)
+    if _to:
+        base = base.filter(Payment.paid_at <= _to)
 
     income = func.coalesce(func.sum(case((Payment.kind == "INCOME", Payment.amount), else_=0)), 0)
     expense = func.coalesce(func.sum(case((Payment.kind == "EXPENSE", Payment.amount), else_=0)), 0)
-    s = db.session.query(income.label("income"), expense.label("expense"))\
-                  .filter(Payment.mentor_id == mentor_id).one()
+    s = db.session.query(income.label("income"), expense.label("expense")).select_from(base.subquery()).one()
     totals = {
         "income": int(s.income or 0),
         "expense": int(s.expense or 0),
-        "balance": int((s.income or 0) - (s.expense or 0))
+        "balance": int((s.income or 0) - (s.expense or 0)),
     }
     return {"ok": True, "items": items, "totals": totals}
 
@@ -406,3 +443,73 @@ def api_delete_skill(mentor_id, ms_id):
     db.session.delete(ms)
     db.session.commit()
     return {"ok": True}
+
+@bp.route("/<int:mentor_id>/payments/<int:pay_id>/mark-paid", methods=["POST"])
+@login_required
+def api_mark_payment_paid(mentor_id, pay_id):
+    from datetime import datetime
+    Mentor.query.get_or_404(mentor_id)
+    p = Payment.query.filter_by(id=pay_id, mentor_id=mentor_id).first_or_404()
+    p.status = "PAID"
+    if not p.paid_at:
+        p.paid_at = datetime.utcnow()
+    db.session.commit()
+    return {"ok": True}
+
+#csc-export
+@bp.route("/<int:mentor_id>/payments/export", methods=["GET"])
+@login_required
+def export_payments_csv(mentor_id):
+    from io import StringIO
+    import csv
+    Mentor.query.get_or_404(mentor_id)
+
+    # همان فیلترهای GET
+    kind = (request.args.get("kind") or "").upper()
+    status = (request.args.get("status") or "").upper()
+    date_from = request.args.get("from")
+    date_to   = request.args.get("to")
+
+    def _parse_date(d):
+        from datetime import datetime
+        try:
+            return datetime.fromisoformat(d)
+        except Exception:
+            return None
+
+    _from = _parse_date(date_from)
+    _to   = _parse_date(date_to)
+
+    q = Payment.query.filter_by(mentor_id=mentor_id)
+    if kind in ("INCOME", "EXPENSE"):
+        q = q.filter(Payment.kind == kind)
+    if status in ("PAID", "DUE"):
+        q = q.filter(Payment.status == status)
+    if _from:
+        q = q.filter(Payment.paid_at >= _from)
+    if _to:
+        q = q.filter(Payment.paid_at <= _to)
+
+    q = q.order_by(Payment.paid_at.desc().nullslast(), Payment.id.desc())
+
+    buf = StringIO()
+    w = csv.writer(buf)
+    w.writerow(["id", "kind", "status", "amount", "paid_at", "title", "note"])
+    for p in q.all():
+        w.writerow([
+            p.id,
+            p.kind,
+            p.status,
+            int(p.amount or 0),
+            (p.paid_at.isoformat() if p.paid_at else ""),
+            getattr(p, "title", "") or "",
+            p.note or "",
+        ])
+
+    from flask import Response
+    fn = f"mentor_{mentor_id}_payments.csv"
+    return Response(
+        buf.getvalue().encode("utf-8-sig"),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={fn}"}
+    )

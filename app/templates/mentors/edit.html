@@ -3,78 +3,91 @@
 {% block page_title %}پروفایل منتور{% endblock %}
 
 {% block content %}
-
 <div id="mentor-profile" data-mentor-id="{{ m.id }}"></div>
 
-<div class="card">
-  <div class="tabs" style="display:flex; gap:8px; border-bottom:1px solid #EEF2F7; padding-bottom:8px;">
+<div class="profile card" style="max-width:1100px; margin:auto;">
+
+  <!-- Header -->
+  <div class="profile-header">
+    <div class="avatar-wrap">
+      {% if m.avatar %}
+        <img src="{{ url_for('files.uploaded_file', filename=m.avatar) }}" alt="{{ m.full_name }}">
+      {% else %}
+        <div class="avatar-fallback">👤</div>
+      {% endif %}
+    </div>
+
+    <div class="id-block">
+      <h2 class="name">{{ m.full_name or (m.first_name ~ ' ' ~ m.last_name) }}</h2>
+      <div class="meta">
+        {% if m.phone %}<span>📱 {{ m.phone }}</span>{% endif %}
+        {% if m.email %}<span>✉️ {{ m.email }}</span>{% endif %}
+      </div>
+      <div class="actions">
+        <form method="post" action="{{ url_for('mentors.upload_avatar', mentor_id=m.id) }}" enctype="multipart/form-data">
+          <input type="file" name="avatar" id="avatarInput" accept="image/*" style="display:none;" onchange="this.form.submit()">
+          <label for="avatarInput" class="btn btn-primary">تغییر تصویر</label>
+        </form>
+        <a class="btn btn-ghost" href="{{ url_for('mentors.list') }}">بازگشت</a>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-val">{{ taught|length }}</div>
+        <div class="stat-label">دوره‌ها</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val">{{ (skills_count or 0) }}</div>
+        <div class="stat-label">مهارت‌ها</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val">{{ "{:,.0f}".format(totals.balance) if totals else '۰' }}</div>
+        <div class="stat-label">تراز مالی</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
     <button class="tab active" data-tab="basic">مشخصات</button>
     <button class="tab" data-tab="courses">دوره‌ها</button>
     <button class="tab" data-tab="skills">مهارت‌ها</button>
     <button class="tab" data-tab="finance">مالی</button>
   </div>
-{% set _parts = (m.full_name.split(' ') if (m.full_name) else []) %}
-{% set _fn = m.first_name or (_parts[0] if _parts|length > 0 else '') %}
-{% set _ln = m.last_name  or (_parts[1:]|join(' ') if _parts|length > 1 else '') %}
-  <!-- تب: مشخصات -->
-  <div id="tab-basic" class="tab-panel" style="display:block;">
-    <div style="display:grid; grid-template-columns: 240px 1fr; gap:16px; align-items:start;">
-      <!-- آواتار -->
+
+  <!-- تب مشخصات -->
+  <section id="tab-basic" class="tab-panel" style="display:block;">
+    <form method="post" action="{{ url_for('mentors.update_basic', mentor_id=m.id) }}" class="grid two">
       <div>
-        <div style="display:flex; flex-direction:column; gap:10px; align-items:flex-start;">
-          <div style="width:140px; height:140px; border-radius:14px; overflow:hidden; border:1px solid #E5E7EB;">
-            {% if m.avatar %}
-              <img id="avatarPreview" src="{{ url_for('files.uploaded_file', filename=m.avatar) }}" style="width:100%;height:100%;object-fit:cover;">
-            {% else %}
-              <img id="avatarPreview" src="{{ url_for('static', filename='images/avatar-default.png') }}" style="width:100%;height:100%;object-fit:cover;">
-            {% endif %}
-          </div>
-
-          <form method="post" action="{{ url_for('mentors.upload_avatar', mentor_id=m.id) }}" enctype="multipart/form-data">
-            <input type="file" name="avatar" id="avatarInput" accept="image/*">
-            <button class="btn btn-primary" type="submit" style="margin-top:6px;">بارگذاری عکس</button>
-          </form>
-
-          {% if m.avatar %}
-          <form method="post" action="{{ url_for('mentors.delete_avatar', mentor_id=m.id) }}">
-            <button class="btn btn-ghost" type="submit">حذف عکس</button>
-          </form>
-          {% endif %}
-        </div>
+        <div class="label">نام</div>
+        <input class="input" name="first_name" value="{{ m.first_name or '' }}">
       </div>
+      <div>
+        <div class="label">نام خانوادگی</div>
+        <input class="input" name="last_name" value="{{ m.last_name or '' }}">
+      </div>
+      <div>
+        <div class="label">شماره موبایل</div>
+        <input class="input" name="phone" value="{{ m.phone or '' }}">
+      </div>
+      <div>
+        <div class="label">ایمیل</div>
+        <input class="input" type="email" name="email" value="{{ m.email or '' }}">
+      </div>
+      <div class="full" style="margin-top:10px;">
+        <button class="btn btn-primary" type="submit">ذخیره مشخصات</button>
+      </div>
+    </form>
+  </section>
 
-      <!-- فرم مشخصات -->
-      <form method="post" action="{{ url_for('mentors.update_basic', mentor_id=m.id) }}" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-        <div>
-          <label class="label">نام</label>
-          <input class="input" name="first_name" value="{{_fn}}">
-        </div>
-        <div>
-          <label class="label">نام خانوادگی</label>
-          <input class="input" name="last_name" value="{{_ln}}">
-        </div>
-        <div>
-          <label class="label">موبایل</label>
-          <input class="input" name="phone" value="{{ m.phone or '' }}">
-        </div>
-        <div>
-          <label class="label">ایمیل</label>
-          <input class="input" type="email" name="email" value="{{ m.email or '' }}">
-        </div>
-        <div style="grid-column:1 / -1; display:flex; gap:8px; justify-content:flex-start; margin-top:4px;">
-          <button class="btn btn-primary" type="submit">ذخیره مشخصات</button>
-        </div>
-      </form>
-    </div>
-  </div>
+  <!-- تب دوره‌ها -->
+  <section id="tab-courses" class="tab-panel">
+    <div class="grid two" style="gap:20px; align-items:start;">
 
-  <!-- تب: دوره‌ها -->
-  <div id="tab-courses" class="tab-panel" style="display:none;">
-    <div style="display:grid; grid-template-columns: 1fr 280px; gap:16px;">
-
-      <!-- جدول دوره‌های منتور -->
-      <div class="table-responsive">
-        <table class="table-rtl">
+      <!-- لیست دوره‌ها -->
+      <div class="card">
+        <table class="data-table">
           <thead>
             <tr>
               <th>#</th>
@@ -87,12 +100,11 @@
             {% for c in taught %}
               <tr>
                 <td>{{ loop.index }}</td>
-                <td class="ellipsis">{{ c.title }}</td>
-                <td class="ellipsis">{{ c.status or '—' }}</td>
+                <td>{{ c.title }}</td>
+                <td>{{ c.status or '—' }}</td>
                 <td>
-                  <form method="post" action="{{ url_for('mentors.remove_course', mentor_id=m.id, course_id=c.id) }}"
-                        onsubmit="return confirm('حذف ارتباط با دوره؟');">
-                    <button class="btn btn-ghost" type="submit">حذف</button>
+                  <form method="post" action="{{ url_for('mentors.remove_course', mentor_id=m.id, course_id=c.id) }}" onsubmit="return confirm('حذف ارتباط با دوره؟');">
+                    <button class="btn btn-ghost">حذف</button>
                   </form>
                 </td>
               </tr>
@@ -103,10 +115,10 @@
         </table>
       </div>
 
-      <!-- افزودن دوره به منتور -->
+      <!-- افزودن دوره -->
       <div class="card">
         <form method="post" action="{{ url_for('mentors.add_course', mentor_id=m.id) }}" style="display:grid; gap:10px;">
-          <label class="label">انتخاب دوره</label>
+          <label class="label">افزودن دوره به منتور</label>
           <select class="input" name="course_id">
             {% for c in all_courses %}
               <option value="{{ c.id }}">{{ c.title }}</option>
@@ -115,44 +127,46 @@
           <button class="btn btn-primary" type="submit">افزودن</button>
         </form>
       </div>
-
     </div>
-  </div>
+  </section>
 
-  <!-- تب‌های بعدی را بعداً فعال می‌کنیم -->
-<div id="tab-skills" class="tab-panel" style="display:none;">
-  <div class="skills" style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
-    <!-- مهارت‌های فنی -->
-    <div class="skill-card-section card" style="padding:12px;">
-      <h3 style="margin-bottom:10px;">💻 مهارت‌های فنی</h3>
-      <div class="skill-input" style="display:flex; gap:8px; margin-bottom:10px;">
-        <input class="input" type="text" id="techInput" placeholder="افزودن مهارت فنی">
-        <button type="button" class="btn btn-primary" id="btnAddTech">➕</button>
+  <!-- تب مهارت‌ها -->
+  <section id="tab-skills" class="tab-panel">
+    <div class="skills">
+      <div class="skill-card-section">
+        <h3>💻 مهارت‌های فنی</h3>
+        <div class="skill-input">
+          <input type="text" id="techInput" placeholder="افزودن مهارت فنی">
+          <button type="button" id="btnAddTech">➕</button>
+        </div>
+        <ul id="techList"></ul>
       </div>
-      <ul id="techList"></ul>
-    </div>
 
-    <!-- مهارت‌های نرم -->
-    <div class="skill-card-section card" style="padding:12px;">
-      <h3 style="margin-bottom:10px;">🤝 مهارت‌های نرم</h3>
-      <div class="skill-input" style="display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:8px; margin-bottom:10px;">
-        <input class="input" type="text" id="softInput" placeholder="افزودن مهارت نرم">
-        <input class="input" type="text" id="softDate" placeholder="تاریخ برگزاری (مثلاً 1403/07/18)">
-        <input class="input" type="number" id="softHours" placeholder="ساعت" min="1">
-        <button type="button" class="btn btn-primary" id="btnAddSoft">➕</button>
+      <div class="skill-card-section">
+        <h3>🤝 مهارت‌های نرم</h3>
+        <div class="skill-input">
+          <input type="text" id="softInput" placeholder="افزودن مهارت نرم">
+          <input type="text" id="softDate" placeholder="تاریخ (مثلاً 1403/07/18)">
+          <input type="number" id="softHours" placeholder="ساعت" min="1">
+          <button type="button" id="btnAddSoft">➕</button>
+        </div>
+        <ul id="softList"></ul>
       </div>
-      <ul id="softList"></ul>
     </div>
-  </div>
-</div>
+  </section>
 
-<div id="tab-finance" class="tab-panel" style="display:none;">
-  <div style="display:grid; grid-template-columns:1fr 320px; gap:20px; align-items:start;">
+  <!-- تب مالی -->
+  <section id="tab-finance" class="tab-panel">
+    <!-- کارت خلاصه -->
+    <div class="card" style="margin-bottom:16px; display:flex; gap:24px; flex-wrap:wrap;">
+      <div>💵 درآمد: <b id="tIncomeTop">۰</b></div>
+      <div>💸 هزینه: <b id="tExpenseTop">۰</b></div>
+      <div>⚖️ تراز: <b id="tBalanceTop">۰</b></div>
+    </div>
 
-    <!-- لیست تراکنش‌ها -->
-    <div class="card">
-      <h3 style="margin-top:0; color:#0f766e;">💰 تراکنش‌های مالی</h3>
-      <table class="table-rtl" id="finance-table">
+    <!-- جدول تراکنش‌ها -->
+    <div class="table-responsive">
+      <table class="data-table" id="finance-table">
         <thead>
           <tr>
             <th>#</th>
@@ -160,7 +174,7 @@
             <th>مبلغ</th>
             <th>تاریخ</th>
             <th>یادداشت</th>
-            <th></th>
+            <th>اکشن</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -168,240 +182,160 @@
     </div>
 
     <!-- افزودن تراکنش -->
-    <div class="card" id="add-payment-card">
-      <h3 style="margin-top:0;">➕ افزودن تراکنش</h3>
+    <div class="card" style="margin-top:20px;">
       <form id="paymentForm" style="display:grid; gap:10px;">
         <select name="kind" class="input">
           <option value="INCOME">درآمد</option>
           <option value="EXPENSE">هزینه</option>
         </select>
         <input type="number" name="amount" class="input" placeholder="مبلغ (تومان)" required>
-        <input type="text" name="title" class="input" placeholder="عنوان (مثلاً پرداخت منتور)">
+        <input type="text" name="title" class="input" placeholder="عنوان تراکنش">
         <textarea name="note" class="input" rows="2" placeholder="یادداشت..."></textarea>
         <button class="btn btn-primary" type="submit">ثبت تراکنش</button>
       </form>
-
-      <div id="totals" style="margin-top:12px; font-size:14px; color:#334155;">
-        <p>💵 کل درآمد: <b id="tIncome">۰</b></p>
-        <p>💸 کل هزینه: <b id="tExpense">۰</b></p>
-        <p>⚖️ تراز: <b id="tBalance">۰</b></p>
-      </div>
     </div>
+  </section>
 
-  </div>
 </div>
-
-  </div>
-</div>
-
 {% endblock %}
 
 {% block scripts %}
+<style>
+/* هماهنگ با پروفایل دانشجو */
+.profile { padding:20px; }
+.profile-header {
+  display:grid; grid-template-columns:120px 1fr auto;
+  gap:20px; align-items:center;
+}
+.avatar-wrap img, .avatar-fallback {
+  width:120px; height:120px; border-radius:50%;
+  object-fit:cover; box-shadow:0 2px 10px rgba(0,0,0,0.08);
+}
+.avatar-fallback {
+  display:flex; align-items:center; justify-content:center;
+  background:#E5E7EB; font-size:42px; color:#6B7280;
+}
+.name { margin:0; }
+.meta { display:flex; gap:10px; flex-wrap:wrap; margin:6px 0 10px; color:#6B7280; }
+.actions { display:flex; gap:10px; }
+.stats { display:flex; gap:14px; }
+.stat { background:#F8FAFC; border:1px solid #EEF2F7; border-radius:12px; padding:10px 14px; min-width:110px; text-align:center; }
+.stat-val { font-size:20px; font-weight:800; color:#111827; }
+.stat-label { font-size:12px; color:#6B7280; }
+
+.tabs { display:flex; gap:6px; margin:18px 0 10px; flex-wrap:wrap; }
+.tab { background:#F3F4F6; border:none; border-radius:8px; padding:8px 14px; cursor:pointer; }
+.tab.active { background:#02AD82; color:#fff; }
+.tab-panel { display:none; }
+
+.grid.two { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.label { font-size:12px; color:#7C8A9A; margin-bottom:4px; }
+.input { width:100%; padding:8px 10px; border:1px solid #D3D5DF; border-radius:8px; }
+
+.skills { display:grid; grid-template-columns:1fr 1fr; gap:20px; width:100%; }
+.skill-card-section {
+  background:#fff; border:1px solid #D3D5DF; border-radius:16px;
+  padding:16px; box-shadow:0 4px 10px rgba(0,0,0,0.05);
+}
+.skills h3 { margin:0 0 12px; color:#02AD82; font-size:18px; border-bottom:2px solid #D3D5DF; padding-bottom:6px; }
+.skill-input { display:grid; grid-template-columns:1fr 0.8fr 0.6fr 45px; gap:8px; margin-bottom:10px; }
+.skill-input input { padding:6px 8px; border:1px solid #D3D5DF; border-radius:6px; font-size:13px; }
+.skill-input button { width:45px; height:34px; border:none; border-radius:6px; background:#02AD82; color:#fff; cursor:pointer; }
+
+.data-table { width:100%; border-collapse:collapse; direction:rtl; }
+.data-table th, .data-table td { padding:12px 14px; border-bottom:1px solid #F1F5F9; text-align:right; }
+.data-table th { background:#F8FAFC; color:#7C8A9A; font-size:13px; font-weight:700; }
+.muted { color:#94A3B8; }
+@media (max-width:900px){ .skills{grid-template-columns:1fr;} }
+</style>
+
 <script>
-(function(){
-  // Tabs (مشابه دانشجو)
-  function initTabs(){
-    const tabs = document.querySelectorAll('.tabs .tab');
-    const panels = document.querySelectorAll('.tab-panel');
-    function show(key){
-      panels.forEach(p => p.style.display = 'none');
-      tabs.forEach(b => b.classList.remove('active'));
-      const btn = Array.from(tabs).find(b => b.dataset.tab === key);
-      if(btn) btn.classList.add('active');
-      const panel = document.getElementById('tab-' + key);
-      if(panel) panel.style.display = 'block';
-    }
-    tabs.forEach(btn => btn.addEventListener('click', () => show(btn.dataset.tab)));
-    const first = Array.from(tabs).find(b => b.classList.contains('active')) || tabs[0];
-    if(first) show(first.dataset.tab);
-  }
-
-  // Live preview for avatar
-  const input = document.getElementById('avatarInput');
-  const preview = document.getElementById('avatarPreview');
-  if(input && preview){
-    input.addEventListener('change', () => {
-      const f = input.files && input.files[0];
-      if(!f) return;
-      const url = URL.createObjectURL(f);
-      preview.src = url;
-    });
-  }
-
-  document.addEventListener('DOMContentLoaded', initTabs);
-})();
-(function(){
-  const mentorId = document.querySelector('#mentor-profile').dataset.mentorId;
-
-  const techList = document.getElementById('techList');
-  const softList = document.getElementById('softList');
-  const techInput = document.getElementById('techInput');
-  const softInput = document.getElementById('softInput');
-  const softDate  = document.getElementById('softDate');
-  const softHours = document.getElementById('softHours');
-  const btnAddTech = document.getElementById('btnAddTech');
-  const btnAddSoft = document.getElementById('btnAddSoft');
-
-  async function loadSkills(){
-    const res = await fetch(`/mentors/${mentorId}/skills`);
-    const data = await res.json();
-    if(!data.ok) return;
-
-    // TECH
-    if(data.tech.length === 0){
-      techList.innerHTML = `<li class="muted">هنوز مهارت فنی ثبت نشده.</li>`;
-    } else {
-      techList.innerHTML = data.tech.map((s, i) => `
-        <li style="display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px solid #F1F5F9;">
-          <div>${i+1}. ${s.title}</div>
-          <button class="btn btn-ghost" onclick="deleteMentorSkill(${s.id})">حذف</button>
-        </li>
-      `).join('');
-    }
-
-    // SOFT
-    if(data.soft.length === 0){
-      softList.innerHTML = `<li class="muted">هنوز مهارت نرم ثبت نشده.</li>`;
-    } else {
-      softList.innerHTML = data.soft.map((s, i) => `
-        <li style="display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px solid #F1F5F9;">
-          <div>${i+1}. ${s.title} ${s.hours ? `- ${s.hours} ساعت` : ''} ${s.date_label ? `- ${s.date_label}` : ''}</div>
-          <button class="btn btn-ghost" onclick="deleteMentorSkill(${s.id})">حذف</button>
-        </li>
-      `).join('');
-    }
-  }
-
-  window.deleteMentorSkill = async (id) => {
-    if(!confirm('حذف شود؟')) return;
-    await fetch(`/mentors/${mentorId}/skills/${id}`, { method:"DELETE" });
-    loadSkills();
-  };
-
-  btnAddTech?.addEventListener('click', async () => {
-    const name = (techInput.value || '').trim();
-    if(!name) return;
-    const fd = new FormData();
-    fd.append('name', name);
-    fd.append('type', 'TECH');
-    await fetch(`/mentors/${mentorId}/skills`, { method:"POST", body: fd });
-    techInput.value = '';
-    loadSkills();
-  });
-
-  btnAddSoft?.addEventListener('click', async () => {
-    const name = (softInput.value || '').trim();
-    if(!name) return;
-    const fd = new FormData();
-    fd.append('name', name);
-    fd.append('type', 'SOFT');
-    if(softDate.value)  fd.append('date_label', softDate.value);
-    if(softHours.value) fd.append('hours', softHours.value);
-    await fetch(`/mentors/${mentorId}/skills`, { method:"POST", body: fd });
-    softInput.value = ''; softDate.value = ''; softHours.value = '';
-    loadSkills();
-  });
-  
-  // بارگذاری اولیه
-  loadSkills();
-})();
-
-
 (function(){
   const mentorId = document.querySelector('#mentor-profile').dataset.mentorId;
   const tableBody = document.querySelector("#finance-table tbody");
   const form = document.getElementById("paymentForm");
-  const tIncome = document.getElementById("tIncome");
-  const tExpense = document.getElementById("tExpense");
-  const tBalance = document.getElementById("tBalance");
 
-  async function loadPayments() {
-    const res = await fetch(`/mentors/${mentorId}/payments`);
-    const data = await res.json();
-    tableBody.innerHTML = "";
-    if (data.ok && data.items.length > 0) {
-      data.items.forEach((p, i) => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${i+1}</td>
-          <td>${p.kind === 'INCOME' ? 'درآمد' : 'هزینه'}</td>
-          <td>${p.amount.toLocaleString('fa-IR')}</td>
-          <td>${p.paid_at ? p.paid_at.split('T')[0] : '-'}</td>
-          <td>${p.note || ''}</td>
-          <td>
-            <button class="btn btn-ghost btn-sm" data-id="${p.id}">🗑️ حذف</button>
-          </td>
-        `;
-        // اتصال رویداد حذف
-        tr.querySelector("button").addEventListener("click", async () => {
-          if (!confirm("آیا از حذف این تراکنش مطمئنی؟")) return;
-          const res = await fetch(`/mentors/${mentorId}/payments/${p.id}`, { method: "DELETE" });
-          const result = await res.json();
-          if (result.ok) {
-            loadPayments();
-          } else {
-            alert(result.error || "خطا در حذف تراکنش.");
-          }
-        });
-        tableBody.appendChild(tr);
-      });
-    } else {
-      tableBody.innerHTML = `<tr><td colspan="6" class="muted">تراکنشی ثبت نشده.</td></tr>`;
-    }
+ async function loadPayments(){
+  const res = await fetch(`/mentors/${mentorId}/payments`);
+  const data = await res.json();
 
-    if (data.totals) {
-      tIncome.textContent = data.totals.income.toLocaleString('fa-IR');
-      tExpense.textContent = data.totals.expense.toLocaleString('fa-IR');
-      tBalance.textContent = data.totals.balance.toLocaleString('fa-IR');
-    }
+  // پاک‌سازی جدول
+  tableBody.innerHTML = "";
+
+  // پر کردن ردیف‌ها
+  if (data.ok && data.items.length) {
+    data.items.forEach((p, i) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${i + 1}</td>
+        <td>${p.kind === 'INCOME' ? 'درآمد' : 'هزینه'}</td>
+        <td>${(p.amount || 0).toLocaleString('fa-IR')}</td>
+        <td>${p.paid_at ? p.paid_at.split('T')[0] : '-'}</td>
+        <td>${p.note || ''}</td>
+        <td style="display:flex;gap:6px;">
+          <button class="btn btn-ghost btn-sm" data-id="${p.id}" data-action="del">🗑️</button>
+        </td>`;
+      tableBody.appendChild(tr);
+    });
+  } else {
+    tableBody.innerHTML = `<tr><td colspan="6" class="muted">تراکنشی ثبت نشده.</td></tr>`;
   }
 
-  form.addEventListener("submit", async e => {
-    e.preventDefault();
-    const fd = new FormData(form);
-    const res = await fetch(`/mentors/${mentorId}/payments`, { method: "POST", body: fd });
-    const data = await res.json();
-    if (data.ok) {
-      form.reset();
-      loadPayments();
-    } else {
-      alert("خطا در ثبت تراکنش.");
-    }
+  // ✅ نمایش جمع درآمد / هزینه / تراز در بالا
+  if (data.totals) {
+    const income = data.totals.income || 0;
+    const expense = data.totals.expense || 0;
+    const balance = data.totals.balance || 0;
+
+    document.getElementById("tIncomeTop").textContent = income.toLocaleString('fa-IR');
+    document.getElementById("tExpenseTop").textContent = expense.toLocaleString('fa-IR');
+    document.getElementById("tBalanceTop").textContent = balance.toLocaleString('fa-IR');
+  }
+}
+
+  tableBody.addEventListener('click', async e=>{
+    const btn=e.target.closest('button');
+    if(!btn)return;
+    const id=btn.dataset.id;
+    if(!confirm('تراکنش حذف شود؟'))return;
+    await fetch(`/mentors/${mentorId}/payments/${id}`,{method:'DELETE'});
+    loadPayments();
   });
 
-  // فقط وقتی تب مالی باز شد، لیست رو لود کن
-  document.querySelector('[data-tab="finance"]').addEventListener("click", loadPayments);
-})();
-</script>
+  form.addEventListener('submit',async e=>{
+    e.preventDefault();
+    const fd=new FormData(form);
+    const res=await fetch(`/mentors/${mentorId}/payments`,{method:'POST',body:fd});
+    const data=await res.json();
+    if(data.ok){ form.reset(); loadPayments(); }
+  });
 
-<style>
-  /* هم‌خوان با استایل‌های دانشجو */
-  .table-rtl {
-    width:100%; border-collapse:collapse; table-layout:fixed; direction:rtl; background:#fff;
+  document.querySelector('[data-tab="finance"]').addEventListener('click',loadPayments);
+})();
+document.addEventListener("DOMContentLoaded", function() {
+  // تب‌ها: فعال‌سازی با کلیک
+  const tabs = document.querySelectorAll(".tabs .tab");
+  const panels = document.querySelectorAll(".tab-panel");
+
+  if (!tabs.length || !panels.length) return;
+
+  function showTab(key) {
+    panels.forEach(p => p.style.display = "none");
+    tabs.forEach(t => t.classList.remove("active"));
+    const btn = Array.from(tabs).find(t => t.dataset.tab === key);
+    const panel = document.getElementById("tab-" + key);
+    if (btn) btn.classList.add("active");
+    if (panel) panel.style.display = "block";
   }
-  .table-rtl thead th {
-    background:#F8FAFC; border-bottom:1px solid #EEF2F7; padding:12px 14px; text-align:right; font-weight:700; color:#7C8A9A;
-  }
-  .table-rtl td {
-    border-bottom:1px solid #F1F5F9; padding:12px 14px; white-space:nowrap; text-align:right; vertical-align:middle;
-  }
-  .ellipsis { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .muted { color:#6B7280; }
-  .label { display:block; margin-bottom:6px; color:#6B7280; font-size:13px; }
-  .input { width:100%; padding:10px 12px; border:1px solid #D3D5DF; border-radius:8px; }
-  .tabs .tab.active { font-weight:700; color:#0f766e; }
-  #finance-table { width:100%; border-collapse:collapse; direction:rtl; }
-#finance-table th, #finance-table td {
-  border-bottom:1px solid #E5E7EB;
-  padding:8px 10px;
-  text-align:right;
-}
-#finance-table th {
-  background:#F8FAFC;
-  font-size:13px;
-  color:#6B7280;
-}
-#finance-table tr:hover td { background:#F9FAFB; }
-#add-payment-card { background:#fff; border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,0.04); padding:20px; }
-</style>
+
+  // وصل کردن کلیک
+  tabs.forEach(btn => {
+    btn.addEventListener("click", () => showTab(btn.dataset.tab));
+  });
+
+  // فعال‌سازی تب اول در شروع
+  const active = Array.from(tabs).find(t => t.classList.contains("active")) || tabs[0];
+  if (active) showTab(active.dataset.tab);
+});
+</script>
 {% endblock %}

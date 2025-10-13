@@ -1,47 +1,378 @@
 {% extends "base.html" %}
-{% block title %}{{ 'ویرایش دوره' if course else 'ایجاد دوره' }} | هم‌افزار{% endblock %}
-{% block page_title %}{{ 'ویرایش دوره' if course else 'ایجاد دوره' }}{% endblock %}
+{% set is_edit = (mode == 'edit') %}
+{% block title %}{{ 'ویرایش دوره' if is_edit else 'دوره جدید' }} | هم‌افزار{% endblock %}
+{% block page_title %}{{ 'ویرایش دوره' if is_edit else 'دوره جدید' }}{% endblock %}
 
 {% block content %}
-<div class="card" style="max-width:700px; margin:auto;">
-  <form method="post" action="{{ url_for('courses.update', course_id=course.id) if course else url_for('courses.create') }}" class="form-rtl">
-    <div class="grid two" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-      <div class="full" style="grid-column:1/-1;">
-        <label class="label">عنوان دوره *</label>
-        <input type="text" name="title" required
-               value="{{ (form.title if form else None) or (course.title if course else '') }}"
-               class="input">
+<form method="post" enctype="multipart/form-data" class="card" style="direction:rtl; max-width:1100px; margin:auto;">
+
+  <!-- Tabs -->
+  <div class="tabs" style="display:flex; gap:8px; margin-bottom:12px;">
+    <button type="button" class="tab active" data-tab="main">اطلاعات اصلی</button>
+    <button type="button" class="tab" data-tab="schedule">زمان‌بندی جلسات</button>
+    <button type="button" class="tab" data-tab="finance">مالی</button>
+  </div>
+
+  <!-- Tab: Main -->
+  <section id="tab-main" class="tab-panel" style="display:block;">
+    <div style="display:grid; grid-template-columns: 220px 1fr; gap:16px; align-items:start;">
+      <!-- Cover -->
+      <div>
+        <div style="width:220px; height:140px; border-radius:16px; overflow:hidden; border:1px solid #E5E7EB; background:#F8FAFC; display:flex; align-items:center; justify-content:center;">
+          {% if c and c.cover_image %}
+            <img id="coverPreview" src="{{ url_for('uploaded_file', filename=c.cover_image) }}" style="width:100%; height:100%; object-fit:cover;">
+          {% else %}
+            <img id="coverPreview" src="{{ url_for('static', filename='images/cover-default.png') }}" style="width:100%; height:100%; object-fit:cover;">
+          {% endif %}
+        </div>
+        <div style="margin-top:10px;">
+          <input type="file" class="input" name="cover_image" id="coverInput" accept="image/*">
+        </div>
       </div>
 
+      <!-- Fields -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div style="grid-column:1 / -1;">
+          <label class="label">نام دوره<span style="color:#ef4444;"> *</span></label>
+          <input class="input" name="title" value="{{ c.title if c else '' }}" required>
+        </div>
+
+        <div>
+          <label class="label">منتور</label>
+          <select class="input" name="mentor_id">
+            <option value="">— انتخاب منتور —</option>
+            {% for m in mentors %}
+            <option value="{{ m.id }}" {% if c and c.mentor_id==m.id %}selected{% endif %}>
+              {{ m.full_name or (m.first_name ~ ' ' ~ (m.last_name or '')) }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="label">وضعیت</label>
+          <select class="input" name="status">
+            <option value="ACTIVE"  {% if not c or (c and c.status=='ACTIVE') %}selected{% endif %}>فعال</option>
+            <option value="ARCHIVED" {% if c and c.status=='ARCHIVED' %}selected{% endif %}>آرشیو</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="label">تاریخ شروع</label>
+          <input class="input" type="date" name="start_date" value="{{ c.start_date if c and c.start_date else '' }}">
+        </div>
+
+        <div>
+          <label class="label">تاریخ پایان</label>
+          <input class="input" type="date" name="end_date" value="{{ c.end_date if c and c.end_date else '' }}">
+        </div>
+
+        <div style="grid-column:1 / -1;">
+          <label class="label">توضیحات دوره</label>
+          <textarea class="input" name="description" rows="4">{{ c.description if c else '' }}</textarea>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tab: Schedule -->
+  <section id="tab-schedule" class="tab-panel" style="display:none;">
+    <div class="card" style="border:none; box-shadow:none; padding:0; display:grid; gap:12px;">
       <div>
-        <label class="label">نام منتور</label>
-        <input type="text" name="mentor_name"
-               value="{{ (form.mentor_name if form else None) or (course.mentor_name if course else '') }}"
-               class="input">
+        <label class="label">نوع زمان‌بندی</label>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <label><input type="radio" name="schedule_type" value="CUSTOM" {% if not c or (c and c.schedule_type!='WEEKLY') %}checked{% endif %}> سفارشی (تاریخ جلسات را دستی وارد می‌کنم)</label>
+          <label><input type="radio" name="schedule_type" value="WEEKLY" {% if c and c.schedule_type=='WEEKLY' %}checked{% endif %}> هفتگی/الگویی (مثلاً شنبه‌ها، زوج/فرد)</label>
+        </div>
       </div>
 
+      <!-- CUSTOM -->
+      <div id="customBox" style="display: {% if not c or (c and c.schedule_type!='WEEKLY') %}block{% else %}none{% endif %};">
+        <div class="label">لیست تاریخ‌های جلسات</div>
+        <div style="display:grid; grid-template-columns: 1fr 120px; gap:8px; margin-bottom:8px;">
+          <input id="customDateInput" type="date" class="input">
+          <button type="button" class="btn btn-primary" id="btnAddDate">➕ افزودن</button>
+        </div>
+        <ul id="customDates" style="list-style:none; padding:0; margin:0; display:flex; flex-wrap:wrap; gap:6px;"></ul>
+      </div>
+
+      <!-- WEEKLY -->
+      <div id="weeklyBox" style="display: {% if c and c.schedule_type=='WEEKLY' %}block{% else %}none{% endif %};">
+        <div class="label">روزهای هفته (مولتی انتخاب)</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          {% set _wd_init = (c.weekly_days_json if c and c.weekly_days_json else []) %}
+          {% set _wdays = [('SAT','شنبه'),('SUN','یکشنبه'),('MON','دوشنبه'),('TUE','سه‌شنبه'),('WED','چهارشنبه'),('THU','پنجشنبه'),('FRI','جمعه')] %}
+          {% for code, label in _wdays %}
+          <label style="display:inline-flex; gap:6px; align-items:center; background:#F8FAFC; border:1px solid #E5E7EB; padding:6px 10px; border-radius:10px;">
+            <input type="checkbox" class="weekly-day" value="{{ code }}" {% if code in _wd_init %}checked{% endif %}> {{ label }}
+          </label>
+          {% endfor %}
+        </div>
+
+        <div class="label" style="margin-top:10px;">الگوی زوج/فرد</div>
+        {% set _pair = c.pair_odd if c else None %}
+        <div style="display:flex; gap:10px; align-items:center;">
+          <label><input type="radio" name="pair_odd" value="" {% if not _pair %}checked{% endif %}> بدون الگو</label>
+          <label><input type="radio" name="pair_odd" value="PAIR" {% if _pair=='PAIR' %}checked{% endif %}> تاریخ‌های زوج</label>
+          <label><input type="radio" name="pair_odd" value="ODD" {% if _pair=='ODD' %}checked{% endif %}> تاریخ‌های فرد</label>
+        </div>
+        <div class="muted" style="margin-top:6px;">(الگو بر اساس تاریخ شروع دوره محاسبه خواهد شد — منطق محاسبه را در مرحله بعد اضافه می‌کنیم.)</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tab: Finance -->
+  <section id="tab-finance" class="tab-panel" style="display:none;">
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
       <div>
-        <label class="label">وضعیت</label>
-        <select name="status" class="input">
-          {% set st = (form.status if form else None) or (course.status if course else 'ACTIVE') %}
-          <option value="ACTIVE" {{ 'selected' if st=='ACTIVE' else '' }}>فعال</option>
-          <option value="ARCHIVED" {{ 'selected' if st=='ARCHIVED' else '' }}>آرشیو</option>
-        </select>
+        <label class="label">شهریه هر دانشجو (تومان)</label>
+        <input class="input" name="fee_per_student" type="number" min="0" value="{{ c.fee_per_student if c and c.fee_per_student else '' }}">
+      </div>
+      <div>
+        <label class="label">سهم منتور از درآمد (%)</label>
+        <input class="input" name="mentor_share_percent" type="number" step="0.1" min="0" max="100" value="{{ c.mentor_share_percent if c and c.mentor_share_percent is not none else '' }}">
       </div>
     </div>
 
-    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:14px;">
-      <a class="btn btn-ghost" href="{{ url_for('courses.list_') }}">انصراف</a>
-      <button class="btn btn-primary" type="submit">{{ 'ثبت تغییرات' if course else 'ایجاد دوره' }}</button>
+    <div class="card" style="margin-top:12px;">
+      <label style="display:flex; gap:8px; align-items:center;">
+        <input type="checkbox" id="chkInstallment" {% if c and c.installment_enabled %}checked{% endif %}>
+        فعال‌سازی پرداخت اقساطی
+      </label>
+
+      <div id="instRow" style="display: {% if c and c.installment_enabled %}block{% else %}none{% endif %}; margin-top:10px;">
+        <button type="button" class="btn" id="btnEditInstallments">مدیریت اقساط</button>
+        <ul id="instList" style="list-style:none; padding:0; margin:8px 0 0 0; display:flex; flex-wrap:wrap; gap:8px;"></ul>
+      </div>
+
+      <!-- هیدن‌ها برای ارسال JSON -->
+      <input type="hidden" name="installment_enabled" id="installment_enabled" value="{{ 1 if c and c.installment_enabled else 0 }}">
+      <input type="hidden" name="installments_json" id="installments_json" value='{{ c.installments_json|tojson if c and c.installments_json else "[]" }}'>
     </div>
-  </form>
+  </section>
+
+  <!-- هیدن‌های زمان‌بندی برای ارسال به بک‌اند -->
+  <input type="hidden" name="sessions_json" id="sessions_json" value='{{ c.sessions_json|tojson if c and c.sessions_json else "[]" }}'>
+  <input type="hidden" name="weekly_days_json" id="weekly_days_json" value='{{ c.weekly_days_json|tojson if c and c.weekly_days_json else "[]" }}'>
+
+  <div style="margin-top:14px; display:flex; gap:12px;">
+    <button class="btn btn-primary" type="submit">{{ 'ذخیره تغییرات' if is_edit else 'ثبت دوره' }}</button>
+    <a class="btn btn-ghost" href="{{ url_for('courses.list') }}">بازگشت</a>
+  </div>
+</form>
+
+<!-- Modal اقساط -->
+<div id="instModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.25); align-items:center; justify-content:center; padding:20px;">
+  <div style="background:#fff; border-radius:16px; padding:16px; width:560px; max-width:100%; box-shadow:0 10px 30px rgba(0,0,0,0.1);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h3 style="margin:0;">مدیریت اقساط</h3>
+      <button type="button" class="btn btn-ghost" id="btnCloseInst">✖</button>
+    </div>
+
+    <div style="display:grid; grid-template-columns: 1fr 140px 100px 80px; gap:8px; margin-bottom:10px;">
+      <input id="instTitle" class="input" placeholder="شرح (اختیاری)">
+      <input id="instDate" class="input" type="date">
+      <input id="instAmount" class="input" type="number" min="0" placeholder="مبلغ">
+      <button id="btnAddInst" class="btn btn-primary" type="button">➕</button>
+    </div>
+
+    <table class="table-rtl" style="width:100%;">
+      <thead>
+        <tr><th>#</th><th>تاریخ</th><th>مبلغ</th><th>شرح</th><th></th></tr>
+      </thead>
+      <tbody id="instTbody"></tbody>
+    </table>
+
+    <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+      <button class="btn" id="btnInstSave" type="button">ذخیره</button>
+      <button class="btn btn-ghost" id="btnInstCancel" type="button">انصراف</button>
+    </div>
+  </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
 <style>
-.form-rtl .label { font-size:12px; color:#7C8A9A; margin-bottom:6px; display:block; }
-.form-rtl .input  { width:100%; padding:10px 12px; border:1px solid #D3D5DF; border-radius:8px; }
-.grid.two .full { grid-column:1 / -1; }
+  .label { display:block; margin-bottom:6px; color:#6B7280; font-size:13px; }
+  .input { width:100%; padding:10px 12px; border:1px solid #D3D5DF; border-radius:8px; }
+  .tabs .tab { background:#F3F4F6; border:none; border-radius:8px; padding:8px 14px; cursor:pointer; }
+  .tabs .tab.active { background:#02AD82; color:#fff; }
+  .table-rtl thead th { background:#F8FAFC; border-bottom:1px solid #EEF2F7; padding:10px; color:#7C8A9A; text-align:right; }
+  .table-rtl td { border-bottom:1px solid #F1F5F9; padding:8px 10px; text-align:right; }
+  .chip { background:#F3F4F6; border:1px solid #E5E7EB; padding:4px 8px; border-radius:999px; }
 </style>
+
+<script>
+(function(){
+  // Tabs
+  const tabs = document.querySelectorAll('.tabs .tab');
+  const panels = {
+    main: document.getElementById('tab-main'),
+    schedule: document.getElementById('tab-schedule'),
+    finance: document.getElementById('tab-finance'),
+  };
+  function showTab(key){
+    Object.values(panels).forEach(p => p.style.display='none');
+    tabs.forEach(t => t.classList.remove('active'));
+    const btn = Array.from(tabs).find(b => b.dataset.tab === key);
+    if(btn) btn.classList.add('active');
+    const panel = document.getElementById('tab-' + key);
+    if(panel) panel.style.display='block';
+  }
+  tabs.forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
+
+  // Cover preview
+  const coverInput = document.getElementById('coverInput');
+  const coverPreview = document.getElementById('coverPreview');
+  if (coverInput && coverPreview) {
+    coverInput.addEventListener('change', e => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      coverPreview.src = URL.createObjectURL(f);
+    });
+  }
+
+  // Schedule switching
+  const customBox = document.getElementById('customBox');
+  const weeklyBox = document.getElementById('weeklyBox');
+  const scheduleRadios = document.querySelectorAll('input[name="schedule_type"]');
+  scheduleRadios.forEach(r => r.addEventListener('change', () => {
+    if (r.checked) {
+      if (r.value === 'CUSTOM') { customBox.style.display='block'; weeklyBox.style.display='none'; }
+      else { customBox.style.display='none'; weeklyBox.style.display='block'; }
+    }
+  }));
+
+  // CUSTOM dates manager
+  const sessionsInput = document.getElementById('sessions_json');
+  const listUl = document.getElementById('customDates');
+  const addDateBtn = document.getElementById('btnAddDate');
+  const dateInp = document.getElementById('customDateInput');
+
+  let sessions = [];
+  try { sessions = JSON.parse(sessionsInput.value || "[]") || []; } catch(e) { sessions = []; }
+
+  function renderSessions(){
+    listUl.innerHTML = '';
+    if (!sessions.length) {
+      listUl.innerHTML = '<li class="muted">تاریخی ثبت نشده.</li>';
+      return;
+    }
+    sessions.forEach((s, i) => {
+      const chip = document.createElement('li');
+      chip.className = 'chip';
+      chip.innerHTML = `${i+1}. ${s.date} <button type="button" class="btn btn-ghost" style="margin-right:6px;" data-i="${i}">حذف</button>`;
+      chip.querySelector('button').addEventListener('click', (e) => {
+        const idx = +e.currentTarget.getAttribute('data-i');
+        sessions.splice(idx, 1);
+        sessionsInput.value = JSON.stringify(sessions);
+        renderSessions();
+      });
+      listUl.appendChild(chip);
+    });
+  }
+  renderSessions();
+
+  addDateBtn?.addEventListener('click', () => {
+    const d = (dateInp.value || '').trim();
+    if (!d) return dateInp.focus();
+    sessions.push({date: d});
+    sessionsInput.value = JSON.stringify(sessions);
+    dateInp.value = '';
+    renderSessions();
+  });
+
+  // WEEKLY days manager
+  const weeklyDaysInput = document.getElementById('weekly_days_json');
+  const weeklyChecks = document.querySelectorAll('.weekly-day');
+  function pushWeekly(){
+    const arr = [];
+    weeklyChecks.forEach(ch => { if (ch.checked) arr.push(ch.value); });
+    weeklyDaysInput.value = JSON.stringify(arr);
+  }
+  weeklyChecks.forEach(ch => ch.addEventListener('change', pushWeekly));
+  pushWeekly();
+
+  // installments modal
+  const chkInst = document.getElementById('chkInstallment');
+  const instEnabledInput = document.getElementById('installment_enabled');
+  const instJsonInput = document.getElementById('installments_json');
+  const instList = document.getElementById('instList');
+  const instModal = document.getElementById('instModal');
+  const btnEditInst = document.getElementById('btnEditInstallments');
+  const btnCloseInst = document.getElementById('btnCloseInst');
+  const btnInstCancel = document.getElementById('btnInstCancel');
+  const btnInstSave = document.getElementById('btnInstSave');
+  const instTbody = document.getElementById('instTbody');
+
+  let installments = [];
+  try { installments = JSON.parse(instJsonInput.value || "[]") || []; } catch(e) { installments = []; }
+
+  function renderInstChips(){
+    instList.innerHTML = '';
+    if (!installments.length) { instList.innerHTML = '<li class="muted">قسطی ثبت نشده.</li>'; return; }
+    installments.forEach((r,i) => {
+      const li = document.createElement('li');
+      li.className = 'chip';
+      li.textContent = `${i+1}. ${r.due} — ${(+r.amount||0).toLocaleString('fa-IR')} ${r.title?('— '+r.title):''}`;
+      instList.appendChild(li);
+    });
+  }
+  renderInstChips();
+
+  function renderInstTable(){
+    instTbody.innerHTML = '';
+    if (!installments.length) {
+      instTbody.innerHTML = '<tr><td colspan="5" class="muted">چیزی ثبت نشده.</td></tr>';
+      return;
+    }
+    installments.forEach((r,i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${i+1}</td>
+        <td>${r.due || '-'}</td>
+        <td>${(+r.amount||0).toLocaleString('fa-IR')}</td>
+        <td>${r.title || ''}</td>
+        <td><button type="button" class="btn btn-ghost" data-i="${i}">حذف</button></td>
+      `;
+      tr.querySelector('button').addEventListener('click', (e)=>{
+        const idx = +e.currentTarget.getAttribute('data-i');
+        installments.splice(idx,1);
+        renderInstTable();
+      });
+      instTbody.appendChild(tr);
+    });
+  }
+
+  chkInst?.addEventListener('change', () => {
+    instEnabledInput.value = chkInst.checked ? '1' : '0';
+    document.getElementById('instRow').style.display = chkInst.checked ? 'block' : 'none';
+  });
+
+  btnEditInst?.addEventListener('click', () => {
+    renderInstTable();
+    instModal.style.display='flex';
+  });
+  btnCloseInst?.addEventListener('click', () => instModal.style.display='none');
+  btnInstCancel?.addEventListener('click', () => instModal.style.display='none');
+  btnInstSave?.addEventListener('click', () => {
+    instJsonInput.value = JSON.stringify(installments);
+    instModal.style.display='none';
+    renderInstChips();
+  });
+
+  document.getElementById('btnAddInst')?.addEventListener('click', () => {
+    const title = (document.getElementById('instTitle').value||'').trim();
+    const due = (document.getElementById('instDate').value||'').trim();
+    const amt = (document.getElementById('instAmount').value||'').trim();
+    if (!due || !amt) return;
+    installments.push({title, due, amount: parseInt(amt,10)||0});
+    document.getElementById('instTitle').value='';
+    document.getElementById('instDate').value='';
+    document.getElementById('instAmount').value='';
+    renderInstTable();
+  });
+
+  // تب اول به‌صورت پیش‌فرض نمایش داده شود
+  showTab('main');
+})();
+</script>
 {% endblock %}

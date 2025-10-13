@@ -10,6 +10,13 @@ class Course(db.Model):
     created_at  = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     mentor_id = db.Column(db.Integer, db.ForeignKey("mentors.id"), nullable=True)
     mentor = db.relationship("Mentor", backref="courses", lazy=True)
+    description = db.Column(db.Text)
+    start_date  = db.Column(db.Date)               # تاریخ شروع
+    end_date    = db.Column(db.Date)               # تاریخ پایان
+    cover_path  = db.Column(db.String(255))        # مسیر تصویر کاور
+
+
+
 class Enrollment(db.Model):
     __tablename__ = "enrollments"
     id          = db.Column(db.Integer, primary_key=True)
