@@ -9,6 +9,8 @@ from sqlalchemy import func, case
 from app.models.payment import Payment
 from pathlib import Path
 from werkzeug.utils import secure_filename
+from app.models.skill import Skill
+from app.models.mentor_skill import MentorSkill
 
 ALLOWED_IMAGE_EXTS = {"png", "jpg", "jpeg", "webp", "gif"}
 
@@ -332,3 +334,75 @@ def api_delete_payment(mentor_id, pay_id):
     db.session.commit()
     return {"ok": True}
 # ---- [END mentor payments API] ---------------------------------------------
+def _get_or_create_skill(name: str, typ: str) -> Skill | None:
+    if not name:
+        return None
+    name = name.strip()
+    typ = (typ or "").strip().upper()  # 'TECH' | 'SOFT'
+    if typ not in ("TECH", "SOFT"):
+        return None
+    s = Skill.query.filter_by(name=name, type=typ).first()
+    if s:
+        return s
+    s = Skill(name=name, type=typ)
+    db.session.add(s)
+    db.session.flush()  # id بگیریم قبل از commit
+    return s
+
+@bp.get("/<int:mentor_id>/skills")
+@login_required
+def api_list_skills(mentor_id):
+    Mentor.query.get_or_404(mentor_id)
+
+    rows = (db.session.query(MentorSkill)
+            .filter(MentorSkill.mentor_id == mentor_id)
+            .order_by(MentorSkill.id.desc())
+            .all())
+    tech, soft = [], []
+    for r in rows:
+        item = {
+            "id": r.id,
+            "title": r.skill.name if r.skill else "",
+            "type": r.skill.type if r.skill else "",
+            "date_label": r.date_label,
+            "hours": r.hours,
+        }
+        if r.skill and r.skill.type == "TECH":
+            tech.append(item)
+        else:
+            soft.append(item)
+    return {"ok": True, "tech": tech, "soft": soft}
+
+@bp.post("/<int:mentor_id>/skills")
+@login_required
+def api_add_skill(mentor_id):
+    Mentor.query.get_or_404(mentor_id)
+    data = request.get_json(silent=True) or request.form
+
+    name = (data.get("name") or "").strip()
+    typ  = (data.get("type") or "").strip().upper()  # 'TECH' | 'SOFT'
+    if not name or typ not in ("TECH", "SOFT"):
+        return {"ok": False, "error": "name/type invalid"}, 400
+
+    skill = _get_or_create_skill(name, typ)
+    if not skill:
+        return {"ok": False, "error": "invalid skill"}, 400
+
+    ms = MentorSkill(
+        mentor_id=mentor_id,
+        skill_id=skill.id,
+        date_label=(data.get("date_label") or "").strip() or None,
+        hours=int((data.get("hours") or 0) or 0) if typ == "SOFT" else None,
+    )
+    db.session.add(ms)
+    db.session.commit()
+    return {"ok": True, "id": ms.id}
+
+@bp.delete("/<int:mentor_id>/skills/<int:ms_id>")
+@login_required
+def api_delete_skill(mentor_id, ms_id):
+    Mentor.query.get_or_404(mentor_id)
+    ms = MentorSkill.query.filter_by(id=ms_id, mentor_id=mentor_id).first_or_404()
+    db.session.delete(ms)
+    db.session.commit()
+    return {"ok": True}

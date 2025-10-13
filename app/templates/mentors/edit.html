@@ -10,8 +10,8 @@
   <div class="tabs" style="display:flex; gap:8px; border-bottom:1px solid #EEF2F7; padding-bottom:8px;">
     <button class="tab active" data-tab="basic">مشخصات</button>
     <button class="tab" data-tab="courses">دوره‌ها</button>
-    <button class="tab" data-tab="skills" disabled>مهارت‌ها</button>
-    <button class="tab" data-tab="finance" disabled>مالی</button>
+    <button class="tab" data-tab="skills">مهارت‌ها</button>
+    <button class="tab" data-tab="finance">مالی</button>
   </div>
 {% set _parts = (m.full_name.split(' ') if (m.full_name) else []) %}
 {% set _fn = m.first_name or (_parts[0] if _parts|length > 0 else '') %}
@@ -120,11 +120,77 @@
   </div>
 
   <!-- تب‌های بعدی را بعداً فعال می‌کنیم -->
-  <div id="tab-skills" class="tab-panel" style="display:none;">
-    <div class="muted">به‌زودی…</div>
+<div id="tab-skills" class="tab-panel" style="display:none;">
+  <div class="skills" style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+    <!-- مهارت‌های فنی -->
+    <div class="skill-card-section card" style="padding:12px;">
+      <h3 style="margin-bottom:10px;">💻 مهارت‌های فنی</h3>
+      <div class="skill-input" style="display:flex; gap:8px; margin-bottom:10px;">
+        <input class="input" type="text" id="techInput" placeholder="افزودن مهارت فنی">
+        <button type="button" class="btn btn-primary" id="btnAddTech">➕</button>
+      </div>
+      <ul id="techList"></ul>
+    </div>
+
+    <!-- مهارت‌های نرم -->
+    <div class="skill-card-section card" style="padding:12px;">
+      <h3 style="margin-bottom:10px;">🤝 مهارت‌های نرم</h3>
+      <div class="skill-input" style="display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:8px; margin-bottom:10px;">
+        <input class="input" type="text" id="softInput" placeholder="افزودن مهارت نرم">
+        <input class="input" type="text" id="softDate" placeholder="تاریخ برگزاری (مثلاً 1403/07/18)">
+        <input class="input" type="number" id="softHours" placeholder="ساعت" min="1">
+        <button type="button" class="btn btn-primary" id="btnAddSoft">➕</button>
+      </div>
+      <ul id="softList"></ul>
+    </div>
   </div>
-  <div id="tab-finance" class="tab-panel" style="display:none;">
-    <div class="muted">به‌زودی…</div>
+</div>
+
+<div id="tab-finance" class="tab-panel" style="display:none;">
+  <div style="display:grid; grid-template-columns:1fr 320px; gap:20px; align-items:start;">
+
+    <!-- لیست تراکنش‌ها -->
+    <div class="card">
+      <h3 style="margin-top:0; color:#0f766e;">💰 تراکنش‌های مالی</h3>
+      <table class="table-rtl" id="finance-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>نوع</th>
+            <th>مبلغ</th>
+            <th>تاریخ</th>
+            <th>یادداشت</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <!-- افزودن تراکنش -->
+    <div class="card" id="add-payment-card">
+      <h3 style="margin-top:0;">➕ افزودن تراکنش</h3>
+      <form id="paymentForm" style="display:grid; gap:10px;">
+        <select name="kind" class="input">
+          <option value="INCOME">درآمد</option>
+          <option value="EXPENSE">هزینه</option>
+        </select>
+        <input type="number" name="amount" class="input" placeholder="مبلغ (تومان)" required>
+        <input type="text" name="title" class="input" placeholder="عنوان (مثلاً پرداخت منتور)">
+        <textarea name="note" class="input" rows="2" placeholder="یادداشت..."></textarea>
+        <button class="btn btn-primary" type="submit">ثبت تراکنش</button>
+      </form>
+
+      <div id="totals" style="margin-top:12px; font-size:14px; color:#334155;">
+        <p>💵 کل درآمد: <b id="tIncome">۰</b></p>
+        <p>💸 کل هزینه: <b id="tExpense">۰</b></p>
+        <p>⚖️ تراز: <b id="tBalance">۰</b></p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
   </div>
 </div>
 
@@ -164,6 +230,148 @@
 
   document.addEventListener('DOMContentLoaded', initTabs);
 })();
+(function(){
+  const mentorId = document.querySelector('#mentor-profile').dataset.mentorId;
+
+  const techList = document.getElementById('techList');
+  const softList = document.getElementById('softList');
+  const techInput = document.getElementById('techInput');
+  const softInput = document.getElementById('softInput');
+  const softDate  = document.getElementById('softDate');
+  const softHours = document.getElementById('softHours');
+  const btnAddTech = document.getElementById('btnAddTech');
+  const btnAddSoft = document.getElementById('btnAddSoft');
+
+  async function loadSkills(){
+    const res = await fetch(`/mentors/${mentorId}/skills`);
+    const data = await res.json();
+    if(!data.ok) return;
+
+    // TECH
+    if(data.tech.length === 0){
+      techList.innerHTML = `<li class="muted">هنوز مهارت فنی ثبت نشده.</li>`;
+    } else {
+      techList.innerHTML = data.tech.map((s, i) => `
+        <li style="display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px solid #F1F5F9;">
+          <div>${i+1}. ${s.title}</div>
+          <button class="btn btn-ghost" onclick="deleteMentorSkill(${s.id})">حذف</button>
+        </li>
+      `).join('');
+    }
+
+    // SOFT
+    if(data.soft.length === 0){
+      softList.innerHTML = `<li class="muted">هنوز مهارت نرم ثبت نشده.</li>`;
+    } else {
+      softList.innerHTML = data.soft.map((s, i) => `
+        <li style="display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px solid #F1F5F9;">
+          <div>${i+1}. ${s.title} ${s.hours ? `- ${s.hours} ساعت` : ''} ${s.date_label ? `- ${s.date_label}` : ''}</div>
+          <button class="btn btn-ghost" onclick="deleteMentorSkill(${s.id})">حذف</button>
+        </li>
+      `).join('');
+    }
+  }
+
+  window.deleteMentorSkill = async (id) => {
+    if(!confirm('حذف شود؟')) return;
+    await fetch(`/mentors/${mentorId}/skills/${id}`, { method:"DELETE" });
+    loadSkills();
+  };
+
+  btnAddTech?.addEventListener('click', async () => {
+    const name = (techInput.value || '').trim();
+    if(!name) return;
+    const fd = new FormData();
+    fd.append('name', name);
+    fd.append('type', 'TECH');
+    await fetch(`/mentors/${mentorId}/skills`, { method:"POST", body: fd });
+    techInput.value = '';
+    loadSkills();
+  });
+
+  btnAddSoft?.addEventListener('click', async () => {
+    const name = (softInput.value || '').trim();
+    if(!name) return;
+    const fd = new FormData();
+    fd.append('name', name);
+    fd.append('type', 'SOFT');
+    if(softDate.value)  fd.append('date_label', softDate.value);
+    if(softHours.value) fd.append('hours', softHours.value);
+    await fetch(`/mentors/${mentorId}/skills`, { method:"POST", body: fd });
+    softInput.value = ''; softDate.value = ''; softHours.value = '';
+    loadSkills();
+  });
+  
+  // بارگذاری اولیه
+  loadSkills();
+})();
+
+
+(function(){
+  const mentorId = document.querySelector('#mentor-profile').dataset.mentorId;
+  const tableBody = document.querySelector("#finance-table tbody");
+  const form = document.getElementById("paymentForm");
+  const tIncome = document.getElementById("tIncome");
+  const tExpense = document.getElementById("tExpense");
+  const tBalance = document.getElementById("tBalance");
+
+  async function loadPayments() {
+    const res = await fetch(`/mentors/${mentorId}/payments`);
+    const data = await res.json();
+    tableBody.innerHTML = "";
+    if (data.ok && data.items.length > 0) {
+      data.items.forEach((p, i) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${i+1}</td>
+          <td>${p.kind === 'INCOME' ? 'درآمد' : 'هزینه'}</td>
+          <td>${p.amount.toLocaleString('fa-IR')}</td>
+          <td>${p.paid_at ? p.paid_at.split('T')[0] : '-'}</td>
+          <td>${p.note || ''}</td>
+          <td>
+            <button class="btn btn-ghost btn-sm" data-id="${p.id}">🗑️ حذف</button>
+          </td>
+        `;
+        // اتصال رویداد حذف
+        tr.querySelector("button").addEventListener("click", async () => {
+          if (!confirm("آیا از حذف این تراکنش مطمئنی؟")) return;
+          const res = await fetch(`/mentors/${mentorId}/payments/${p.id}`, { method: "DELETE" });
+          const result = await res.json();
+          if (result.ok) {
+            loadPayments();
+          } else {
+            alert(result.error || "خطا در حذف تراکنش.");
+          }
+        });
+        tableBody.appendChild(tr);
+      });
+    } else {
+      tableBody.innerHTML = `<tr><td colspan="6" class="muted">تراکنشی ثبت نشده.</td></tr>`;
+    }
+
+    if (data.totals) {
+      tIncome.textContent = data.totals.income.toLocaleString('fa-IR');
+      tExpense.textContent = data.totals.expense.toLocaleString('fa-IR');
+      tBalance.textContent = data.totals.balance.toLocaleString('fa-IR');
+    }
+  }
+
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const res = await fetch(`/mentors/${mentorId}/payments`, { method: "POST", body: fd });
+    const data = await res.json();
+    if (data.ok) {
+      form.reset();
+      loadPayments();
+    } else {
+      alert("خطا در ثبت تراکنش.");
+    }
+  });
+
+  // فقط وقتی تب مالی باز شد، لیست رو لود کن
+  document.querySelector('[data-tab="finance"]').addEventListener("click", loadPayments);
+})();
 </script>
 
 <style>
@@ -182,5 +390,18 @@
   .label { display:block; margin-bottom:6px; color:#6B7280; font-size:13px; }
   .input { width:100%; padding:10px 12px; border:1px solid #D3D5DF; border-radius:8px; }
   .tabs .tab.active { font-weight:700; color:#0f766e; }
+  #finance-table { width:100%; border-collapse:collapse; direction:rtl; }
+#finance-table th, #finance-table td {
+  border-bottom:1px solid #E5E7EB;
+  padding:8px 10px;
+  text-align:right;
+}
+#finance-table th {
+  background:#F8FAFC;
+  font-size:13px;
+  color:#6B7280;
+}
+#finance-table tr:hover td { background:#F9FAFB; }
+#add-payment-card { background:#fff; border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,0.04); padding:20px; }
 </style>
 {% endblock %}

@@ -4,3 +4,4 @@ from .skill import Skill, StudentSkill
 from .course import Course, Enrollment
 from .payment import Payment
 from .mentor import Mentor
+from .mentor_skill import MentorSkill  # noqa

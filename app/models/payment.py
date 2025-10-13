@@ -8,10 +8,10 @@ class Payment(db.Model):
     id         = db.Column(db.Integer, primary_key=True)
 
     # برای دانشجو قبلاً بوده:
-    student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="SET NULL"), nullable=True, index=True)
+    student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="SET NULL", name="fk_payments_student_id"), nullable=True, index=True)
 
     # اضافه برای منتور:
-    mentor_id  = db.Column(db.Integer, db.ForeignKey("mentors.id", ondelete="SET NULL"), nullable=True, index=True)
+    mentor_id  = db.Column(db.Integer, db.ForeignKey("mentors.id", ondelete="SET NULL", name="fk_payments_mentor_id"), nullable=True, index=True)
 
     # موجود در پروژه:
     type       = db.Column(db.String(8), nullable=False, default="IN", index=True)  # IN | OUT
