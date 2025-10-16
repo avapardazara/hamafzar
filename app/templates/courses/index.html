@@ -3,20 +3,22 @@
 {% block page_title %}مدیریت دوره‌ها{% endblock %}
 
 {% block content %}
-<div class="card">
-  <form method="get" class="toolbar" style="display:grid; grid-template-columns:1fr 120px; gap:8px; align-items:center;">
-    <input type="text" name="q" value="{{ q }}" placeholder="جستجو: عنوان/منتور" style="padding:8px 10px;border:1px solid #D3D5DF;border-radius:6px;">
-    <a class="btn btn-primary" href="{{ url_for('courses.new_form') }}">+ دوره جدید</a>
+<div class="card" style="margin-bottom: var(--sp-6);">
+  <form method="get" action="{{ url_for('courses.list') }}" style="display:flex; gap:12px; flex-wrap:wrap;">
+    <input class="input" name="q" placeholder="جست‌وجو: نام" value="{{ q or '' }}" style="flex:1; min-width:280px;">
+    <button class="btn btn-primary" type="submit">جست‌وجو</button>
+    <a class="btn btn-ghost" href="{{ url_for('courses.list') }}">پاک‌سازی</a>
+    <a class="btn" href="{{ url_for('courses.create') }}" style="margin-right:auto;">➕ افزودن دوره</a>
   </form>
 
   <div class="table-responsive">
-    <table class="data-table" style="direction:rtl; table-layout:fixed; width:100%;">
+    <table class="data-table table-rtl" >
       <colgroup>
-        <col style="width:6%">
         <col>
-        <col style="width:22%">
-        <col style="width:14%">
-        <col style="width:16%">
+        <col>
+        <col>
+        <col>
+        <col>
       </colgroup>
       <thead>
         <tr>
@@ -37,6 +39,8 @@
           <td>
             <div class="actions" style="display:inline-flex; gap:6px;">
               <a class="btn btn-ghost" href="{{ url_for('courses.edit_form', course_id=c.id) }}">ویرایش</a>
+              <a class="btn btn-ghost" href="{{ url_for('courses.sessions_view', course_id=c.id) }}">📋 حضور و غیاب</a>
+
               {% if c.status != 'ARCHIVED' %}
               <form method="post" action="{{ url_for('courses.archive', course_id=c.id) }}" onsubmit="return confirm('بایگانی شود؟');" style="display:inline;">
                 <button class="btn btn-ghost" type="submit">بایگانی</button>
@@ -67,4 +71,148 @@
   </div>
   {% endif %}
 </div>
+{% block scripts %}
+<style>
+  
+  /* 🌿 جدول مینیمال دقیق با هم‌ترازی کامل th و td */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    border-spacing: 0;
+    table-layout: fixed;         /* عرض ستون‌ها بر اساس colgroup کنترل می‌شود */
+    direction: rtl;
+    background: #fff;
+    border-radius: 12px;
+    overflow: hidden; 
+  }
+.data-table td .ellipsis {
+  display: block;             /* یا inline-block، هر دو اوکی‌اند؛ block مطمئن‌تره */
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+  .data-table colgroup col:nth-child(1) { width: 5%; }   /* # */
+  .data-table colgroup col:nth-child(2) { width: 25%; }  /* عنوان */
+  .data-table colgroup col:nth-child(3) { width: 25%; }  /* منتور*/
+  .data-table colgroup col:nth-child(4) { width: 15%; }  /* وضعیت */
+  .data-table colgroup col:nth-child(6) { width: 30%; }  /* اکشن */
+
+  /* 📋 عنوان‌ها (header) */
+  .data-table thead th {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 13px;
+    font-weight: 700;
+    color: #7C8A9A;
+    background: #F8FAFC;
+    text-align: right;
+    padding: 12px 14px;
+    border-bottom: 1px solid #EEF2F7;
+    box-sizing: border-box;
+  }
+
+  /* 🧱 بدنه جدول (body) */
+  .data-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid #F1F5F9;
+    text-align: right;
+    vertical-align: middle;
+    white-space: nowrap;
+    box-sizing: border-box;
+  }
+
+  /* hover */
+  .data-table tbody tr:hover td {
+    background: #FBFDFF;
+  }
+
+  /* 👥 سلول نام + آواتار */
+  .cell-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    color: inherit;
+    min-width: 0;
+  }
+
+  .avatar-mini {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 50%;
+    object-fit: cover;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    flex: 0 0 36px;
+  }
+
+  .avatar-fallback {
+    background: #E5E7EB;
+    color: #6B7280;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+  }
+
+  .ellipsis {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ⚙️ دکمه‌های اکشن */
+.actions {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-start;
+  vertical-align: middle;
+}
+
+  /* 🔢 صفحه‌بندی */
+  .pagination {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    margin-top: 14px;
+  }
+
+  .pagination .active {
+    background: #EEF2F7;
+  }
+  .data-table td:last-child {
+  overflow: visible !important;   /* نذار دکمه بریده بشه */
+}
+
+.data-table td .actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  height: 100%;
+  padding: 4px 0;
+}
+
+.data-table td .actions .btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.data-table td .actions .btn:hover {
+  background-color: #F1F5F9;
+}
+.data-table th,
+.data-table td {
+  padding: 14px 14px;           /* قبلاً 12px بود؛ 2px اضافه شد */
+  box-sizing: border-box;
+}
+</style>
+{% endblock %}
 {% endblock %}

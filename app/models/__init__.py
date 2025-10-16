@@ -1,7 +1,44 @@
-from .user import User  # noqa
-from .core import Student  # noqa
-from .skill import Skill, StudentSkill
-from .course import Course
-from .payment import Payment
-from .mentor import Mentor
-from .mentor_skill import MentorSkill  # noqa
+# app/models/__init__.py
+
+# هسته‌ای
+from .user import User  # اگر داری
+
+# موجودیت‌های اصلی
+try:
+    from .core import Student
+except Exception:
+    Student = None
+
+try:
+    from .mentor import Mentor
+except Exception:
+    Mentor = None
+
+try:
+    from .skill import Skill, StudentSkill
+except Exception:
+    Skill = StudentSkill = None
+
+# دوره و وابسته‌ها
+try:
+    from .course import Course  # مدل Course
+except Exception:
+    Course = None
+
+# جلسات و حضور
+try:
+    from .course_session import CourseSession, Attendance
+except Exception:
+    CourseSession = Attendance = None
+
+# پرداخت‌ها (اگر داری)
+try:
+    from .payment import Payment
+except Exception:
+    Payment = None
+
+# هر مدل دیگری که در پروژه‌ات هست را به همین الگو اضافه کن.
+try:
+    from .enrollment import Enrollment
+except Exception:
+    Enrollment = None

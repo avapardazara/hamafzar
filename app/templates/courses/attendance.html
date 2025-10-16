@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}حضور و غیاب | هم‌افزار{% endblock %}
+{% block page_title %}حضور و غیاب دوره{% endblock %}
+
+{% block content %}
+<form method="post" class="card" style="direction:rtl; max-width:1100px; margin:auto;">
+
+  <div style="display:flex; gap:12px; align-items:end; margin-bottom:12px;">
+    <div>
+      <label class="label">تاریخ جلسه</label>
+      <!-- Hidden ISO که به بک‌اند ارسال می‌شود -->
+      <input type="hidden" name="date" id="att_date" value="{{ selected_session.session_date if selected_session else '' }}">
+      <!-- ورودی شمسی برای کاربر -->
+      <input type="text" class="input" id="attDateFa" autocomplete="off" placeholder="مثال: 1404/07/24" style="min-width:180px;">
+    </div>
+
+    {% if sessions %}
+    <div>
+      <label class="label">جلسه</label>
+      <select class="input" name="session_id" id="session_id" style="min-width:220px;">
+        {% for s in sessions %}
+        <option value="{{ s.id }}" {% if selected_session and selected_session.id==s.id %}selected{% endif %}>
+          {{ s.session_date }}{% if s.start_time %} - {{ s.start_time.strftime('%H:%M') }}{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
+    <div>
+      <button class="btn btn-primary" type="submit">ذخیره</button>
+    </div>
+  </div>
+
+  <!-- جدول دانشجوها/وضعیت‌ها (بدون تغییر ساختاری) -->
+  <table class="table-rtl" style="width:100%;">
+    <thead>
+      <tr>
+        <th>#</th><th>دانشجو</th><th>وضعیت</th><th>یادداشت</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for st in students %}
+      {% set a = att_map.get(st.id) %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ st.first_name }} {{ st.last_name }}</td>
+        <td>
+          <select name="status_{{ st.id }}" class="input">
+            {% set cur = (a.status if a else 'PRESENT') %}
+            <option value="PRESENT" {% if cur=='PRESENT' %}selected{% endif %}>حاضر</option>
+            <option value="ABSENT"  {% if cur=='ABSENT'  %}selected{% endif %}>غایب</option>
+            <option value="LATE"    {% if cur=='LATE'    %}selected{% endif %}>تاخیر</option>
+          </select>
+        </td>
+        <td><input class="input" name="note_{{ st.id }}" value="{{ a.note if a else '' }}"></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  // شمسی‌سازی تاریخ جلسه
+  attachPDatepicker('#attDateFa', '#att_date', '{{ selected_session.session_date if selected_session else "" }}');
+
+  // اگر انتخاب جلسه داری و می‌خواهی با تغییر آن، تاریخ هم sync شود (اختیاری):
+  const sessionSel = document.getElementById('session_id');
+  const attHidden = document.getElementById('att_date');
+  if (sessionSel && attHidden) {
+    sessionSel.addEventListener('change', function(){
+      // اگر روی option‌ها تاریخ iso داری، می‌تونی از data-attr پر کنی
+      // یا اگر در بک‌اند URL با ?session_id=... رفرش می‌کنی، لازم نیست اینجا sync کنی.
+    });
+  }
+});
+</script>
+{% endblock %}

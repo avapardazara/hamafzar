@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}جلسات دوره | هم‌افزار{% endblock %}
+{% block page_title %}جلسات دوره{% endblock %}
+
+{% block content %}
+<form method="post" class="card" style="direction:rtl; max-width:900px; margin:auto;">
+  <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+    <div>
+      <label class="label">تاریخ جلسه</label>
+      <input type="hidden" name="session_date" id="session_date" value="{{ s.session_date if s else '' }}">
+      <input type="text" id="sessionDateFa" class="input" autocomplete="off" placeholder="تاریخ شمسی">
+    </div>
+    <div>
+      <label class="label">ساعت شروع</label>
+      <input type="time" name="start_time" class="input" value="{{ s.start_time.strftime('%H:%M') if s and s.start_time else '' }}">
+    </div>
+    <div>
+      <label class="label">ساعت پایان</label>
+      <input type="time" name="end_time" class="input" value="{{ s.end_time.strftime('%H:%M') if s and s.end_time else '' }}">
+    </div>
+    <div>
+      <label class="label">اتاق</label>
+      <input class="input" name="room" value="{{ s.room if s else '' }}">
+    </div>
+    <div style="grid-column:1 / -1;">
+      <label class="label">یادداشت</label>
+      <input class="input" name="note" value="{{ s.note if s else '' }}">
+    </div>
+  </div>
+
+  <div style="margin-top:14px; display:flex; gap:12px;">
+    <button class="btn btn-primary" type="submit">ذخیره</button>
+    <a class="btn btn-ghost" href="{{ url_for('courses.sessions_view', course_id=course_id) }}">بازگشت</a>
+  </div>
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  attachPDatepicker('#sessionDateFa', '#session_date', '{{ s.session_date if s else "" }}');
+});
+</script>
+{% endblock %}

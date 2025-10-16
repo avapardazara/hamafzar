@@ -10,9 +10,9 @@ from ...utils.files import save_student_avatar, delete_student_avatar
 from flask import jsonify, request
 from app.models.skill import Skill, StudentSkill
 from app.extensions import db
-from app.models.course import Course, Enrollment
+from app.models.course import Course
 from app.models.payment import Payment
-
+from app.models.enrollment import Enrollment
 bp = Blueprint("students", __name__, url_prefix="/students")
 
 

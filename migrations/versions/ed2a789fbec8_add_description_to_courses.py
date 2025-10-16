@@ -10,22 +10,20 @@ branch_labels = None
 depends_on = None
 
 
-def _has_column(table_name: str, col_name: str) -> bool:
+def _has_column(table, colname):
     bind = op.get_bind()
     insp = sa.inspect(bind)
-    cols = [c["name"] for c in insp.get_columns(table_name)]
-    return col_name in cols
-
+    return any(c["name"] == colname for c in insp.get_columns(table))
 
 def upgrade():
-    # فقط اگر ستون وجود ندارد، اضافه کن
     if not _has_column("courses", "description"):
         with op.batch_alter_table("courses") as batch_op:
-            batch_op.add_column(sa.Column("description", sa.Text(), nullable=True))
-
+            batch_op.add_column(sa.Column("description", sa.Text()))
 
 def downgrade():
-    # فقط اگر ستون وجود دارد، حذف کن
-    if _has_column("courses", "description"):
+    # اگر لازم داری قابل برگشت باشد:
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    if any(c["name"] == "description" for c in insp.get_columns("courses")):
         with op.batch_alter_table("courses") as batch_op:
             batch_op.drop_column("description")
