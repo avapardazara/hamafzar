@@ -3,12 +3,15 @@ from flask import Flask, url_for
 from .config import Config
 from .extensions import init_app as init_extensions
 from .blueprints.files import bp as files_bp
+from .blueprints import  finance_bp 
+
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 def create_app(config_class=Config):
     app = Flask(__name__, instance_relative_config=True)
     app.register_blueprint(files_bp)
     app.config.from_object(config_class)
+    app.register_blueprint(finance_bp)
     app.config.from_pyfile("config.py", silent=True)
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
     # اطمینان از وجود پوشه‌ی instance
@@ -32,6 +35,8 @@ def create_app(config_class=Config):
 
     from .blueprints import blueprints
     for bp in blueprints:
+        if bp.name in app.blueprints:
+            continue
         app.register_blueprint(bp)
 
     return app

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}گزارش درآمد دوره‌ها | هم‌افزار{% endblock %}
+{% block page_title %}گزارش درآمد دوره‌ها{% endblock %}
+
+{% block content %}
+<div class="card" style="direction:rtl;">
+  <!-- Filters -->
+  <form method="get" class="card" style="display:grid; grid-template-columns:1fr 1fr auto; gap:8px; border:none; box-shadow:none; padding:0;">
+    <input class="input" name="q" value="{{ request.args.get('q','') }}" placeholder="نام دوره...">
+    <select class="input" name="mentor_id">
+      <option value="">همهٔ منتورها</option>
+      {% for m in mentors %}
+        <option value="{{ m.id }}" {% if request.args.get('mentor_id',type=int)==m.id %}selected{% endif %}>
+          {{ m.full_name or (m.first_name ~ ' ' ~ (m.last_name or '')) }}
+        </option>
+      {% endfor %}
+    </select>
+    <button class="btn">فیلتر</button>
+  </form>
+
+  <!-- Table -->
+  <table class="table-rtl" style="width:100%; margin-top:10px;">
+    <thead>
+      <tr>
+        <th>دوره</th>
+        <th>دانشجو</th>
+        <th>شهریهٔ اسمی</th>
+        <th>دریافتی</th>
+        <th>مانده</th>
+        <th>سهم منتور</th>
+        <th>پرداخت‌شده به منتور</th>
+        <th>مانده تسویهٔ منتور</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td><a href="{{ url_for('courses.edit_form', course_id=it.course.id) }}">{{ it.course.title }}</a></td>
+        <td>{{ it.students }}</td>
+        <td>{{ '{:,}'.format(it.face) }}</td>
+        <td style="color:#02AD82;">{{ '{:,}'.format(it.received) }}</td>
+        <td>
+          {{ '{:,}'.format(it.remain) }}
+        </td>
+        <td>{{ '{:,}'.format(it.mentor_share) }}</td>
+        <td>{{ '{:,}'.format(it.mentor_paid) }}</td>
+        <td>
+          {{ '{:,}'.format(it.mentor_due) }}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="muted">چیزی برای نمایش نیست.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

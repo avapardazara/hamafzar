@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>تست تقویم شمسی (نسخه‌های سازگار)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/vazirmatn@33.0.2/Vazirmatn.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/static/vendor/persian/persian-datepicker-1.2.0.min.css">
+  <style>
+    body{font-family:Vazirmatn,sans-serif;background:#F6FAF9;color:#0F172A;padding:24px;}
+    .card{max-width:520px;margin:auto;background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 20px rgba(15,23,42,.06);}
+    .label{display:block;margin-bottom:6px;color:#6B7280;font-size:13px;}
+    .input{width:100%;padding:10px 12px;border:1px solid #D3D5DF;border-radius:8px;background:#fff;}
+    .btn{margin-top:12px;border:1px solid #E5E7EB;border-radius:10px;padding:8px 14px;background:#02AD82;color:#fff;cursor:pointer;}
+    .pdp,.datepicker-plot-area{z-index:99999!important;}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2 style="margin:0 0 8px 0;">تست تقویم شمسی</h2>
+    <input type="hidden" id="date_iso">
+    <label class="label" for="date_fa">تاریخ (شمسی)</label>
+    <input class="input" id="date_fa" type="text" autocomplete="off" placeholder="مثال: 1404/07/24">
+    <button id="btn_show" class="btn" type="button">نمایش مقادیر</button>
+    <pre id="out" style="margin-top:10px"></pre>
+  </div>
+
+  <!-- ترتیب دقیق: jQuery → persian-date@1.1.0 → persian-datepicker@1.2.0 -->
+  <script src="/static/vendor/persian/jquery-3.7.1.min.js"></script>
+  <script src="/static/vendor/persian/persian-date-1.1.0.min.js"></script>
+  <script src="/static/vendor/persian/persian-datepicker-1.2.0.min.js"></script>
+
+  <script>
+    (function(){
+      console.log('jQuery?', typeof window.jQuery);
+      console.log('persianDate?', typeof window.persianDate !== 'undefined');
+      console.log('pDatepicker?', !!(jQuery.fn && jQuery.fn.pDatepicker));
+
+      const $fa = $('#date_fa');
+      $fa.attr('readonly','readonly');
+      $fa.pDatepicker({
+        format:'YYYY/MM/DD',
+        altField:'#date_iso',
+        altFormat:'YYYY-MM-DD',
+        initialValue:false,
+        autoClose:true,
+        calendar:{ persian:{ locale:'fa', leapYearMode:'astronomical' } },
+        toolbox:{ calendarSwitch:{ enabled:false } },
+        navigator:{ enabled:true, scroll:{ enabled:false } }
+      });
+
+      $fa.on('focus click', ()=>{ try{$fa.pDatepicker('show');}catch{} });
+
+      document.getElementById('btn_show').onclick = function(){
+        const iso = document.getElementById('date_iso').value || '(خالی)';
+        const fa  = document.getElementById('date_fa').value || '(خالی)';
+        document.getElementById('out').textContent = 'fa: ' + fa + '\niso: ' + iso;
+      };
+    })();
+  </script>
+</body>
+</html>

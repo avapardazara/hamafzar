@@ -497,3 +497,8 @@ def students_available(course_id):
         return f"{full}{phone} (ID {s.id})"
 
     return jsonify([{"id": s.id, "label": label_for(s)} for s in students])
+
+@bp.get("/test/datepicker")
+def test_datepicker():
+    return render_template("test_datepicker.html")
+

@@ -1,0 +1,22 @@
+{
+  "name": "hamafzar",
+  "version": "1.0.0",
+  "description": "```bash\r python -m venv .venv\r # Windows: .venv\\Scripts\\activate\r # Linux/Mac: source .venv/bin/activate\r pip install -r requirements.txt\r cp .env.example .env\r flask run",
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "jquery": "^3.7.1",
+    "persian-date": "^1.1.0",
+    "persian-datepicker": "^1.2.0"
+  },
+  "devDependencies": {
+    "copyfiles": "^2.4.1",
+    "mkdirp": "^3.0.1"
+  },
+  "scripts": {
+    "copy-persian": "node scripts/copy-persian.js",
+    "postinstall": "npm run copy-persian"
+  }
+}

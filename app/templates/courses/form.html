@@ -1,7 +1,5 @@
 {% extends "base.html" %}
 {% block title %}{{ 'ویرایش دوره' if mode == 'edit' else 'دوره جدید' }} | هم‌افزار{% endblock %}
-{% block page_title %}{{ 'ویرایش دوره' if mode == 'edit' else 'دوره جدید' }}{% endblock %}
-
 {% block content %}
 <form id="courseForm" method="post" enctype="multipart/form-data" class="card"
       style="direction:rtl; max-width:1100px; margin:auto;"
@@ -63,10 +61,12 @@
         <div>
           <label class="label">تاریخ شروع</label>
           <!-- Hidden برای ارسال به بک‌اند به‌صورت Gregorian -->
-          <input type="hidden" name="start_date" id="start_date" value="{{ c.start_date if c and c.start_date else '' }}">
-          <!-- Input شمسی برای کاربر -->
-          <input class="input" type="text" id="startDateFa" autocomplete="off"
-                 placeholder="مثال: 1404/07/24">
+      <input type="hidden" name="start_date" id="start_date" value="{{ c.start_date if c and c.start_date else '' }}">
+      <input class="input" type="text" id="startDateFa" autocomplete="off"
+       placeholder="مثال: 1404/07/24"
+       data-fa-date
+       data-alt="#start_date"
+       data-initial="{{ c.start_date if c and c.start_date else '' }}">
         </div>
 
         <!-- تاریخ پایان (شمسی) -->

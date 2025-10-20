@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}تسویهٔ منتورها | هم‌افزار{% endblock %}
+{% block page_title %}تسویهٔ منتورها (خواندنی){% endblock %}
+
+{% block content %}
+<div class="card" style="direction:rtl;">
+  <table class="table-rtl" style="width:100%;">
+    <thead>
+      <tr>
+        <th>منتور</th>
+        <th>تعداد دوره</th>
+        <th>دریافتی منسوب</th>
+        <th>سهم منتور</th>
+        <th>پرداخت‌شده</th>
+        <th>مانده</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td>{{ it.mentor.full_name or (it.mentor.first_name ~ ' ' ~ (it.mentor.last_name or '')) }}</td>
+        <td>{{ it.courses }}</td>
+        <td>{{ '{:,}'.format(it.received) }}</td>
+        <td>{{ '{:,}'.format(it.share) }}</td>
+        <td>{{ '{:,}'.format(it.paid) }}</td>
+        <td>
+          {{ '{:,}'.format(it.due) }}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="muted">داده‌ای نیست.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

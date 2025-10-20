@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}داشبورد مالی | هم‌افزار{% endblock %}
+{% block page_title %}داشبورد مالی{% endblock %}
+
+{% block content %}
+<div class="card" style="direction:rtl;">
+  <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px;">
+    <div class="card" style="padding:12px;">
+      <div class="muted">شهریهٔ اسمی</div>
+      <div style="font-size:20px; font-weight:700;">{{ '{:,}'.format(kpis.total_face) }} تومان</div>
+    </div>
+    <div class="card" style="padding:12px;">
+      <div class="muted">دریافتی نقدی</div>
+      <div style="font-size:20px; font-weight:700; color:#02AD82;">{{ '{:,}'.format(kpis.total_received) }} تومان</div>
+    </div>
+    <div class="card" style="padding:12px;">
+      <div class="muted">مطالبات باز</div>
+      <div style="font-size:20px; font-weight:700; color:#ef4444;">{{ '{:,}'.format(kpis.total_receivables) }} تومان</div>
+    </div>
+    <div class="card" style="padding:12px;">
+      <div class="muted">اقساط سررسیدگذشته</div>
+      <div style="font-size:20px; font-weight:700;">{{ overdue_count or kpis.overdue_count }}</div>
+    </div>
+  </div>
+
+  <h3 style="margin:16px 0 8px 0;">دریافتی ماهانه (cash-basis)</h3>
+  <div class="card" style="padding:12px;">
+    {% if monthly and monthly|length %}
+      <div style="display:flex; gap:12px; align-items:flex-end;">
+        {% for m in monthly %}
+{% set max_amt = (monthly|map(attribute='amount')|max if monthly and monthly|length > 0 else 1) %}
+        {% endfor %}
+        
+      </div>
+      <div class="muted" style="margin-top:6px;">از قدیم به جدید</div>
+    {% else %}
+      <div class="muted">داده‌ای نیست.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
