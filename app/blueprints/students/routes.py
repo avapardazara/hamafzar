@@ -7,14 +7,25 @@ from sqlalchemy import or_
 from ...extensions import db
 from ...models.core import Student
 from ...utils.files import save_student_avatar, delete_student_avatar
-from flask import jsonify, request
+from flask import jsonify
 from app.models.skill import Skill, StudentSkill
-from app.extensions import db
 from app.models.course import Course
 from app.models.payment import Payment
 from app.models.enrollment import Enrollment
+from datetime import datetime, date
 bp = Blueprint("students", __name__, url_prefix="/students")
 
+
+
+def _parse_date(s: str | None):
+    if not s:
+        return None
+    s = s.strip().replace("/", "-")
+    try:
+        y, m, d = [int(x) for x in s.split("-")]
+        return date(y, m, d)
+    except Exception:
+        return None
 
 # ---------- Utilities ----------
 def _paginate_query(base_query, page: int, per_page: int):
@@ -315,77 +326,71 @@ def api_delete_enrollment(student_id, en_id):
 def api_course_options():
     q = Course.query.filter(Course.status != "ARCHIVED").order_by(Course.created_at.desc()).all()
     return jsonify([{"id": c.id, "title": c.title, "mentor_name": c.mentor_name or ""} for c in q]), 200
-#لیست تراکنش های مالی - پروفایل دانشجو
+#افزودن تراکنش - بخش مالی - پروفایل دانشجو
 @bp.get("/<int:student_id>/payments")
 @login_required
 def api_list_payments(student_id):
-    s = Student.query.get_or_404(student_id)
-    rows = (
-        Payment.query.filter_by(student_id=s.id)
-        .order_by(Payment.created_at.desc())
-        .all()
-    )
-    out = []
-    balance = 0
-    for r in rows:
-        signed = r.amount if (r.type or "IN").upper() == "IN" else -r.amount
-        balance += signed
-        out.append({
-            "id": r.id,
-            "title": r.title,
-            "type": r.type.upper(),            # IN | OUT
-            "amount": r.amount,
-            "created_at": r.created_at.strftime("%Y-%m-%d %H:%M"),
-        })
-    return jsonify({"items": out, "balance": balance}), 200
-#افزودن تراکنش - بخش مالی - پروفایل دانشجو
+    """لیست پرداخت‌های دانشجو (Newest first)"""
+    Student.query.get_or_404(student_id)  # اعتبارسنجی وجود دانشجو
+    rows = (Payment.query
+            .filter(Payment.student_id == student_id)
+            .order_by(Payment.created_at.desc())
+            .all())
+    return jsonify([
+        {
+            "id": p.id,
+            "kind": p.kind,
+            "status": p.status,
+            "amount": int(p.amount or 0),
+            "title": p.title,
+            "note": p.note,
+            "course_id": getattr(p, "course_id", None),
+            "paid_at": p.paid_at.isoformat() if p.paid_at else None,
+            "due_date": p.due_date.isoformat() if p.due_date else None,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        } for p in rows
+    ])
+
 @bp.post("/<int:student_id>/payments")
 @login_required
 def api_add_payment(student_id):
+    """افزودن پرداخت برای دانشجو"""
     s = Student.query.get_or_404(student_id)
-    data = request.get_json(silent=True) or {}
-    ptype  = (data.get("type") or "").upper()
-    title  = (data.get("title") or "").strip()
-    amount = data.get("amount")
 
-    if ptype not in ("IN", "OUT") or not title or not amount:
-        return jsonify({"ok": False, "error": "invalid_input"}), 400
+    # اگر در فرم قبلاً name="type" بوده، برای سازگاری؛ ولی در DB باید kind ذخیره شود
+    pkind   = (request.form.get("kind") or request.form.get("type") or "tuition").strip()
+    title   = (request.form.get("title") or "").strip() or "پرداخت"
+    status  = (request.form.get("status") or "paid").strip()
+    amount  = int(float((request.form.get("amount") or "0").replace(",", "").replace("٬","")))
 
-    try:
-        amount = int(amount)
-        if amount <= 0:
-            raise ValueError()
-    except Exception:
-        return jsonify({"ok": False, "error": "invalid_amount"}), 400
-    bp = Blueprint("students", __name__, url_prefix="/students")    
-    row = Payment(student_id=s.id, type=ptype, title=title, amount=amount)
+    note      = (request.form.get("note") or "").strip() or None
+    paid_at_s = request.form.get("paid_at")
+    due_date  = _parse_date(request.form.get("due_date"))
+    course_id = request.form.get("course_id", type=int)
+
+    row = Payment(
+        student_id=s.id,
+        kind=pkind,               # <-- مهم: به جای 'type'
+        title=title,
+        status=status,
+        amount=amount,
+        note=note,
+        paid_at=(datetime.fromisoformat(paid_at_s) if paid_at_s else None),
+        due_date=due_date,
+        **({"course_id": course_id} if course_id else {})
+    )
+
     db.session.add(row)
     db.session.commit()
-    return jsonify({"ok": True, "id": row.id}), 201
+    return jsonify({"ok": True, "id": row.id})
 #حذف تراکنش - بخش مالی - پروفایل دانشجو
+
 @bp.delete("/<int:student_id>/payments/<int:pay_id>")
 @login_required
 def api_delete_payment(student_id, pay_id):
-    s = Student.query.get_or_404(student_id)
-    row = Payment.query.filter_by(id=pay_id, student_id=s.id).first_or_404()
-    db.session.delete(row)
+    """حذف پرداخت دانشجو"""
+    Student.query.get_or_404(student_id)
+    p = Payment.query.filter_by(id=pay_id, student_id=student_id).first_or_404()
+    db.session.delete(p)
     db.session.commit()
-    return jsonify({"ok": True}), 200
-@bp.get("/")
-@login_required
-def list_():
-    q = (request.args.get("q") or "").strip()
-    base = Student.query
-    if q:
-        like = f"%{q}%"
-        base = base.filter(
-            or_(
-                Student.first_name.like(like),
-                Student.last_name.like(like),
-                Student.national_code.like(like),
-                Student.mobile.like(like),
-                Student.email.like(like),
-            )
-        )
-    items = base.order_by(Student.id.desc()).all()
-    return render_template("students/index.html", items=items, q=q)
+    return jsonify({"ok": True})

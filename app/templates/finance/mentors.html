@@ -17,15 +17,14 @@
     </thead>
     <tbody>
       {% for it in items %}
+      {% set color_due = 'red' if it.due>0 else '#02AD82' %}
       <tr>
         <td>{{ it.mentor.full_name or (it.mentor.first_name ~ ' ' ~ (it.mentor.last_name or '')) }}</td>
         <td>{{ it.courses }}</td>
         <td>{{ '{:,}'.format(it.received) }}</td>
         <td>{{ '{:,}'.format(it.share) }}</td>
         <td>{{ '{:,}'.format(it.paid) }}</td>
-        <td>
-          {{ '{:,}'.format(it.due) }}
-        </td>
+        <td ></td>{{ '{:,}'.format(it.due) }}</td>
       </tr>
       {% else %}
       <tr><td colspan="6" class="muted">داده‌ای نیست.</td></tr>

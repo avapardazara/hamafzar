@@ -1,36 +1,44 @@
 {% extends "base.html" %}
-{% block title %}داشبورد | هم‌افزار{% endblock %}
-{% block page_title %}داشبورد{% endblock %}
-{% block page_actions %}{% endblock %}
+{% block title %}داشبورد مالی | هم‌افزار{% endblock %}
+{% block page_title %}داشبورد مالی{% endblock %}
 
 {% block content %}
-<div class="card" style="margin-bottom: var(--sp-6);">
-  <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
-    {% for k in data.kpis %}
-      <div class="card" style="box-shadow:none; border:1px solid #EEF2F7; min-width: 240px;">
-        <div style="font-size: var(--fs-sm); color: var(--color-muted);">{{ k.label }}</div>
-        <div style="font-size: var(--fs-2xl); font-weight: 700; margin-top: 6px;">{{ k.value }}</div>
-        <div class="text-muted" style="font-size: var(--fs-xs);">{{ k.hint }}</div>
-      </div>
-    {% endfor %}
+<div class="card" style="direction:rtl;">
+  <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px;">
+    <div class="card" style="padding:12px;">
+      <div class="muted">شهریهٔ اسمی</div>
+      <div style="font-size:20px; font-weight:700;">{{ '{:,}'.format(data.kpis.total_face) }} تومان</div>
+    </div>
+    <div class="card" style="padding:12px;">
+      <div class="muted">دریافتی نقدی</div>
+      <div style="font-size:20px; font-weight:700; color:#02AD82;">{{ '{:,}'.format(data.kpis.total_received) }} تومان</div>
+    </div>
+    <div class="card" style="padding:12px;">
+      <div class="muted">مطالبات باز</div>
+      <div style="font-size:20px; font-weight:700; color:red;">{{ '{:,}'.format(data.kpis.total_receivables) }} تومان</div>
+    </div>
+    <div class="card" style="padding:12px;">
+      <div class="muted">اقساط سررسیدگذشته</div>
+      <div style="font-size:20px; font-weight:700;">{{data.kpis.overdue_count }}</div>
+    </div>
   </div>
-</div>
 
-<div class="card">
-  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 12px;">
-    <h2 style="margin:0; font-size: var(--fs-xl);">رویدادهای نزدیک</h2>
+  <hr style="margin:14px 0;">
+
+  <div>
+    <div class="label">درآمد ماهانه (پرداخت‌شده)</div>
+    {% if monthly and monthly|length %}
+      {% set max_amt = (monthly|map(attribute='amount')|max) %}
+      <div style="display:flex; gap:12px; align-items:flex-end; min-height:140px;">
+        {% for m in monthly %}
+          {% set h = ((m.amount / (max_amt if max_amt else 1)) * 120) | round(0, 'ceil') %}
+          <div title="{{ m.ym }} — {{ '{:,}'.format(m.amount|int) }}"></div>
+        {% endfor %}
+      </div>
+      <div class="muted" style="margin-top:6px;">از قدیم به جدید</div>
+    {% else %}
+      <div class="muted">داده‌ای نیست.</div>
+    {% endif %}
   </div>
-  {% if data.upcoming and data.upcoming|length %}
-    <ul style="list-style:none; padding:0; margin:0;">
-      {% for ev in data.upcoming %}
-        <li style="padding:10px 0; border-bottom:1px solid #F1F5F9;">
-          <strong>{{ ev.title }}</strong>
-          <div class="text-muted" style="font-size: var(--fs-sm);">{{ ev.when }}</div>
-        </li>
-      {% endfor %}
-    </ul>
-  {% else %}
-    <p class="text-muted" style="margin:0;">رویداد نزدیکی ثبت نشده.</p>
-  {% endif %}
 </div>
 {% endblock %}

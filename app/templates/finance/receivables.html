@@ -5,7 +5,7 @@
 {% block content %}
 <div class="card" style="direction:rtl;">
   <!-- Filters -->
-  <form method="get" class="card" style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap:8px; border:none; box-shadow:none; padding:0;">
+  <form method="get" class="card" style="display:grid; grid-template-columns:1fr 1fr 1fr 160px; gap:8px; border:none; box-shadow:none; padding:0;">
     <input class="input" name="q" value="{{ request.args.get('q','') }}" placeholder="جست‌وجوی دانشجو...">
     <select class="input" name="course_id">
       <option value="">همهٔ دوره‌ها</option>
@@ -43,13 +43,12 @@
     <tbody>
       {% for it in items %}
       <tr>
-        <td>{{ it.student_name }} <span class="muted">#{{ it.student_id }}</span></td>
+        <td><a href="{{ url_for('students.view', student_id=it.student_id) }}">{{ it.student_name }}</a></td>
         <td><a href="{{ url_for('courses.edit_form', course_id=it.course_id) }}">{{ it.course_title }}</a></td>
         <td>{{ '{:,}'.format(it.fee) }}</td>
         <td style="color:#02AD82;">{{ '{:,}'.format(it.received) }}</td>
-        <td>
-          {{ '{:,}'.format(it.remain) }}
-        </td>
+        {% set color = 'red' if it.remain>0 else '#02AD82' %}
+        <td >{{ '{:,}'.format(it.remain) }}</td>
       </tr>
       {% else %}
       <tr><td colspan="5" class="muted">نتیجه‌ای ندارد.</td></tr>

@@ -3,7 +3,8 @@
 {% block page_title %}اقساط (گزارش خواندنی){% endblock %}
 {% block content %}
 <div class="card" style="direction:rtl;">
-  <form method="get" class="card" style="display:grid; grid-template-columns:1fr 1fr auto; gap:8px; border:none; box-shadow:none; padding:0;">
+
+  <form method="get" class="card" style="display:grid; grid-template-columns:1fr 1fr 120px; gap:8px; border:none; box-shadow:none; padding:0;">
     <input class="input" name="q" value="{{ request.args.get('q','') }}" placeholder="جست‌وجوی عنوان قسط...">
     <select class="input" name="course_id">
       <option value="">همهٔ دوره‌ها</option>
@@ -17,13 +18,16 @@
   <table class="table-rtl" style="width:100%; margin-top:10px;">
     <thead>
       <tr>
-        <th>#</th><th>دوره</th><th>عنوان</th><th>سررسید</th><th>مبلغ</th><th>وضعیت</th>
+        <th>دوره</th>
+        <th>عنوان</th>
+        <th>سررسید</th>
+        <th>مبلغ</th>
+        <th>وضعیت</th>
       </tr>
     </thead>
     <tbody>
       {% for it in items %}
       <tr>
-        <td>{{ it.idx }}</td>
         <td><a href="{{ url_for('courses.edit_form', course_id=it.course.id) }}">{{ it.course.title }}</a></td>
         <td>{{ it.title }}</td>
         <td>{{ it.due }}</td>
@@ -37,7 +41,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="6" class="muted">موردی یافت نشد.</td></tr>
+      <tr><td colspan="5" class="muted">موردی یافت نشد.</td></tr>
       {% endfor %}
     </tbody>
   </table>

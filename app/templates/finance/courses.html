@@ -5,7 +5,7 @@
 {% block content %}
 <div class="card" style="direction:rtl;">
   <!-- Filters -->
-  <form method="get" class="card" style="display:grid; grid-template-columns:1fr 1fr auto; gap:8px; border:none; box-shadow:none; padding:0;">
+  <form method="get" class="card" style="display:grid; grid-template-columns:1fr 1fr 120px; gap:8px; border:none; box-shadow:none; padding:0;">
     <input class="input" name="q" value="{{ request.args.get('q','') }}" placeholder="نام دوره...">
     <select class="input" name="mentor_id">
       <option value="">همهٔ منتورها</option>
@@ -18,35 +18,32 @@
     <button class="btn">فیلتر</button>
   </form>
 
-  <!-- Table -->
   <table class="table-rtl" style="width:100%; margin-top:10px;">
     <thead>
       <tr>
         <th>دوره</th>
-        <th>دانشجو</th>
-        <th>شهریهٔ اسمی</th>
+        <th>دانشجو (ACTIVE)</th>
+        <th>اسمی</th>
         <th>دریافتی</th>
         <th>مانده</th>
         <th>سهم منتور</th>
-        <th>پرداخت‌شده به منتور</th>
-        <th>مانده تسویهٔ منتور</th>
+        <th>پرداخت به منتور</th>
+        <th>مانده تسویه منتور</th>
       </tr>
     </thead>
     <tbody>
       {% for it in items %}
+      {% set color_remain = 'red' if it.remain>0 else '#02AD82' %}
+      {% set color_mentor = 'red' if it.mentor_due>0 else '#02AD82' %}
       <tr>
         <td><a href="{{ url_for('courses.edit_form', course_id=it.course.id) }}">{{ it.course.title }}</a></td>
         <td>{{ it.students }}</td>
         <td>{{ '{:,}'.format(it.face) }}</td>
         <td style="color:#02AD82;">{{ '{:,}'.format(it.received) }}</td>
-        <td>
-          {{ '{:,}'.format(it.remain) }}
-        </td>
+        <td >{{ '{:,}'.format(it.remain) }}</td>
         <td>{{ '{:,}'.format(it.mentor_share) }}</td>
         <td>{{ '{:,}'.format(it.mentor_paid) }}</td>
-        <td>
-          {{ '{:,}'.format(it.mentor_due) }}
-        </td>
+        <td >{{ '{:,}'.format(it.mentor_due) }}</td>
       </tr>
       {% else %}
       <tr><td colspan="8" class="muted">چیزی برای نمایش نیست.</td></tr>
