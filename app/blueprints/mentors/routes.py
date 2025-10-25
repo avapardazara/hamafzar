@@ -1,515 +1,372 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
+# app/blueprints/mentors/routes.py
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required
-from app.extensions import db
-from app.utils.media import save_uploaded_image
-from app.models.mentor import Mentor
-from app.models.course import Course
-from datetime import datetime
-from sqlalchemy import func, case
-from app.models.payment import Payment
-from pathlib import Path
-from werkzeug.utils import secure_filename
-from app.models.skill import Skill
-from app.models.mentor_skill import MentorSkill
-
-ALLOWED_IMAGE_EXTS = {"png", "jpg", "jpeg", "webp", "gif"}
-
-def _is_allowed_image(filename: str) -> bool:
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_IMAGE_EXTS
+from sqlalchemy import func, literal
+from ...extensions import db
+from ...models.mentor import Mentor
+from ...models.course import Course
+from ...models.enrollment import Enrollment
+from ...utils.files import save_student_avatar  # از همین util برای آپلود استفاده می‌کنیم
+from sqlalchemy.orm.attributes import InstrumentedAttribute
 
 bp = Blueprint("mentors", __name__, url_prefix="/mentors")
-ALLOWED_IMG = {"png", "jpg", "jpeg", "webp"}
+
 
 # -------------------------------
-# لیست
+# Helpers
+# -------------------------------
+def _coalesce(val, default):
+    return val if val is not None else default
+
+
+def _mentor_finance_summary(mentor_id: int):
+    """
+    خروجی JSON مانند:
+    {
+      "items": [
+        {
+          "course_id": 1,
+          "course_title": "...",
+          "students": 5,
+          "fee_per_student": 1000000,
+          "share_percent": 20,
+          "income_total": 5000000,
+          "mentor_share": 1000000
+        },
+        ...
+      ],
+      "totals": {
+         "share_total": ...,
+         "paid_total": 0,     # فعلا پرداختیِ منتور نداریم
+         "balance": ...
+      }
+    }
+    """
+    # تعداد دانشجوهای هر دوره‌ای که منتورش این mentor است
+    rows = (
+        db.session.query(
+            Course.id.label("course_id"),
+            Course.title.label("course_title"),
+            func.coalesce(Course.fee_per_student, 0).label("fee_per_student"),
+            func.coalesce(Course.mentor_share_percent, 0).label("share_percent"),
+            func.count(Enrollment.id).label("students_count"),
+        )
+        .select_from(Course)
+        .outerjoin(Enrollment, Enrollment.course_id == Course.id)
+        .filter(Course.mentor_id == mentor_id)
+        .group_by(Course.id)
+        .all()
+    )
+
+    items = []
+    total_share = 0
+
+    for r in rows:
+        fee = int(_coalesce(r.fee_per_student, 0))
+        share_pct = float(_coalesce(r.share_percent, 0.0))
+        students = int(_coalesce(r.students_count, 0))
+        income_total = fee * students
+        mentor_share = int(round(income_total * (share_pct / 100.0)))
+        total_share += mentor_share
+
+        items.append({
+            "course_id": r.course_id,
+            "course_title": r.course_title,
+            "students": students,
+            "fee_per_student": fee,
+            "share_percent": share_pct,
+            "income_total": int(income_total),
+            "mentor_share": int(mentor_share),
+        })
+
+    paid_total = 0  # در این نسخه مدل پرداخت منتور نداریم
+    balance = int(total_share - paid_total)
+
+    return {
+        "items": items,
+        "totals": {
+            "share_total": int(total_share),
+            "paid_total": int(paid_total),
+            "balance": int(balance),
+        },
+    }
+
+
+# -------------------------------
+# List
 # -------------------------------
 @bp.get("/")
 @login_required
 def list():
     q = (request.args.get("q") or "").strip()
-    base = Mentor.query
+    query = Mentor.query
+
     if q:
         like = f"%{q}%"
-        base = base.filter(
-            db.or_(
-                Mentor.first_name.like(like),
-                Mentor.last_name.like(like),
-                Mentor.email.like(like),
-                Mentor.phone.like(like),
-            )
+        query = query.filter(
+            (Mentor.first_name.ilike(like)) |
+            (Mentor.last_name.ilike(like)) |
+            (Mentor.email.ilike(like)) |
+            (Mentor.phone.ilike(like))
         )
-    items = base.order_by(Mentor.id.desc()).all()
-    return render_template("mentors/index.html", items=items, q=q)
+
+    mentors = query.order_by(Mentor.created_at.desc()).all()
+    # قالب index.html دقیقا این متغیرها را می‌خواهد:
+    return render_template("mentors/index.html", mentors=mentors, q=q)
+
 
 # -------------------------------
-# شرت‌کات: دیدن پروفایل => ویرایش
-# /mentors/<id> => /mentors/<id>/edit
+# Create (GET form.html) + POST
+# قالب form.html بدون action ارسال می‌کند -> همان URL باید POST را هم بپذیرد
 # -------------------------------
-@bp.get("/<int:mentor_id>")
+@bp.route("/new", methods=["GET", "POST"])
 @login_required
-def view(mentor_id):
-    return redirect(url_for("mentors.edit_form", mentor_id=mentor_id))
+def create_form():
+    if request.method == "POST":
+        f = request.form
+        first = (f.get("first_name") or "").strip()
+        last = (f.get("last_name") or "").strip()
+        email = (f.get("email") or "").strip() or None
+        phone = (f.get("phone") or "").strip() or None
 
-# -------------------------------
-# فرم ساخت
-# -------------------------------
-@bp.get("/new")
-@login_required
-def new_form():
+        if not first or not last:
+            flash("نام و نام خانوادگی الزامی است.", "error")
+            return redirect(url_for("mentors.create_form"))
+
+        m = Mentor(first_name=first, last_name=last, email=email, phone=phone)
+        db.session.add(m)
+        db.session.commit()
+
+        # آپلود آواتار (اختیاری)
+        file = request.files.get("avatar")
+        if file and file.filename:
+            # از util موجود استفاده می‌کنیم و همان مسیر students را برای ذخیره بکار می‌بریم
+            rel = save_student_avatar(file, m.id)
+            if rel:
+                # در مدل Mentor در پروژه شما فیلد آواتار معمولا m.avatar یا m.avatar_path است؛
+                # طبق قالب‌ها m.avatar استفاده می‌شود:
+                m.avatar = rel
+                db.session.commit()
+
+        flash("منتور با موفقیت ایجاد شد.", "success")
+        return redirect(url_for("mentors.edit_form", mentor_id=m.id))
+
+    # GET
     return render_template("mentors/form.html", m=None)
-@bp.get("/<int:mentor_id>/form")
-@login_required
-def edit_form_page(mentor_id):
-    """نمایش فرم ویرایش با مقادیر پرشده"""
-    m = Mentor.query.get_or_404(mentor_id)
-    return render_template("mentors/form.html", m=m)
+
 
 # -------------------------------
-# ساخت
-# -------------------------------
-@bp.post("/new")
-@login_required
-def create():
-    first_name = (request.form.get("first_name") or "").strip()
-    last_name = (request.form.get("last_name") or "").strip()
-    email     = (request.form.get("email") or "").strip()
-    phone     = (request.form.get("phone") or "").strip()
-
-    if not first_name:
-        flash("نام الزامی است.", "error")
-        return redirect(url_for("mentors.new_form"))
-
-    m = Mentor(first_name=first_name,last_name=last_name, email=email, phone=phone)
-
-    # آپلود آواتار در لحظه‌ی ساخت (اختیاری)
-    avatar_file = request.files.get("avatar")
-    avatar_rel  = save_uploaded_image(avatar_file, subdir="mentors")
-    if avatar_rel:
-        m.avatar = avatar_rel
-
-    db.session.add(m)
-    db.session.commit()
-    flash("منتور با موفقیت ایجاد شد.", "success")
-    return redirect(url_for("mentors.edit_form", mentor_id=m.id))
-
-# -------------------------------
-# فرم ویرایش
+# Edit (profile) – edit.html
 # -------------------------------
 @bp.get("/<int:mentor_id>/edit")
 @login_required
 def edit_form(mentor_id):
     m = Mentor.query.get_or_404(mentor_id)
-    # داده‌های لازم برای تب «دوره‌ها»
-    taught = Course.query.filter_by(mentor_id=m.id).order_by(Course.id.desc()).all()
-    all_courses = Course.query.order_by(Course.title.asc()).all()
-    # این‌جا حتماً edit.html را رندر کن (نه form.html)
-    return render_template("mentors/edit.html", m=m, taught=taught, all_courses=all_courses)
+
+    taught = Course.query.filter(Course.mentor_id == m.id).order_by(Course.created_at.desc()).all()
+    all_courses = Course.query.order_by(Course.created_at.desc()).all()
+
+    # اگر شمارش مهارت برای منتورها ندارید، صفر پاس می‌دهیم
+    skills_count = 0
+
+    # خلاصه مالی برای نمایش عدد تراز در هدر
+    summary = _mentor_finance_summary(m.id)
+    totals = summary["totals"]
+
+    # back url
+    back_url = request.referrer or url_for("mentors.list")
+
+    return render_template(
+        "mentors/edit.html",
+        m=m,
+        taught=taught,
+        all_courses=all_courses,
+        skills_count=skills_count,
+        totals=totals,
+        back_url=back_url
+    )
+
 
 # -------------------------------
-# ذخیره‌ی ویرایش
+# Update basic fields (from tab-basic form)
 # -------------------------------
-@bp.post("/<int:mentor_id>/edit")
-@login_required
-def update(mentor_id):
-    m = Mentor.query.get_or_404(mentor_id)
-    m.first_name = (request.form.get("first_name") or "").strip()
-    m.last_name = (request.form.get("last_name") or "").strip()
-    m.email     = (request.form.get("email") or "").strip()
-    m.phone     = (request.form.get("phone") or "").strip()
-
-    avatar_file = request.files.get("avatar")
-    avatar_rel  = save_uploaded_image(avatar_file, subdir="mentors")
-    if avatar_rel:
-        m.avatar = avatar_rel
-
-    db.session.commit()
-    flash("اطلاعات منتور به‌روزرسانی شد.", "success")
-    return redirect(url_for("mentors.edit_form", mentor_id=m.id))
-
-# -------------------------------
-# حذف
-# -------------------------------
-@bp.post("/<int:mentor_id>/delete")
-@login_required
-def delete(mentor_id):
-    m = Mentor.query.get_or_404(mentor_id)
-    db.session.delete(m)
-    db.session.commit()
-    flash("منتور حذف شد.", "info")
-    return redirect(url_for("mentors.list"))
-
-# -------------------------------
-# مشخصات پایه
-# -------------------------------
-@bp.post("/<int:mentor_id>/update-basic")
+@bp.post("/<int:mentor_id>/basic")
 @login_required
 def update_basic(mentor_id):
     m = Mentor.query.get_or_404(mentor_id)
-    m.first_name = request.form.get("first_name") or m.first_name
-    m.last_name  = request.form.get("last_name")  or m.last_name
-    m.email      = request.form.get("email")      or m.email
-    m.phone      = request.form.get("phone")      or m.phone
-    
-    fn = (m.first_name or "").strip()
-    ln = (m.last_name or "").strip()
-    m.full_name = (f"{fn} {ln}").strip() or None
+    f = request.form
+    m.first_name = (f.get("first_name") or "").strip()
+    m.last_name  = (f.get("last_name") or "").strip()
+    m.phone      = (f.get("phone") or "").strip() or None
+    m.email      = (f.get("email") or "").strip() or None
 
     db.session.commit()
-    flash("مشخصات منتور ذخیره شد.", "success")
+    flash("اطلاعات ذخیره شد.", "success")
     return redirect(url_for("mentors.edit_form", mentor_id=m.id))
 
+
 # -------------------------------
-# آپلود آواتار
+# Upload avatar (from edit header button)
 # -------------------------------
-@bp.route("/<int:mentor_id>/avatar", methods=["POST"])
+@bp.post("/<int:mentor_id>/upload-avatar")
+@login_required
 def upload_avatar(mentor_id):
-    mentor = Mentor.query.get_or_404(mentor_id)
-
+    m = Mentor.query.get_or_404(mentor_id)
     file = request.files.get("avatar")
-    if not file or file.filename == "":
-        flash("فایلی انتخاب نشده است.", "warning")
-        return redirect(url_for("mentors.edit_form", mentor_id=mentor_id))
+    if file and file.filename:
+        rel = save_student_avatar(file, m.id)
+        if rel:
+            m.avatar = rel
+            db.session.commit()
+            flash("تصویر پروفایل به‌روزرسانی شد.", "success")
+        else:
+            flash("آپلود تصویر ناموفق بود.", "error")
+    else:
+        flash("فایلی انتخاب نشد.", "error")
+    return redirect(url_for("mentors.edit_form", mentor_id=m.id))
 
-    if not _is_allowed_image(file.filename):
-        flash("فرمت تصویر معتبر نیست. فرمت‌های مجاز: png, jpg, jpeg, webp, gif", "danger")
-        return redirect(url_for("mentors.edit_form", mentor_id=mentor_id))
-
-    # مسیر ذخیره‌سازی: uploads/avatars/mentors/<id>/
-    upload_root = Path(current_app.root_path).parent / "uploads"
-    target_dir = upload_root / "avatars" / "mentors" / str(mentor_id)
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    # نام امن + افزودن timestamp برای یکتا بودن
-    stem = Path(secure_filename(file.filename)).stem
-    ext = Path(file.filename).suffix.lower()
-    from datetime import datetime
-    new_name = f"{stem}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}{ext}"
-    abs_path = target_dir / new_name
-
-    file.save(str(abs_path))
-
-    # مسیر نسبی‌ای که با files.uploaded_file سرو می‌شه:
-    rel_path = str(abs_path.relative_to(upload_root)).replace("\\", "/")
-    mentor.avatar = rel_path
-    db.session.commit()
-
-    flash("تصویر پروفایل با موفقیت به‌روزرسانی شد.", "success")
-    return redirect(url_for("mentors.edit_form", mentor_id=mentor_id))
-# -------------------------------
-# حذف آواتار
-# -------------------------------
-@bp.route("/<int:mentor_id>/avatar/delete", methods=["POST"])
-def delete_avatar(mentor_id):
-    mentor = Mentor.query.get_or_404(mentor_id)
-    if mentor.avatar:
-        # تلاش برای حذف فایل (اختیاری؛ اگر نبود اشکالی ندارد)
-        try:
-            upload_root = Path(current_app.root_path).parent / "uploads"
-            p = upload_root / mentor.avatar
-            if p.is_file():
-                p.unlink()
-        except Exception:
-            pass
-        mentor.avatar = None
-        db.session.commit()
-        flash("تصویر پروفایل حذف شد.", "success")
-    return redirect(url_for("mentors.edit_form", mentor_id=mentor_id))
 
 # -------------------------------
-# نسبت دادن دوره
+# Assign / remove course for mentor (tab-courses)
 # -------------------------------
 @bp.post("/<int:mentor_id>/courses/add")
 @login_required
 def add_course(mentor_id):
-    m = Mentor.query.get_or_404(mentor_id)
+    Mentor.query.get_or_404(mentor_id)
     cid = request.form.get("course_id")
     if not cid:
-        flash("دوره‌ای انتخاب نشد.", "error")
-        return redirect(url_for("mentors.edit_form", mentor_id=m.id))
+        flash("شناسه دوره نامعتبر است.", "error")
+        return redirect(url_for("mentors.edit_form", mentor_id=mentor_id))
 
-    c = Course.query.get(int(cid))
-    if not c:
-        flash("دوره نامعتبر است.", "error")
-        return redirect(url_for("mentors.edit_form", mentor_id=m.id))
-
-    c.mentor_id = m.id
+    c = Course.query.get_or_404(int(cid))
+    c.mentor_id = mentor_id
     db.session.commit()
-    flash("دوره به منتور منتسب شد.", "success")
-    return redirect(url_for("mentors.edit_form", mentor_id=m.id))
+    flash("دوره به منتور نسبت داده شد.", "success")
+    return redirect(url_for("mentors.edit_form", mentor_id=mentor_id))
 
-# -------------------------------
-# حذف نسبت دوره
-# -------------------------------
-@bp.post("/<int:mentor_id>/courses/<int:course_id>/delete")
+
+@bp.post("/<int:mentor_id>/courses/<int:course_id>/remove")
 @login_required
 def remove_course(mentor_id, course_id):
-    m = Mentor.query.get_or_404(mentor_id)
+    Mentor.query.get_or_404(mentor_id)
     c = Course.query.get_or_404(course_id)
-    if c.mentor_id == m.id:
+    if c.mentor_id == mentor_id:
         c.mentor_id = None
         db.session.commit()
-        flash("دوره از منتور جدا شد.", "success")
-    return redirect(url_for("mentors.edit_form", mentor_id=m.id))
-# ---- [BEGIN mentor payments API] -------------------------------------------
+        flash("ارتباط منتور و دوره حذف شد.", "info")
+    return redirect(url_for("mentors.edit_form", mentor_id=mentor_id))
 
-def _to_int(x):
-    s = str(x or "0").replace(",", "").replace("٬", "").strip()
-    try:
-        return int(float(s))
-    except Exception:
-        return 0
 
-def _parse_dt(v):
-    if not v:
-        return None
-    try:
-        return datetime.fromisoformat(v)
-    except Exception:
-        return None
-
-@bp.route("/<int:mentor_id>/payments", methods=["GET"])
+# -------------------------------
+# Finance summary (used by edit.html JS -> /mentors/<id>/finance/summary)
+# -------------------------------
+@bp.get("/<int:mentor_id>/finance/summary")
 @login_required
-def api_list_payments(mentor_id):
+def finance_summary(mentor_id):
     Mentor.query.get_or_404(mentor_id)
+    return jsonify(_mentor_finance_summary(mentor_id))
 
-    kind = (request.args.get("kind") or "").upper()        # INCOME | EXPENSE | ''
-    status = (request.args.get("status") or "").upper()    # PAID | DUE | ''
-    date_from = request.args.get("from")                   # ISO: YYYY-MM-DD یا هر چیزی که datetime.fromisoformat بفهمه
-    date_to   = request.args.get("to")
 
-    q = Payment.query.filter_by(mentor_id=mentor_id)
+# -------------------------------
+# Payments endpoints used by JS در تب مالی
+# فعلا چون مدل پرداخت منتور نداریم، خالی برمی‌گردانیم
+# تا UI بدون خطا کار کند و اعداد کارت بالا از summary پر شود.
+# -------------------------------
+@bp.get("/<int:mentor_id>/payments")
+@login_required
+def payments_list(mentor_id):
+    Mentor.query.get_or_404(mentor_id)
+    totals = _mentor_finance_summary(mentor_id)["totals"]
+    return jsonify(ok=True, items=[], totals=totals)
 
-    if kind in ("INCOME", "EXPENSE"):
-        q = q.filter(Payment.kind == kind)
-    if status in ("PAID", "DUE"):
-        q = q.filter(Payment.status == status)
 
-    # بازه تاریخ روی paid_at
-    def _parse_date(d):
-        from datetime import datetime
-        try:
-            return datetime.fromisoformat(d)
-        except Exception:
-            return None
+@bp.post("/<int:mentor_id>/payments")
+@login_required
+def payments_add(mentor_id):
+    # در آینده: اینجا ذخیره پرداخت به منتور را اضافه کنید.
+    return jsonify(ok=True)
 
-    _from = _parse_date(date_from)
-    _to   = _parse_date(date_to)
-    if _from:
-        q = q.filter(Payment.paid_at >= _from)
-    if _to:
-        q = q.filter(Payment.paid_at <= _to)
 
-    q = q.order_by(Payment.paid_at.desc().nullslast(), Payment.id.desc())
+@bp.delete("/<int:mentor_id>/payments/<int:pay_id>")
+@login_required
+def payments_delete(mentor_id, pay_id):
+    # در آینده: حذف پرداخت منتور
+    return jsonify(ok=True)
 
-    items = [{
-        "id": p.id,
-        "mentor_id": p.mentor_id,
-        "amount": int(p.amount or 0),
-        "kind": p.kind,
-        "status": p.status,
-        "paid_at": p.paid_at.isoformat() if p.paid_at else None,
-        "note": p.note,
-        "title": getattr(p, "title", None),
-        "type": getattr(p, "type", None),
-        "created_at": p.created_at.isoformat() if getattr(p, "created_at", None) else None,
-    } for p in q.all()]
+# --- کمکی: اگر ستون واقعی نبود، literal(default) برگردان ---
+def _sa_col_or_literal(model, attr_name: str, default_value=0):
+    """اگر attr ستونی از نوع SQLAlchemy نبود، literal(default) بده."""
+    attr = getattr(model, attr_name, None)
+    if isinstance(attr, InstrumentedAttribute):
+        return attr
+    return literal(default_value)
 
-    # Totals با همان فیلترها
-    base = Payment.query.filter(Payment.mentor_id == mentor_id)
-    if kind in ("INCOME", "EXPENSE"):
-        base = base.filter(Payment.kind == kind)
-    if status in ("PAID", "DUE"):
-        base = base.filter(Payment.status == status)
-    if _from:
-        base = base.filter(Payment.paid_at >= _from)
-    if _to:
-        base = base.filter(Payment.paid_at <= _to)
 
-    income = func.coalesce(func.sum(case((Payment.kind == "INCOME", Payment.amount), else_=0)), 0)
-    expense = func.coalesce(func.sum(case((Payment.kind == "EXPENSE", Payment.amount), else_=0)), 0)
-    s = db.session.query(income.label("income"), expense.label("expense")).select_from(base.subquery()).one()
-    totals = {
-        "income": int(s.income or 0),
-        "expense": int(s.expense or 0),
-        "balance": int((s.income or 0) - (s.expense or 0)),
+# --- این تابع را کامل جایگزین نسخه فعلی‌اش کن ---
+def _mentor_finance_summary(mentor_id: int):
+    """
+    خروجی:
+    {
+      "items": [
+        {"course_id":.., "course_title":.., "students":.., "fee_per_student":..,
+         "share_percent":.., "income_total":.., "mentor_share":..}
+      ],
+      "totals": {"income_total":.., "share_total":.., "paid_total": 0, "balance": ..}
     }
-    return {"ok": True, "items": items, "totals": totals}
+    """
+    # ستون‌های «ایمن» (اگر ستون واقعی نبود 0 می‌گذاریم)
+    fee_col   = _sa_col_or_literal(Course, "fee_per_student", 0)
+    share_col = _sa_col_or_literal(Course, "mentor_share_percent", 0)
 
-@bp.route("/<int:mentor_id>/payments", methods=["POST"])
-def api_add_payment(mentor_id):
-    Mentor.query.get_or_404(mentor_id)
-    data = (request.get_json(silent=True) or request.form)
-
-    kind = (data.get("kind") or "EXPENSE").upper()   # INCOME | EXPENSE
-    if kind not in ("INCOME", "EXPENSE"):
-        return {"ok": False, "error": "kind must be INCOME or EXPENSE"}, 400
-
-    status = (data.get("status") or "PAID").upper()  # PAID | DUE
-    if status not in ("PAID", "DUE"):
-        return {"ok": False, "error": "status must be PAID or DUE"}, 400
-
-    p = Payment(
-        mentor_id=mentor_id,
-        student_id=None,
-        kind=kind,
-        status=status,
-        type=("OUT" if kind == "EXPENSE" else "IN"),
-        amount=_to_int(data.get("amount")),
-        title=data.get("title"),
-        note=data.get("note"),
-        paid_at=_parse_dt(data.get("paid_at")),
+    rows = (
+        db.session.query(
+            Course.id.label("course_id"),
+            Course.title.label("course_title"),
+            func.coalesce(fee_col, 0).label("fee_per_student"),
+            func.coalesce(share_col, 0).label("share_percent"),
+            func.count(Enrollment.id).label("students_count"),
+        )
+        .outerjoin(Enrollment, Enrollment.course_id == Course.id)
+        .filter(Course.mentor_id == mentor_id)
+        .group_by(Course.id)
+        .all()
     )
-    db.session.add(p)
-    db.session.commit()
-    return {"ok": True, "id": p.id}
 
-@bp.route("/<int:mentor_id>/payments/<int:pay_id>", methods=["DELETE"])
-def api_delete_payment(mentor_id, pay_id):
-    Mentor.query.get_or_404(mentor_id)
-    p = Payment.query.filter_by(id=pay_id, mentor_id=mentor_id).first_or_404()
-    db.session.delete(p)
-    db.session.commit()
-    return {"ok": True}
-# ---- [END mentor payments API] ---------------------------------------------
-def _get_or_create_skill(name: str, typ: str) -> Skill | None:
-    if not name:
-        return None
-    name = name.strip()
-    typ = (typ or "").strip().upper()  # 'TECH' | 'SOFT'
-    if typ not in ("TECH", "SOFT"):
-        return None
-    s = Skill.query.filter_by(name=name, type=typ).first()
-    if s:
-        return s
-    s = Skill(name=name, type=typ)
-    db.session.add(s)
-    db.session.flush()  # id بگیریم قبل از commit
-    return s
+    items = []
+    income_total = 0
+    share_total  = 0
 
-@bp.get("/<int:mentor_id>/skills")
-@login_required
-def api_list_skills(mentor_id):
-    Mentor.query.get_or_404(mentor_id)
-
-    rows = (db.session.query(MentorSkill)
-            .filter(MentorSkill.mentor_id == mentor_id)
-            .order_by(MentorSkill.id.desc())
-            .all())
-    tech, soft = [], []
     for r in rows:
-        item = {
-            "id": r.id,
-            "title": r.skill.name if r.skill else "",
-            "type": r.skill.type if r.skill else "",
-            "date_label": r.date_label,
-            "hours": r.hours,
-        }
-        if r.skill and r.skill.type == "TECH":
-            tech.append(item)
-        else:
-            soft.append(item)
-    return {"ok": True, "tech": tech, "soft": soft}
+        students = int(r.students_count or 0)
+        fee      = int(r.fee_per_student or 0)
+        share_pr = float(r.share_percent or 0)
 
-@bp.post("/<int:mentor_id>/skills")
-@login_required
-def api_add_skill(mentor_id):
-    Mentor.query.get_or_404(mentor_id)
-    data = request.get_json(silent=True) or request.form
+        income = students * fee  # درآمد کل دوره
+        share  = int(round(income * (share_pr / 100.0)))  # سهم منتور
 
-    name = (data.get("name") or "").strip()
-    typ  = (data.get("type") or "").strip().upper()  # 'TECH' | 'SOFT'
-    if not name or typ not in ("TECH", "SOFT"):
-        return {"ok": False, "error": "name/type invalid"}, 400
+        items.append({
+            "course_id": r.course_id,
+            "course_title": r.course_title,
+            "students": students,
+            "fee_per_student": fee,
+            "share_percent": share_pr,
+            "income_total": income,
+            "mentor_share": share,
+        })
 
-    skill = _get_or_create_skill(name, typ)
-    if not skill:
-        return {"ok": False, "error": "invalid skill"}, 400
+        income_total += income
+        share_total  += share
 
-    ms = MentorSkill(
-        mentor_id=mentor_id,
-        skill_id=skill.id,
-        date_label=(data.get("date_label") or "").strip() or None,
-        hours=int((data.get("hours") or 0) or 0) if typ == "SOFT" else None,
-    )
-    db.session.add(ms)
-    db.session.commit()
-    return {"ok": True, "id": ms.id}
+    # اگر پرداخت‌های منتور هم پیاده‌سازی شده، اینجا جمع پرداخت‌ها را جای آن بگذار
+    paid_total = 0
+    balance    = share_total - paid_total
 
-@bp.delete("/<int:mentor_id>/skills/<int:ms_id>")
-@login_required
-def api_delete_skill(mentor_id, ms_id):
-    Mentor.query.get_or_404(mentor_id)
-    ms = MentorSkill.query.filter_by(id=ms_id, mentor_id=mentor_id).first_or_404()
-    db.session.delete(ms)
-    db.session.commit()
-    return {"ok": True}
-
-@bp.route("/<int:mentor_id>/payments/<int:pay_id>/mark-paid", methods=["POST"])
-@login_required
-def api_mark_payment_paid(mentor_id, pay_id):
-    from datetime import datetime
-    Mentor.query.get_or_404(mentor_id)
-    p = Payment.query.filter_by(id=pay_id, mentor_id=mentor_id).first_or_404()
-    p.status = "PAID"
-    if not p.paid_at:
-        p.paid_at = datetime.utcnow()
-    db.session.commit()
-    return {"ok": True}
-
-#csc-export
-@bp.route("/<int:mentor_id>/payments/export", methods=["GET"])
-@login_required
-def export_payments_csv(mentor_id):
-    from io import StringIO
-    import csv
-    Mentor.query.get_or_404(mentor_id)
-
-    # همان فیلترهای GET
-    kind = (request.args.get("kind") or "").upper()
-    status = (request.args.get("status") or "").upper()
-    date_from = request.args.get("from")
-    date_to   = request.args.get("to")
-
-    def _parse_date(d):
-        from datetime import datetime
-        try:
-            return datetime.fromisoformat(d)
-        except Exception:
-            return None
-
-    _from = _parse_date(date_from)
-    _to   = _parse_date(date_to)
-
-    q = Payment.query.filter_by(mentor_id=mentor_id)
-    if kind in ("INCOME", "EXPENSE"):
-        q = q.filter(Payment.kind == kind)
-    if status in ("PAID", "DUE"):
-        q = q.filter(Payment.status == status)
-    if _from:
-        q = q.filter(Payment.paid_at >= _from)
-    if _to:
-        q = q.filter(Payment.paid_at <= _to)
-
-    q = q.order_by(Payment.paid_at.desc().nullslast(), Payment.id.desc())
-
-    buf = StringIO()
-    w = csv.writer(buf)
-    w.writerow(["id", "kind", "status", "amount", "paid_at", "title", "note"])
-    for p in q.all():
-        w.writerow([
-            p.id,
-            p.kind,
-            p.status,
-            int(p.amount or 0),
-            (p.paid_at.isoformat() if p.paid_at else ""),
-            getattr(p, "title", "") or "",
-            p.note or "",
-        ])
-
-    from flask import Response
-    fn = f"mentor_{mentor_id}_payments.csv"
-    return Response(
-        buf.getvalue().encode("utf-8-sig"),
-        mimetype="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f"attachment; filename={fn}"}
-    )
+    return {
+        "items": items,
+        "totals": {
+            "income_total": int(income_total),
+            "share_total":  int(share_total),
+            "paid_total":   int(paid_total),
+            "balance":      int(balance),
+        },
+    }

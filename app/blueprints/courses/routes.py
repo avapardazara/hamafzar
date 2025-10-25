@@ -11,6 +11,7 @@ from app.utils.media import save_uploaded_image
 from app.models.course_session import CourseSession, Attendance
 from app.models.core import Student
 from app.models.enrollment import Enrollment
+from sqlalchemy import func
 
 bp = Blueprint("courses", __name__, url_prefix="/courses")
 
@@ -205,7 +206,7 @@ def _safe_json(s):
     except Exception:
         return None
 
-# ---------- جلسات / حضور ----------
+# --------------- جلسات / حضور ---------------
 @bp.route("/<int:course_id>/sessions")
 @login_required
 def sessions_view(course_id):
@@ -502,3 +503,77 @@ def students_available(course_id):
 def test_datepicker():
     return render_template("test_datepicker.html")
 
+def _student_dict(s: Student):
+    name = ((s.first_name or '').strip() + ' ' + (s.last_name or '').strip()).strip()
+    if not name and hasattr(s, "full_name"):
+        name = (s.full_name or "").strip()
+    return {"id": s.id, "name": name or "—", "email": s.email or "", "phone": s.phone or ""}
+
+@bp.get("/<int:course_id>/students/json")
+@login_required
+def students_json(course_id: int):
+    course = Course.query.get_or_404(course_id)
+
+    # enrolled
+    enrolled = (
+        Student.query.join(Enrollment, Enrollment.student_id == Student.id)
+        .filter(Enrollment.course_id == course.id)
+        .order_by(Student.id.desc())
+        .all()
+    )
+
+    # available = همه به جز ثبت‌نام‌شده‌ها (+ فیلتر q)
+    enrolled_ids_q = db.session.query(Enrollment.student_id).filter_by(course_id=course.id)
+    q = (request.args.get("q") or "").strip()
+    available_q = Student.query.filter(~Student.id.in_(enrolled_ids_q))
+    if q:
+        like = f"%{q}%"
+        # concat امن برای SQLite/Postgres
+        full = (func.trim(func.coalesce(Student.first_name, "")) + " " + func.trim(func.coalesce(Student.last_name, "")))
+        available_q = available_q.filter(
+            Student.first_name.ilike(like) |
+            Student.last_name.ilike(like)  |
+            full.ilike(like)               |
+            Student.email.ilike(like)      |
+            Student.phone.ilike(like)
+        )
+    available = available_q.order_by(Student.id.desc()).limit(50).all()
+
+    return jsonify({
+        "course_id": course.id,
+        "enrolled":  [_student_dict(s) for s in enrolled],
+        "available": [_student_dict(s) for s in available],
+        "count": {"enrolled": len(enrolled), "available": len(available)},
+    })
+
+@bp.post("/<int:course_id>/students/enroll")
+@login_required
+def students_enroll(course_id: int):
+    course = Course.query.get_or_404(course_id)
+    sid = request.form.get("student_id", type=int)
+    if not sid:
+        return jsonify({"ok": False, "error": "student_id لازم است"}), 400
+
+    exists = Enrollment.query.filter_by(course_id=course.id, student_id=sid).first()
+    if exists:
+        return jsonify({"ok": True, "message": "قبلاً ثبت شده"}), 200
+
+    db.session.add(Enrollment(course_id=course.id, student_id=sid))
+    db.session.commit()
+    return jsonify({"ok": True})
+
+@bp.post("/<int:course_id>/students/unenroll")
+@login_required
+def students_unenroll(course_id: int):
+    course = Course.query.get_or_404(course_id)
+    sid = request.form.get("student_id", type=int)
+    if not sid:
+        return jsonify({"ok": False, "error": "student_id لازم است"}), 400
+
+    enr = Enrollment.query.filter_by(course_id=course.id, student_id=sid).first()
+    if not enr:
+        return jsonify({"ok": True, "message": "قبلاً حذف شده/یافت نشد"}), 200
+
+    db.session.delete(enr)
+    db.session.commit()
+    return jsonify({"ok": True})

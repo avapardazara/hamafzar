@@ -42,3 +42,8 @@ try:
     from .enrollment import Enrollment
 except Exception:
     Enrollment = None
+
+try:
+    from .mentor_payment import MentorPayment
+except Exception:
+    MentorPayment = None

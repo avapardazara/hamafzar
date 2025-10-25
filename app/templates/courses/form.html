@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ 'ویرایش دوره' if mode == 'edit' else 'دوره جدید' }} | هم‌افزار{% endblock %}
+
 {% block content %}
 <form id="courseForm" method="post" enctype="multipart/form-data" class="card"
       style="direction:rtl; max-width:1100px; margin:auto;"
@@ -22,7 +23,10 @@
           {% if c and c.cover_image %}
             <img id="coverPreview" src="{{ url_for('uploaded_file', filename=c.cover_image) }}" style="width:100%; height:100%; object-fit:cover;">
           {% else %}
-            <img id="coverPreview" src="{{ url_for('static', filename='images/cover-default.png') }}" style="width:100%; height:100%; object-fit:cover;">
+            <img id="coverPreview"
+                 src="{{ url_for('static', filename='images/cover-default.png') }}"
+                 style="width:100%; height:100%; object-fit:cover;"
+                 onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<?xml version=&quot;1.0&quot;?><svg xmlns=&quot;http://www.w3.org/2000/svg&quot; width=&quot;440&quot; height=&quot;280&quot;><rect width=&quot;100%&quot; height=&quot;100%&quot; fill=&quot;%23F3F4F6&quot;/><text x=&quot;50%&quot; y=&quot;50%&quot; dominant-baseline=&quot;middle&quot; text-anchor=&quot;middle&quot; fill=&quot;%239CA3AF&quot; font-family=&quot;Arial&quot; font-size=&quot;18&quot;>Cover</text></svg>';">
           {% endif %}
         </div>
         <div style="margin-top:10px;">
@@ -57,24 +61,18 @@
           </select>
         </div>
 
-        <!-- تاریخ شروع (شمسی) -->
+        <!-- تاریخ شروع (ساده و پایدار) -->
         <div>
           <label class="label">تاریخ شروع</label>
-          <!-- Hidden برای ارسال به بک‌اند به‌صورت Gregorian -->
-      <input type="hidden" name="start_date" id="start_date" value="{{ c.start_date if c and c.start_date else '' }}">
-      <input class="input" type="text" id="startDateFa" autocomplete="off"
-       placeholder="مثال: 1404/07/24"
-       data-fa-date
-       data-alt="#start_date"
-       data-initial="{{ c.start_date if c and c.start_date else '' }}">
+          <input class="input" type="date" name="start_date" id="start_date"
+                 value="{{ c.start_date if c and c.start_date else '' }}">
         </div>
 
-        <!-- تاریخ پایان (شمسی) -->
+        <!-- تاریخ پایان -->
         <div>
           <label class="label">تاریخ پایان</label>
-          <input type="hidden" name="end_date" id="end_date" value="{{ c.end_date if c and c.end_date else '' }}">
-          <input class="input" type="text" id="endDateFa" autocomplete="off"
-                 placeholder="مثال: 1404/08/15">
+          <input class="input" type="date" name="end_date" id="end_date"
+                 value="{{ c.end_date if c and c.end_date else '' }}">
         </div>
 
         <div style="grid-column:1 / -1;">
@@ -97,6 +95,7 @@
   <!-- Tab: Schedule -->
   <section id="tab-schedule" class="tab-panel" style="display:none;">
     <div class="card" style="border:none; box-shadow:none; padding:0; display:grid; gap:12px;">
+
       <div>
         <label class="label">نوع زمان‌بندی</label>
         <div style="display:flex; gap:10px; align-items:center;">
@@ -105,21 +104,19 @@
         </div>
       </div>
 
-      <!-- CUSTOM: فهرست تاریخ‌ها (ورودی شمسی) -->
-<div id="weeklyBox" {% if c and c.schedule_type=='WEEKLY' %}class="show"{% else %}class="hide"{% endif %}>
+      <!-- CUSTOM: فهرست تاریخ‌ها -->
+      <div id="customBox" {% if not c or (c and c.schedule_type!='WEEKLY') %}class="show"{% else %}class="hide"{% endif %}>
         <div class="label">لیست تاریخ‌های جلسات</div>
         <div style="display:grid; grid-template-columns: 1fr 120px; gap:8px; margin-bottom:8px;">
-          <!-- Hidden برای ISO -->
-          <input type="hidden" id="customDateIso">
-          <!-- نمای شمسی برای انتخاب -->
-          <input id="customDateFa" type="text" class="input" autocomplete="off" placeholder="انتخاب تاریخ شمسی">
+          <input id="customDate" type="date" class="input">
           <button type="button" class="btn btn-primary" id="btnAddDate">➕ افزودن</button>
         </div>
         <ul id="customDates" style="list-style:none; padding:0; margin:0; display:flex; flex-wrap:wrap; gap:6px;"></ul>
       </div>
 
       <!-- WEEKLY -->
-<div id="customBox" {% if not c or (c and c.schedule_type!='WEEKLY') %}class="show"{% else %}class="hide"{% endif %}>        <div class="label">روزهای هفته (مولتی انتخاب)</div>
+      <div id="weeklyBox" {% if c and c.schedule_type=='WEEKLY' %}class="show"{% else %}class="hide"{% endif %}>
+        <div class="label">روزهای هفته (مولتی انتخاب)</div>
         {% set _wd_init = c.weekly_days_json|default([]) %}
         {% set _wdays = [('SAT','شنبه'),('SUN','یکشنبه'),('MON','دوشنبه'),('TUE','سه‌شنبه'),('WED','چهارشنبه'),('THU','پنجشنبه'),('FRI','جمعه')] %}
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -158,12 +155,20 @@
   <!-- Tab: Students -->
   <section id="tab-students" class="tab-panel" style="display:none;">
     {% if mode == 'edit' %}
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+    <div id="course-students"
+         data-course-id="{{ c.id }}"
+         data-json-url="{{ url_for('courses.students_json', course_id=c.id) }}"
+         data-enroll-url="{{ url_for('courses.students_enroll', course_id=c.id) }}"
+         data-unenroll-url="{{ url_for('courses.students_unenroll', course_id=c.id) }}"
+         style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+
+      <!-- لیست دانشجوهای دوره -->
       <div class="card" style="border:1px solid #E5E7EB; border-radius:12px; padding:12px;">
         <h3 style="margin:0 0 8px 0;">👥 دانشجوهای دوره</h3>
         <div id="enroll-list"><p class="muted">در حال بارگذاری…</p></div>
       </div>
 
+      <!-- افزودن دانشجو -->
       <div class="card" style="border:1px solid #E5E7EB; border-radius:12px; padding:12px;">
         <h3 style="margin:0 0 8px 0;">➕ افزودن به دوره</h3>
         <div id="enroll-add-box">
@@ -188,7 +193,7 @@
   <input type="hidden" name="sessions_json" id="sessions_json" value='{{ c.sessions_json|tojson if c and c.sessions_json else "[]" }}'>
   <input type="hidden" name="weekly_days_json" id="weekly_days_json" value='{{ c.weekly_days_json|tojson if c and c.weekly_days_json else "[]" }}'>
   <input type="hidden" name="schedule_days" id="schedule_days" value="{{ c.schedule_days if c and c.schedule_days else '' }}">
-  <input type="hidden" name="schedule_pattern" id="schedule_pattern" value="{{ c.schedule_pattern if c and c.schedule_pattern else '' }}">
+  <input type="hidden" name="schedule_pattern" id="schedule_pattern" value="{{ c.schedule_pattern if c and c.schedule_pattern else '' }}'">
 
   <div style="margin-top:14px; display:flex; gap:12px;">
     <button class="btn btn-primary" type="submit">{{ 'ذخیره تغییرات' if mode == 'edit' else 'ثبت دوره' }}</button>
@@ -196,7 +201,7 @@
   </div>
 </form>
 
-<!-- Modal اقساط (با تاریخ شمسی) -->
+<!-- Modal اقساط (با ورودی تاریخ ساده) -->
 <div id="instModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.25); align-items:center; justify-content:center; padding:20px;">
   <div style="background:#fff; border-radius:16px; padding:16px; width:560px; max-width:100%; box-shadow:0 10px 30px rgba(0,0,0,0.1);">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -206,9 +211,7 @@
 
     <div style="display:grid; grid-template-columns: 1fr 140px 100px 80px; gap:8px; margin-bottom:10px;">
       <input id="instTitle" class="input" placeholder="شرح (اختیاری)">
-      <!-- Hidden ISO + شمسی برای اقساط -->
-      <input id="instDateIso" type="hidden">
-      <input id="instDateFa" class="input" type="text" autocomplete="off" placeholder="تاریخ شمسی">
+      <input id="instDate" class="input" type="date">
       <input id="instAmount" class="input" type="number" min="0" placeholder="مبلغ">
       <button id="btnAddInst" class="btn btn-primary" type="button">➕</button>
     </div>
@@ -235,26 +238,16 @@
   .table-rtl thead th { background:#F8FAFC; border-bottom:1px solid #EEF2F7; padding:10px; color:#7C8A9A; text-align:right; }
   .table-rtl td { border-bottom:1px solid #F1F5F9; padding:8px 10px; text-align:right; }
   .chip { background:#F3F4F6; border:1px solid #E5E7EB; padding:4px 8px; border-radius:999px; }
+  .show { display:block; }
+  .hide { display:none; }
 </style>
-
-<!-- Persian Datepicker dependencies (می‌تونی به base.html منتقل کنی) -->
-<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/css/persian-datepicker.min.css">
-<script src="https://cdn.jsdelivr.net/npm/persian-date@1.0.6/dist/persian-date.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/js/persian-datepicker.min.js"></script>
 
 <script>
 document.addEventListener('DOMContentLoaded', function(){
   /* تب‌ها */
   const tabs = document.querySelectorAll('.tabs .tab');
-  const panels = {
-    main: document.getElementById('tab-main'),
-    schedule: document.getElementById('tab-schedule'),
-    finance: document.getElementById('tab-finance'),
-    students: document.getElementById('tab-students'),
-  };
   function showTab(key){
-    Object.values(panels).forEach(p=>p.style.display='none');
+    document.querySelectorAll('.tab-panel').forEach(p=>p.style.display='none');
     tabs.forEach(t=>t.classList.remove('active'));
     const btn = Array.from(tabs).find(b=>b.dataset.tab===key);
     if(btn) btn.classList.add('active');
@@ -266,9 +259,6 @@ document.addEventListener('DOMContentLoaded', function(){
   tabs.forEach(t=>t.addEventListener('click',()=>showTab(t.dataset.tab)));
   showTab('main');
 
-  const rootForm = document.getElementById('courseForm');
-  const courseId = rootForm ? parseInt(rootForm.getAttribute('data-course-id') || '0', 10) : 0;
-
   /* پیش‌نمایش کاور */
   const coverInput = document.getElementById('coverInput');
   const coverPreview = document.getElementById('coverPreview');
@@ -279,146 +269,115 @@ document.addEventListener('DOMContentLoaded', function(){
     });
   }
 
-  /* ---------------- Persian Datepicker: فیلدهای اصلی ---------------- */
-  // Helper: فعال‌سازی تاریخ‌شمسی با altField (ISO)
-  function attachPDatepicker(faSelector, altSelector, initialGregorian){
-    const $fa = $(faSelector);
-    if (!$fa.length) return;
-    const opts = {
-      format: 'YYYY/MM/DD',
-      altField: altSelector,          // این Hidden به صورت YYYY-MM-DD پر می‌شود
-      altFormat: 'YYYY-MM-DD',
-      initialValue: !!initialGregorian,
-      initialValueType: 'gregorian',
-      calendar: { persian: { locale: 'fa', leapYearMode: 'astronomical' } },
-      toolbox: { calendarSwitch: { enabled: false } },
-      navigator: { enabled: true, scroll: { enabled: false } }
-    };
-    // اگر مقدار ابتدایی موجوده، معادل شمسی رو در input نشان بده
-    if (initialGregorian) {
-      try {
-        // Plugin خودش initialValueType='gregorian' را لحاظ می‌کند
-      } catch(_){}
+  /* Students (AJAX) */
+  const root = document.getElementById('course-students');
+  if (root){
+    const JSON_URL     = root.dataset.jsonUrl;
+    const ENROLL_URL   = root.dataset.enrollUrl;
+    const UNENROLL_URL = root.dataset.unenrollUrl;
+
+    const selectBox = document.getElementById('studentSelectBox');
+    const listBox   = document.getElementById('enroll-list');
+    const btnAdd    = document.getElementById('btnAddStudent');
+    const btnRefresh= document.getElementById('refreshSelectBox');
+
+    async function fetchJSON(url){
+      const res = await fetch(url, {credentials:'same-origin'});
+      if (!res.ok) throw new Error('HTTP '+res.status+' @ '+url);
+      return res.json();
     }
-    $fa.persianDatepicker(opts);
-  }
-
-  // تاریخ شروع/پایان
-  attachPDatepicker('#startDateFa', '#start_date', '{{ c.start_date if c and c.start_date else "" }}');
-  attachPDatepicker('#endDateFa',   '#end_date',   '{{ c.end_date   if c and c.end_date   else "" }}');
-
-  /* ---------------- Persian Datepicker: تاریخ‌های سفارشی جلسات ---------------- */
-  // برای CUSTOM dates: ورودی شمسی → hidden ISO
-  (function(){
-    const $fa = $('#customDateFa');
-    if ($fa.length){
-      $fa.persianDatepicker({
-        format: 'YYYY/MM/DD',
-        altField: '#customDateIso',
-        altFormat: 'YYYY-MM-DD',
-        initialValue: false,
-        calendar: { persian: { locale: 'fa', leapYearMode: 'astronomical' } },
-      });
+    async function postForm(url, data){
+      const fd = new FormData();
+      Object.entries(data).forEach(([k,v])=>fd.append(k,v));
+      const res = await fetch(url, {method:'POST', body:fd, credentials:'same-origin'});
+      const ct = res.headers.get('content-type')||'';
+      if (ct.includes('application/json')) return res.json();
+      return {ok: res.ok};
     }
-  })();
 
-  /* ---------------- Students (AJAX) ---------------- */
-  const enrollListBox = document.getElementById('enroll-list');
-  const studentSelect = document.getElementById('studentSelectBox');
-  const refreshBtn    = document.getElementById('refreshSelectBox');
-  async function loadEnrollments(){
-    if(!courseId || !enrollListBox) return;
-    enrollListBox.innerHTML = '<p class="muted">در حال بارگذاری…</p>';
-    try{
-      const res = await fetch(`/courses/${courseId}/enrollments`);
-      const items = await res.json();
-      if(!Array.isArray(items)||!items.length){
-        enrollListBox.innerHTML='<p class="muted">هیچ دانشجویی ثبت نشده.</p>';
+    function renderEnrolled(list){
+      if (!list || !list.length){
+        listBox.innerHTML = '<p class="muted">دانشجویی در این دوره ثبت‌نام نشده است.</p>';
         return;
       }
-      const ul=document.createElement('ul');
-      ul.style.listStyle='none';ul.style.padding='0';ul.style.margin='0';
-      items.forEach(it=>{
-        const li=document.createElement('li');
-        li.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border:1px solid #EEF2F7;border-radius:10px;margin-bottom:8px;background:#fff;';
-        li.innerHTML=`<span>${it.student_name||'—'} <small class="muted">#${it.student_id}</small></span>
-        <button class="btn btn-ghost" data-enroll="${it.id}">حذف</button>`;
-        ul.appendChild(li);
+      let html = '<ul style="list-style:none; padding:0; margin:0;">';
+      list.forEach(s=>{
+        html += `
+          <li style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #F1F5F9;">
+            <div>
+              <strong>${s.name}</strong><br>
+              <small class="muted">${s.email || ''} ${s.phone ? ' · '+s.phone : ''}</small>
+            </div>
+            <button class="btn btn-ghost btn-sm" data-unenroll="${s.id}">❌</button>
+          </li>`;
       });
-      enrollListBox.innerHTML='';
-      enrollListBox.appendChild(ul);
-      enrollListBox.querySelectorAll('button[data-enroll]').forEach(btn=>{
-        btn.addEventListener('click',async()=>{
-          const id=btn.getAttribute('data-enroll');
-          if(!confirm('حذف این دانشجو از دوره؟'))return;
-          const res=await fetch(`/courses/${courseId}/enrollments/${id}`,{method:'DELETE'});
-          if(res.ok){ loadEnrollments(); loadStudents(); }
-        });
-      });
-    }catch(e){ enrollListBox.innerHTML='<p class="muted">خطا در بارگذاری.</p>'; }
-  }
-  async function loadStudents(q='') {
-    if(!courseId || !studentSelect) return;
-    const url = `/courses/${courseId}/students/available${q ? '?q='+encodeURIComponent(q) : ''}`;
-    try {
-      const res = await fetch(url);
-      const data = await res.json();
-      studentSelect.innerHTML = '';
-      if(!data || !data.length){
-        studentSelect.innerHTML = '<option disabled>دانشجویی یافت نشد</option>';
+      html += '</ul>';
+      listBox.innerHTML = html;
+    }
+
+    function renderAvailable(list){
+      selectBox.innerHTML = '<option value="">— انتخاب دانشجو —</option>';
+      if (!list || !list.length){
+        const opt = document.createElement('option');
+        opt.textContent = 'هیچ دانشجویی یافت نشد';
+        selectBox.appendChild(opt);
         return;
       }
-      const def = document.createElement('option');
-      def.value=''; def.textContent='— انتخاب دانشجو —';
-      studentSelect.appendChild(def);
-      data.forEach(st=>{
-        const opt=document.createElement('option');
-        opt.value=st.id; opt.textContent=st.label;
-        studentSelect.appendChild(opt);
+      list.forEach(s=>{
+        const opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = `${s.name} (${s.email || s.phone || '—'})`;
+        selectBox.appendChild(opt);
       });
-    } catch(err) {
-      studentSelect.innerHTML = '<option disabled>❌ خطا در بارگذاری</option>';
     }
-  }
-  if (refreshBtn) refreshBtn.addEventListener('click', (e)=>{ e.preventDefault(); loadStudents(); });
-  if (courseId){ loadStudents(); loadEnrollments(); }
 
-  // افزودن دانشجو
-  (function(){
-    const btnAdd = document.getElementById('btnAddStudent');
-    if (!btnAdd) return;
-    btnAdd.addEventListener('click', async ()=>{
-      if(!courseId) return;
-      const id = studentSelect && studentSelect.value ? parseInt(studentSelect.value,10) : 0;
-      if(!id){ alert('یک دانشجو را انتخاب کنید.'); return; }
-      const fd = new FormData(); fd.append('student_id', String(id));
-      const res = await fetch(`/courses/${courseId}/enrollments`, { method:'POST', body: fd });
-      if(res.ok){ loadEnrollments(); loadStudents(); studentSelect.value=''; }
-      else { const j = await res.json().catch(()=>({})); alert(j.error || '❌ خطا در افزودن.'); }
+    async function refreshLists(){
+      listBox.innerHTML = '<p class="muted">در حال بارگذاری…</p>';
+      selectBox.innerHTML = '<option>در حال بارگذاری...</option>';
+      try{
+        const data = await fetchJSON(JSON_URL);
+        renderEnrolled(data.enrolled);
+        renderAvailable(data.available);
+      }catch(err){
+        console.error(err);
+        alert('خطا در دریافت فهرست دانشجوها: ' + err.message);
+        listBox.innerHTML = '<p class="muted text-danger">خطا در بارگذاری</p>';
+        selectBox.innerHTML = '<option value="">خطا در دریافت لیست</option>';
+      }
+    }
+
+    btnAdd?.addEventListener('click', async ()=>{
+      const sid = selectBox.value;
+      if (!sid){ alert('ابتدا دانشجو را انتخاب کنید'); return; }
+      btnAdd.disabled = true;
+      const res = await postForm(ENROLL_URL, {student_id: sid});
+      btnAdd.disabled = false;
+      if (res && res.ok) await refreshLists();
+      else alert((res && res.error) || 'افزودن انجام نشد');
     });
-  })();
 
-  /* ---------------- زمان‌بندی: سینک قبل از Submit ---------------- */
-  const customBox = document.getElementById('customBox');
-  const weeklyBox = document.getElementById('weeklyBox');
-  const scheduleRadios = document.querySelectorAll('input[name="schedule_type"]');
-  function updateScheduleUI(){
-    const sel = document.querySelector('input[name="schedule_type"]:checked');
-    const val = sel ? sel.value : 'CUSTOM';
-    if (val === 'WEEKLY') {
-      customBox.style.display='none'; weeklyBox.style.display='block';
-    } else {
-      customBox.style.display='block'; weeklyBox.style.display='none';
-    }
+    btnRefresh?.addEventListener('click', refreshLists);
+
+    listBox.addEventListener('click', async e=>{
+      const btn = e.target.closest('[data-unenroll]');
+      if (!btn) return;
+      const sid = btn.dataset.unenroll;
+      if (!confirm('دانشجو از دوره حذف شود؟')) return;
+      btn.disabled = true;
+      const res = await postForm(UNENROLL_URL, {student_id: sid});
+      if (res && res.ok) await refreshLists();
+      else alert((res && res.error) || 'خطا در حذف');
+    });
+
+    refreshLists();
   }
-  scheduleRadios.forEach(r => r.addEventListener('change', updateScheduleUI));
-  updateScheduleUI();
 
+  /* زمان‌بندی: سینک قبل از Submit */
   const weeklyDaysInput       = document.getElementById('weekly_days_json');
   const scheduleDaysHidden    = document.getElementById('schedule_days');
   const schedulePatternHidden = document.getElementById('schedule_pattern');
-  const pairRadios            = rootForm.querySelectorAll('input[name="pair_odd"]');
-  const weeklyChecks          = rootForm.querySelectorAll('.weekly-day');
+  const pairRadios            = document.querySelectorAll('input[name="pair_odd"]');
+  const weeklyChecks          = document.querySelectorAll('.weekly-day');
 
   function pushWeekly(){
     const arr = [];
@@ -434,100 +393,64 @@ document.addEventListener('DOMContentLoaded', function(){
   weeklyChecks.forEach(ch => ch.addEventListener('change', pushWeekly));
   pushWeekly();
 
-  // مدیریت CUSTOM dates (استفاده از hidden ISO)
+  // CUSTOM dates
   const sessionsInput = document.getElementById('sessions_json');
   const listUl = document.getElementById('customDates');
   const addDateBtn = document.getElementById('btnAddDate');
-  const customDateIso = document.getElementById('customDateIso'); // ← ISO از datepicker
+  const customDate = document.getElementById('customDate');
   let sessions = [];
   try { sessions = JSON.parse(sessionsInput.value || "[]") || []; } catch(e) { sessions = []; }
   function renderSessions(){
     listUl.innerHTML = '';
-    if (!sessions.length) {
-      listUl.innerHTML = '<li class="muted">تاریخی ثبت نشده.</li>';
-      return;
-    }
+    if (!sessions.length) { listUl.innerHTML = '<li class="muted">تاریخی ثبت نشده.</li>'; return; }
     sessions.forEach((s, i) => {
-      const chip = document.createElement('li');
-      chip.className = 'chip';
-      chip.innerHTML = `${i+1}. ${s.date} <button type="button" class="btn btn-ghost" style="margin-right:6px;" data-i="${i}">حذف</button>`;
-      chip.querySelector('button').addEventListener('click', (e) => {
+      const li = document.createElement('li');
+      li.className = 'chip';
+      li.innerHTML = `${i+1}. ${s.date} <button type="button" class="btn btn-ghost" style="margin-right:6px;" data-i="${i}">حذف</button>`;
+      li.querySelector('button').addEventListener('click', (e) => {
         const idx = +e.currentTarget.getAttribute('data-i');
         sessions.splice(idx, 1);
         sessionsInput.value = JSON.stringify(sessions);
         renderSessions();
       });
-      listUl.appendChild(chip);
+      listUl.appendChild(li);
     });
   }
   renderSessions();
   addDateBtn?.addEventListener('click', () => {
-    const d = (customDateIso.value || '').trim(); // از hidden ISO می‌گیریم
+    const d = (customDate.value || '').trim(); // yyyy-mm-dd
     if (!d) return;
     sessions.push({date: d});
     sessionsInput.value = JSON.stringify(sessions);
-    // پاک‌سازی ورودی‌ها
-    $('#customDateFa').val('');
-    customDateIso.value = '';
+    customDate.value = '';
     renderSessions();
   });
 
-  // قبل از submit: هفتگی رو نگاشت کن؛ CUSTOM هم در sessions_json هست
-  rootForm.addEventListener('submit', () => {
+  // قبل از submit: نگاشت نهایی
+  const rootFormEl = document.getElementById('courseForm');
+  rootFormEl.addEventListener('submit', () => {
     const typeSel = document.querySelector('input[name="schedule_type"]:checked');
     const typeVal = typeSel ? typeSel.value : 'CUSTOM';
     if (typeVal === 'WEEKLY') {
       const arr = pushWeekly();
-      if (weeklyDaysInput) weeklyDaysInput.value = JSON.stringify(arr);
-      if (scheduleDaysHidden) scheduleDaysHidden.value = arr.join(',');
+      if (scheduleDaysHidden)    scheduleDaysHidden.value = arr.join(',');
       if (schedulePatternHidden) schedulePatternHidden.value = mapPattern();
     } else {
-      if (scheduleDaysHidden) scheduleDaysHidden.value = '';
+      if (scheduleDaysHidden)    scheduleDaysHidden.value = '';
       if (schedulePatternHidden) schedulePatternHidden.value = '';
     }
-    // دیباگ: ببینیم چه چیزی میره بک‌اند
-    const fd = new FormData(rootForm); const dbg = {};
-    fd.forEach((v,k)=>dbg[k]=v);
-    console.log('🧾 داده‌های ارسالی:', dbg);
   });
 
-  /* تولید جلسات از برنامه */
-  const btnGen = document.getElementById('btnGenerateSessions');
-  if (btnGen && courseId) {
-    btnGen.addEventListener('click', async ()=>{
-      btnGen.disabled = true; const old = btnGen.textContent; btnGen.textContent = 'در حال ساخت…';
-      try{
-        const res = await fetch(`/courses/${courseId}/sessions/generate`, { method:'POST' });
-        if (res.ok) { location.href = `/courses/${courseId}/sessions`; }
-        else { const j = await res.json().catch(()=>({})); alert(j.error || '❌ خطا در تولید جلسات.'); }
-      } finally {
-        btnGen.disabled = false; btnGen.textContent = old;
-      }
-    });
-  }
-
-  /* -------- Persian Datepicker برای اقساط -------- */
-  (function(){
-    const $fa = $('#instDateFa');
-    if ($fa.length){
-      $fa.persianDatepicker({
-        format: 'YYYY/MM/DD',
-        altField: '#instDateIso',
-        altFormat: 'YYYY-MM-DD',
-        initialValue: false,
-        calendar: { persian: { locale: 'fa', leapYearMode: 'astronomical' } },
-      });
-    }
-  })();
-
-  // اقساط: مدیریت (بدون تغییر اساسی، فقط خواندن ISO از instDateIso)
+  /* اقساط (بدون Datepicker) */
   const instModal = document.getElementById('instModal');
-  const btnEditInst = document.getElementById('btnEditInstallments');
   const btnCloseInst = document.getElementById('btnCloseInst');
   const btnInstCancel = document.getElementById('btnInstCancel');
   const btnInstSave = document.getElementById('btnInstSave');
   const instTbody = document.getElementById('instTbody');
-  const instJsonInput = document.getElementById('installments_json');
+  const instTitle = document.getElementById('instTitle');
+  const instDate  = document.getElementById('instDate');   // type="date"
+  const instAmt   = document.getElementById('instAmount');
+  const instJsonInput = document.getElementById('installments_json'); // اگر در فرم اصلی داری
   let installments = [];
   try { installments = JSON.parse(instJsonInput?.value || "[]") || []; } catch(e) { installments = []; }
   function renderInstTable(){
@@ -553,56 +476,18 @@ document.addEventListener('DOMContentLoaded', function(){
       instTbody.appendChild(tr);
     });
   }
-  function renderInstChips(){
-    const instList = document.getElementById('instList');
-    if(!instList) return;
-    instList.innerHTML = '';
-    if (!installments.length) { instList.innerHTML = '<li class="muted">قسطی ثبت نشده.</li>'; return; }
-    installments.forEach((r,i) => {
-      const li = document.createElement('li');
-      li.className = 'chip';
-      li.textContent = `${i+1}. ${r.due} — ${(+r.amount||0).toLocaleString('fa-IR')} ${r.title?('— '+r.title):''}`;
-      instList.appendChild(li);
-    });
-  }
   document.getElementById('btnAddInst')?.addEventListener('click', () => {
-    const title = (document.getElementById('instTitle').value||'').trim();
-    const due   = (document.getElementById('instDateIso').value||'').trim();  // ← ISO
-    const amt   = (document.getElementById('instAmount').value||'').trim();
+    const title = (instTitle.value||'').trim();
+    const due   = (instDate.value||'').trim();     // yyyy-mm-dd
+    const amt   = (instAmt.value||'').trim();
     if (!due || !amt) return;
     installments.push({title, due, amount: parseInt(amt,10)||0});
-    document.getElementById('instTitle').value=''; $('#instDateFa').val(''); document.getElementById('instDateIso').value='';
-    document.getElementById('instAmount').value='';
+    instTitle.value=''; instDate.value=''; instAmt.value='';
     renderInstTable();
   });
-  btnEditInst?.addEventListener('click', () => { renderInstTable(); instModal.style.display='flex'; });
-  btnCloseInst?.addEventListener('click', () => instModal.style.display='none');
+  btnInstSave?.addEventListener('click', () => { if (instJsonInput) instJsonInput.value = JSON.stringify(installments); instModal.style.display='none'; });
   btnInstCancel?.addEventListener('click', () => instModal.style.display='none');
-  btnInstSave?.addEventListener('click', () => { instJsonInput.value = JSON.stringify(installments); instModal.style.display='none'; renderInstChips(); });
-  renderInstChips();
-
+  btnCloseInst?.addEventListener('click', () => instModal.style.display='none');
 });
-function attachPDatepicker(faSelector, altSelector, initialGregorian) {
-  const $fa = $(faSelector);
-  if (!$fa.length) return;
-  $fa.persianDatepicker({
-    format: 'YYYY/MM/DD',
-    altField: altSelector,      // hidden ISO
-    altFormat: 'YYYY-MM-DD',
-    initialValue: !!initialGregorian,
-    initialValueType: 'gregorian', // اگر initialGregorian به صورت 2025-10-20 باشد
-    calendar: { persian: { locale: 'fa', leapYearMode: 'astronomical' } },
-    toolbox: { calendarSwitch: { enabled: false } },
-    navigator: { enabled: true, scroll: { enabled: false } }
-  });
-}
-
-// کمکی: اگر می‌خواهی yyyy-mm-dd را به ورودی شمسی تبدیل و نمایش بدهی
-function initFaInputFromIso(faSelector, isoValue) {
-  if (!isoValue) return;
-  // persianDatepicker خودش با initialValueType='gregorian' مدیریت می‌کند
-}
 </script>
 {% endblock %}
-
-

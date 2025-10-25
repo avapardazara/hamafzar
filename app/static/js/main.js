@@ -4,7 +4,13 @@
     const $fa = $(faInput);
     if (!$fa.length) return;
 
-    // برای جلوگیری از تایپ دستی و مجبور کردن به استفاده از پیکر
+    // اگر پلاگین در دسترس نبود، اجازه تایپ دستی بده و خارج شو
+    if (!(window.$ && $.fn && $.fn.persianDatepicker)) {
+      // Fallback: اجازه تایپ دستی و هیچ رفتاری نکن
+      return;
+    }
+
+    // پلاگین در دسترس است؛ حالا readonly کن تا فقط از پیکر استفاده شود
     $fa.attr('readonly', 'readonly');
 
     // راه‌اندازی دیت‌پیکر
@@ -20,7 +26,7 @@
       navigator: { enabled: true, scroll: { enabled: false } }
     });
 
-    // با کلیک و فوکِس، پاپ‌آپ باز شود
+    // با کلیک یا فوکِس، پاپ‌آپ باز شود
     $fa.on('focus click', function(){
       try { $fa.persianDatepicker('show'); } catch(e) {}
     });

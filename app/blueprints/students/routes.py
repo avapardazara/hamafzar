@@ -1,21 +1,58 @@
 # app/blueprints/students/routes.py
 from flask import (
-    Blueprint, render_template, request, redirect, url_for, flash, current_app
+    Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify
 )
 from flask_login import login_required
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from ...extensions import db
 from ...models.core import Student
 from ...utils.files import save_student_avatar, delete_student_avatar
-from flask import jsonify
+
 from app.models.skill import Skill, StudentSkill
 from app.models.course import Course
 from app.models.payment import Payment
 from app.models.enrollment import Enrollment
+
 from datetime import datetime, date
+
 bp = Blueprint("students", __name__, url_prefix="/students")
 
+# ------------------------- Helpers: Payments -------------------------
 
+def _normalize_kind(val: str) -> str:
+    v = (val or "").strip().lower()
+    if v in ("in", "income", "receive", "received"):
+        return "receive"
+    if v in ("out", "expense", "pay", "paid", "payment"):
+        return "pay"
+    return "receive"
+
+def _has_attr(model, name: str) -> bool:
+    return hasattr(model, name) and name in model.__table__.c
+
+def _set_kind_fields(p: Payment, norm_kind: str):
+    if _has_attr(Payment, "kind"):
+        setattr(p, "kind", norm_kind)
+    if _has_attr(Payment, "type"):
+        setattr(p, "type", "IN" if norm_kind == "receive" else "OUT")
+
+def _payment_is_receive_expr():
+    cols = []
+    if _has_attr(Payment, "kind"):
+        cols.append(func.lower(Payment.kind) == "receive")
+    if _has_attr(Payment, "type"):
+        cols.append(func.upper(Payment.type) == "IN")
+    return or_(*cols) if cols else False
+
+def _payment_is_pay_expr():
+    cols = []
+    if _has_attr(Payment, "kind"):
+        cols.append(func.lower(Payment.kind) == "pay")
+    if _has_attr(Payment, "type"):
+        cols.append(func.upper(Payment.type) == "OUT")
+    return or_(*cols) if cols else False
+
+# ------------------------- Helpers: misc -------------------------
 
 def _parse_date(s: str | None):
     if not s:
@@ -27,18 +64,23 @@ def _parse_date(s: str | None):
     except Exception:
         return None
 
-# ---------- Utilities ----------
 def _paginate_query(base_query, page: int, per_page: int):
     total = base_query.count()
-    items = (base_query
-             .order_by(Student.created_at.desc())
-             .offset((page - 1) * per_page)
-             .limit(per_page)
-             .all())
+    items = (
+        base_query
+        .order_by(Student.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
     return items, total
 
+def _student_enrolled_course_ids(student_id: int) -> set[int]:
+    rows = db.session.query(Enrollment.course_id).filter(Enrollment.student_id == student_id).all()
+    return {int(r[0]) for r in rows}
 
-# ---------- List ----------
+# ------------------------- List -------------------------
+
 @bp.get("/")
 @login_required
 def list():
@@ -64,15 +106,13 @@ def list():
         items=items, q=q, page=page, per_page=per_page, total=total
     )
 
+# ------------------------- Create -------------------------
 
-# ---------- Create (form) ----------
 @bp.get("/new")
 @login_required
 def create_form():
     return render_template("students/create.html")
 
-
-# ---------- Create (submit) ----------
 @bp.post("/")
 @login_required
 def create():
@@ -94,9 +134,8 @@ def create():
         notes=(f.get("notes") or "").strip() or None,
     )
     db.session.add(s)
-    db.session.commit()  # تا id داشته باشه
+    db.session.commit()
 
-    # آواتار (اختیاری)
     file = request.files.get("avatar")
     if file:
         rel_path = save_student_avatar(file, s.id)
@@ -109,8 +148,8 @@ def create():
     flash("کارآموز با موفقیت اضافه شد.", "success")
     return redirect(url_for("students.list"))
 
+# ------------------------- Edit/Update -------------------------
 
-# ---------- Edit (form) ----------
 @bp.get("/<int:student_id>/edit")
 @login_required
 def edit_form(student_id):
@@ -120,8 +159,6 @@ def edit_form(student_id):
         return redirect(url_for("students.list"))
     return render_template("students/edit.html", s=s)
 
-
-# ---------- Update (submit) ----------
 @bp.post("/<int:student_id>")
 @login_required
 def update(student_id):
@@ -143,13 +180,11 @@ def update(student_id):
         flash("نام و نام خانوادگی الزامی است.", "error")
         return redirect(url_for("students.edit_form", student_id=student_id))
 
-    # حذف تصویر؟
     delete_flag = f.get("delete_avatar")
     if delete_flag == "1" and s.avatar_path:
         delete_student_avatar(s)
         s.avatar_path = None
 
-    # آپلود تصویر جدید؟
     file = request.files.get("avatar")
     if file:
         rel_path = save_student_avatar(file, s.id)
@@ -162,8 +197,8 @@ def update(student_id):
     flash("ویرایش با موفقیت ذخیره شد.", "success")
     return redirect(url_for("students.list"))
 
+# ------------------------- Soft Delete -------------------------
 
-# ---------- Soft Delete ----------
 @bp.post("/<int:student_id>/delete")
 @login_required
 def delete(student_id):
@@ -172,45 +207,32 @@ def delete(student_id):
     db.session.commit()
     flash("رکورد حذف شد.", "info")
     return redirect(url_for("students.list"))
-# ---------- Profile ----------
+
+# ------------------------- Profile -------------------------
+
 @bp.get("/<int:student_id>")
 @login_required
 def profile(student_id):
     s = Student.query.get_or_404(student_id)
-    if s.is_deleted:
-        flash("این کارآموز حذف شده است.", "error")
-        return redirect(url_for("students.list"))
 
-    # امن و بدون وابستگی به مدل‌های بعدی
-    def safe_list(x):
-        try:
-            return list(x) if x else []
-        except Exception:
-            return []
+    courses_count = db.session.query(func.count(Enrollment.id))\
+        .filter(Enrollment.student_id == s.id).scalar() or 0
 
-    enrolled_courses = safe_list(getattr(s, "enrollments", []))  # بعداً واقعی می‌کنیم
-    skills           = safe_list(getattr(s, "skills", []))
-    payments         = safe_list(getattr(s, "payments", []))
+    skills_count = db.session.query(func.count(StudentSkill.id))\
+        .filter(StudentSkill.student_id == s.id).scalar() or 0
 
-    # ✔️ مقدار پیش‌فرض برای جلوگیری از UndefinedError
+    summary = _finance_summary(s.id)
+    balance = float(summary["totals"]["balance"])
+
     stats = {
-        "courses_count": len(enrolled_courses) if enrolled_courses else 0,
-        "skills_count":  len(skills) if skills else 0,
-        "balance": sum(
-            (getattr(p, "amount", 0) or 0) *
-            (1 if getattr(p, "type", "in") == "in" else -1)
-            for p in payments
-        ) if payments else 0
+        "courses_count": int(courses_count),
+        "skills_count": int(skills_count),
+        "balance": balance,
     }
+    return render_template("students/profile.html", s=s, stats=stats)
 
-    return render_template(
-        "students/profile.html",
-        s=s, stats=stats,
-        enrolled_courses=enrolled_courses,
-        skills=skills,
-        payments=payments
-    )
-#مهارت های دانشجو
+# ------------------------- Skills APIs -------------------------
+
 @bp.get("/<int:student_id>/skills")
 @login_required
 def api_list_skills(student_id):
@@ -225,13 +247,13 @@ def api_list_skills(student_id):
     for ss in items:
         out.append({
             "id": ss.id,
-            "type": ss.skill.type,     # 'TECH' | 'SOFT'
+            "type": ss.skill.type,
             "name": ss.skill.name,
             "date_label": ss.date_label,
             "hours": ss.hours,
         })
     return jsonify(out), 200
-#افزودن مهارت
+
 @bp.post("/<int:student_id>/skills")
 @login_required
 def api_add_skill(student_id):
@@ -249,7 +271,7 @@ def api_add_skill(student_id):
     if not skill:
         skill = Skill(name=name, type=stype)
         db.session.add(skill)
-        db.session.flush()  # تا skill.id داشته باشیم
+        db.session.flush()
 
     ss = StudentSkill(student_id=s.id, skill_id=skill.id,
                       date_label=date_label or None,
@@ -257,7 +279,7 @@ def api_add_skill(student_id):
     db.session.add(ss)
     db.session.commit()
     return jsonify({"ok": True, "id": ss.id}), 201
-#حذف مهارت
+
 @bp.delete("/<int:student_id>/skills/<int:ss_id>")
 @login_required
 def api_delete_skill(student_id, ss_id):
@@ -266,7 +288,9 @@ def api_delete_skill(student_id, ss_id):
     db.session.delete(ss)
     db.session.commit()
     return jsonify({"ok": True}), 200
-#لیست ثبت نام های دانشجو
+
+# ------------------------- Enrollments APIs -------------------------
+
 @bp.get("/<int:student_id>/enrollments")
 @login_required
 def api_list_enrollments(student_id):
@@ -290,7 +314,7 @@ def api_list_enrollments(student_id):
             }
         })
     return jsonify(out), 200
-#افزودن ثبت نام - دوره
+
 @bp.post("/<int:student_id>/enrollments")
 @login_required
 def api_add_enrollment(student_id):
@@ -302,7 +326,6 @@ def api_add_enrollment(student_id):
     if not course_id:
         return jsonify({"ok": False, "error": "course_required"}), 400
 
-    # جلوگیری از ثبت‌نام تکراری
     exists = Enrollment.query.filter_by(student_id=s.id, course_id=course_id).first()
     if exists:
         return jsonify({"ok": False, "error": "already_enrolled"}), 409
@@ -311,7 +334,7 @@ def api_add_enrollment(student_id):
     db.session.add(row)
     db.session.commit()
     return jsonify({"ok": True, "id": row.id}), 201
-#حذف ثبت نام دانشجو - دوره
+
 @bp.delete("/<int:student_id>/enrollments/<int:en_id>")
 @login_required
 def api_delete_enrollment(student_id, en_id):
@@ -320,77 +343,188 @@ def api_delete_enrollment(student_id, en_id):
     db.session.delete(row)
     db.session.commit()
     return jsonify({"ok": True}), 200
-#لیست سادهٔ دوره‌ها برای انتخاب (کمک به UI) - دوره
+
+# ----- course options for general use (all active courses)
 @bp.get("/courses/options")
 @login_required
 def api_course_options():
     q = Course.query.filter(Course.status != "ARCHIVED").order_by(Course.created_at.desc()).all()
     return jsonify([{"id": c.id, "title": c.title, "mentor_name": c.mentor_name or ""} for c in q]), 200
-#افزودن تراکنش - بخش مالی - پروفایل دانشجو
+
+# ----- NEW: course options limited to the student's enrollments (for finance select)
+@bp.get("/<int:student_id>/courses/enrolled-options")
+@login_required
+def api_enrolled_course_options(student_id):
+    Student.query.get_or_404(student_id)
+    rows = (
+        db.session.query(Course.id, Course.title, Course.mentor_name)
+        .join(Enrollment, Enrollment.course_id == Course.id)
+        .filter(Enrollment.student_id == student_id)
+        .order_by(Course.created_at.desc())
+        .all()
+    )
+    return jsonify([{"id": r.id, "title": r.title, "mentor_name": r.mentor_name or ""} for r in rows]), 200
+
+# ------------------------- Payments APIs -------------------------
+
 @bp.get("/<int:student_id>/payments")
 @login_required
 def api_list_payments(student_id):
-    """لیست پرداخت‌های دانشجو (Newest first)"""
-    Student.query.get_or_404(student_id)  # اعتبارسنجی وجود دانشجو
-    rows = (Payment.query
-            .filter(Payment.student_id == student_id)
-            .order_by(Payment.created_at.desc())
-            .all())
-    return jsonify([
-        {
+    Student.query.get_or_404(student_id)
+    q = Payment.query.filter(Payment.student_id == student_id).order_by(Payment.id.desc())
+
+    items = []
+    for p in q.all():
+        if _has_attr(Payment, "type"):
+            t = getattr(p, "type") or ("IN" if getattr(p, "kind", "") == "receive" else "OUT")
+        else:
+            t = "IN" if (getattr(p, "kind", "") or "").lower() == "receive" else "OUT"
+
+        created_label = ""
+        if _has_attr(Payment, "created_at") and getattr(p, "created_at"):
+            created_label = getattr(p, "created_at").strftime("%Y-%m-%d")
+
+        items.append({
             "id": p.id,
-            "kind": p.kind,
-            "status": p.status,
-            "amount": int(p.amount or 0),
             "title": p.title,
-            "note": p.note,
-            "course_id": getattr(p, "course_id", None),
-            "paid_at": p.paid_at.isoformat() if p.paid_at else None,
-            "due_date": p.due_date.isoformat() if p.due_date else None,
-            "created_at": p.created_at.isoformat() if p.created_at else None,
-        } for p in rows
-    ])
+            "amount": p.amount,
+            "type": t,
+            "created_at": created_label
+        })
+
+    total_in = db.session.query(func.coalesce(func.sum(Payment.amount), 0))\
+        .filter(Payment.student_id == student_id, _payment_is_receive_expr()).scalar() or 0
+    total_out = db.session.query(func.coalesce(func.sum(Payment.amount), 0))\
+        .filter(Payment.student_id == student_id, _payment_is_pay_expr()).scalar() or 0
+    balance = int(total_in) - int(total_out)
+
+    return jsonify(items=items, balance=balance)
 
 @bp.post("/<int:student_id>/payments")
 @login_required
 def api_add_payment(student_id):
-    """افزودن پرداخت برای دانشجو"""
     s = Student.query.get_or_404(student_id)
 
-    # اگر در فرم قبلاً name="type" بوده، برای سازگاری؛ ولی در DB باید kind ذخیره شود
-    pkind   = (request.form.get("kind") or request.form.get("type") or "tuition").strip()
-    title   = (request.form.get("title") or "").strip() or "پرداخت"
-    status  = (request.form.get("status") or "paid").strip()
-    amount  = int(float((request.form.get("amount") or "0").replace(",", "").replace("٬","")))
+    data = request.get_json(silent=True) or {}
+    title = (data.get("title") or "").strip()
+    amount = data.get("amount")
+    raw_kind = data.get("type") or data.get("kind") or "IN"
+    course_id = data.get("course_id")
 
-    note      = (request.form.get("note") or "").strip() or None
-    paid_at_s = request.form.get("paid_at")
-    due_date  = _parse_date(request.form.get("due_date"))
-    course_id = request.form.get("course_id", type=int)
+    if not title:
+        return jsonify(error="عنوان الزامی است."), 400
+    try:
+        amount = int(amount)
+    except Exception:
+        return jsonify(error="مبلغ نامعتبر است."), 400
+    if amount <= 0:
+        return jsonify(error="مبلغ باید بزرگتر از صفر باشد."), 400
 
-    row = Payment(
-        student_id=s.id,
-        kind=pkind,               # <-- مهم: به جای 'type'
-        title=title,
-        status=status,
-        amount=amount,
-        note=note,
-        paid_at=(datetime.fromisoformat(paid_at_s) if paid_at_s else None),
-        due_date=due_date,
-        **({"course_id": course_id} if course_id else {})
-    )
+    kind = _normalize_kind(raw_kind)
 
-    db.session.add(row)
+    p = Payment()
+    p.student_id = s.id
+
+    # اگر کاربر دوره‌ای را انتخاب کرده، باید واقعاً دانشجو در آن ثبت‌نام شده باشد
+    if course_id not in (None, "", 0):
+        try:
+            cid = int(course_id)
+        except Exception:
+            return jsonify(error="شناسه دوره نامعتبر است."), 400
+
+        # وجود دوره
+        c = Course.query.get(cid)
+        if not c:
+            return jsonify(error="دوره یافت نشد."), 404
+
+        # اعتبارسنجی ثبت‌نام دانشجو در همان دوره
+        enrolled_ids = _student_enrolled_course_ids(s.id)
+        if cid not in enrolled_ids:
+            return jsonify(error="دانشجو در این دوره ثبت‌نام نشده است."), 400
+
+        p.course_id = cid
+
+    p.title = title
+    p.amount = amount
+    _set_kind_fields(p, kind)
+    if _has_attr(Payment, "created_at") and getattr(p, "created_at") is None:
+        p.created_at = datetime.utcnow()
+
+    db.session.add(p)
     db.session.commit()
-    return jsonify({"ok": True, "id": row.id})
-#حذف تراکنش - بخش مالی - پروفایل دانشجو
+    return jsonify(ok=True, id=p.id)
 
 @bp.delete("/<int:student_id>/payments/<int:pay_id>")
 @login_required
 def api_delete_payment(student_id, pay_id):
-    """حذف پرداخت دانشجو"""
     Student.query.get_or_404(student_id)
     p = Payment.query.filter_by(id=pay_id, student_id=student_id).first_or_404()
     db.session.delete(p)
     db.session.commit()
-    return jsonify({"ok": True})
+    return jsonify(ok=True)
+
+# ------------------------- Finance Summary (no SQL over @property) -------------------------
+
+def _get_course_fee(course_obj) -> int:
+    for attr in ("fee_per_student", "fee", "price_per_student", "price", "tuition"):
+        if hasattr(course_obj, attr):
+            try:
+                val = getattr(course_obj, attr)
+                if val is not None:
+                    return int(val) or 0
+            except Exception:
+                pass
+    return 0
+
+def _finance_summary(student_id: int):
+    rows = (
+        db.session.query(Enrollment.course_id, Course.title, Course)
+        .join(Course, Course.id == Enrollment.course_id)
+        .filter(Enrollment.student_id == student_id)
+        .order_by(Enrollment.course_id)
+        .all()
+    )
+
+    items = []
+    total_fee = 0
+    total_paid = 0
+
+    for course_id, course_title, course_obj in rows:
+        fee = _get_course_fee(course_obj)
+
+        paid = (
+            db.session.query(func.coalesce(func.sum(Payment.amount), 0))
+            .filter(
+                Payment.student_id == student_id,
+                Payment.course_id == course_id,
+                _payment_is_receive_expr()
+            )
+            .scalar()
+            or 0
+        )
+
+        items.append({
+            "course_id": int(course_id),
+            "course_title": course_title,
+            "fee": int(fee),
+            "paid": int(paid),
+            "balance": int(fee) - int(paid),
+        })
+
+        total_fee += int(fee)
+        total_paid += int(paid)
+
+    return {
+        "items": items,
+        "totals": {
+            "fee": int(total_fee),
+            "paid": int(total_paid),
+            "balance": int(total_fee) - int(total_paid),
+        }
+    }
+
+@bp.get("/<int:student_id>/finance/summary")
+@login_required
+def finance_summary(student_id):
+    Student.query.get_or_404(student_id)
+    return jsonify(_finance_summary(student_id))

@@ -8,7 +8,7 @@
     <input class="input" name="q" placeholder="جست‌وجو: نام / ایمیل / موبایل" value="{{ q or '' }}" style="flex:1; min-width:280px;">
     <button class="btn btn-primary" type="submit">جست‌وجو</button>
     <a class="btn btn-ghost" href="{{ url_for('mentors.list') }}">پاک‌سازی</a>
-    <a class="btn" href="{{ url_for('mentors.new_form') }}" style="margin-right:auto;">➕ منتور جدید</a>
+    <a class="btn" href="{{ url_for('mentors.create_form') }}" style="margin-right:auto;">➕ منتور جدید</a>
   </form>
 </div>
 
@@ -32,7 +32,8 @@
         </tr>
       </thead>
       <tbody>
-        {% for m in items %}
+        {# اصلاح اصلی: از mentors (لیست پاس‌شده از روت) استفاده کن #}
+        {% for m in mentors %}
         <tr>
           <td>{{ loop.index }}</td>
           <td class="ellipsis">
@@ -44,17 +45,21 @@
               {% else %}
                 <div class="avatar-mini avatar-fallback">👤</div>
               {% endif %}
-              <span class="ellipsis">{{ m.full_name }}</span>
+              <span class="ellipsis">
+                {{ m.full_name or (((m.first_name or '') ~ ' ' ~ (m.last_name or '')) | trim) or '—' }}
+              </span>
             </a>
           </td>
           <td class="ellipsis">{{ m.email or '—' }}</td>
           <td class="ellipsis">{{ m.phone or '—' }}</td>
           <td>
             <div class="actions">
-              <a class="btn btn-ghost" href="{{ url_for('mentors.edit_form_page', mentor_id=m.id) }}">ویرایش</a>
+              <a class="btn btn-ghost" href="{{ url_for('mentors.edit_form', mentor_id=m.id) }}">ویرایش</a>
+              {# اگر روت حذف هنوز نداری، بلاک زیر رو بعداً فعال کن
               <form method="post" action="{{ url_for('mentors.delete', mentor_id=m.id) }}" onsubmit="return confirm('حذف شود؟');">
                 <button class="btn btn-ghost" type="submit">حذف</button>
               </form>
+              #}
             </div>
           </td>
         </tr>

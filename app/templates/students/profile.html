@@ -31,15 +31,15 @@
 
     <div class="stats">
       <div class="stat">
-        <div class="stat-val">{{ stats.courses_count }}</div>
+        <div class="stat-val" id="topCoursesCount">{{ stats.courses_count }}</div>
         <div class="stat-label">دوره‌ها</div>
       </div>
       <div class="stat">
-        <div class="stat-val">{{ stats.skills_count }}</div>
+        <div class="stat-val" id="topSkillsCount">{{ stats.skills_count }}</div>
         <div class="stat-label">مهارت‌ها</div>
       </div>
       <div class="stat">
-        <div class="stat-val">{{ "{:,.0f}".format(stats.balance) }}</div>
+        <div class="stat-val" id="topBalanceVal">{{ "{:,.0f}".format(stats.balance) }}</div>
         <div class="stat-label">تراز مالی</div>
       </div>
     </div>
@@ -84,102 +84,112 @@
   </section>
 
   <!-- Tab: Courses -->
-<section id="tab-courses" class="tab-panel">
-  <div class="card" style="margin-bottom:12px;">
-    <div style="display:grid; grid-template-columns: 1fr 180px 120px 120px; gap:8px; align-items:center;">
-      <input type="text" id="courseSearch" placeholder="جستجوی دوره..." style="padding:8px 10px; border:1px solid #D3D5DF; border-radius:6px;">
-      <select id="courseSelect" style="padding:8px 10px; border:1px solid #D3D5DF; border-radius:6px;"></select>
-      <select id="courseStatus" style="padding:8px 10px; border:1px solid #D3D5DF; border-radius:6px;">
-        <option value="ONGOING">درحال برگزاری</option>
-        <option value="DONE">به‌اتمام‌رسیده</option>
-        <option value="DROPPED">انصراف</option>
-      </select>
-      <button id="btnEnroll" class="btn btn-primary">افزودن</button>
+  <section id="tab-courses" class="tab-panel">
+    <div class="card" style="margin-bottom:12px;">
+      <div style="display:grid; grid-template-columns: 1fr 180px 120px 120px; gap:8px; align-items:center;">
+        <input type="text" id="courseSearch" placeholder="جستجوی دوره..." style="padding:8px 10px; border:1px solid #D3D5DF; border-radius:6px;">
+        <select id="courseSelect" style="padding:8px 10px; border:1px solid #D3D5DF; border-radius:6px;"></select>
+        <select id="courseStatus" style="padding:8px 10px; border:1px solid #D3D5DF; border-radius:6px;">
+          <option value="ONGOING">درحال برگزاری</option>
+          <option value="DONE">به‌اتمام‌رسیده</option>
+          <option value="DROPPED">انصراف</option>
+        </select>
+        <button id="btnEnroll" class="btn btn-primary">افزودن</button>
+      </div>
     </div>
-  </div>
 
-  <div class="table-responsive">
-    <table class="data-table" id="enrollTable">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>عنوان دوره</th>
-          <th>منتور</th>
-          <th>وضعیت</th>
-          <th>تاریخ ثبت‌نام</th>
-          <th>اکشن</th>
-        </tr>
-      </thead>
-      <tbody><!-- پر می‌شود --></tbody>
-    </table>
-  </div>
-</section>
+    <div class="table-responsive">
+      <table class="data-table" id="enrollTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>عنوان دوره</th>
+            <th>منتور</th>
+            <th>وضعیت</th>
+            <th>تاریخ ثبت‌نام</th>
+            <th>اکشن</th>
+          </tr>
+        </thead>
+        <tbody><!-- پر می‌شود --></tbody>
+      </table>
+    </div>
+  </section>
 
   <!-- Tab: Skills -->
-<section id="tab-skills" class="tab-panel">
-  <div class="skills">
-    <!-- مهارت‌های فنی -->
-    <div class="skill-card-section">
-      <h3>💻 مهارت‌های فنی</h3>
-      <div class="skill-input">
-        <input type="text" id="techInput" placeholder="افزودن مهارت فنی">
-        <button type="button" id="btnAddTech">➕</button>
+  <section id="tab-skills" class="tab-panel">
+    <div class="skills">
+      <div class="skill-card-section">
+        <h3>💻 مهارت‌های فنی</h3>
+        <div class="skill-input">
+          <input type="text" id="techInput" placeholder="افزودن مهارت فنی">
+          <button type="button" id="btnAddTech">➕</button>
+        </div>
+        <ul id="techList"></ul>
       </div>
-      <ul id="techList"></ul>
-    </div>
 
-    <!-- مهارت‌های نرم -->
-    <div class="skill-card-section">
-      <h3>🤝 مهارت‌های نرم</h3>
-      <div class="skill-input">
-        <input type="text" id="softInput" placeholder="افزودن مهارت نرم">
-        <input type="text" id="softDate" placeholder="تاریخ برگزاری (مثلاً 1403/07/18)">
-        <input type="number" id="softHours" placeholder="ساعت" min="1">
-        <button type="button" id="btnAddSoft">➕</button>
+      <div class="skill-card-section">
+        <h3>🤝 مهارت‌های نرم</h3>
+        <div class="skill-input">
+          <input type="text" id="softInput" placeholder="افزودن مهارت نرم">
+          <input type="text" id="softDate" placeholder="تاریخ برگزاری (مثلاً 1403/07/18)">
+          <input type="number" id="softHours" placeholder="ساعت" min="1">
+          <button type="button" id="btnAddSoft">➕</button>
+        </div>
+        <ul id="softList"></ul>
       </div>
-      <ul id="softList"></ul>
     </div>
-  </div>
-</section>
-
+  </section>
 
   <!-- Tab: Finance -->
-<section id="tab-finance" class="tab-panel">
-  <div class="card" style="margin-bottom:12px;">
-    <div style="display:grid; grid-template-columns: 1fr 140px 140px 120px; gap:8px; align-items:center;">
-      <input type="text" id="payTitle" placeholder="شرح تراکنش (مثلاً شهریه ترم 1)" style="padding:8px 10px; border:1px solid #D3D5DF; border-radius:6px;">
-      <input type="number" id="payAmount" min="1" placeholder="مبلغ" style="padding:8px 10px; border:1px solid #D3D5DF; border-radius:6px;">
-      <select id="payType" style="padding:8px 10px; border:1px solid #D3D5DF; border-radius:6px;">
-        <option value="IN">دریافت</option>
-        <option value="OUT">پرداخت</option>
-      </select>
-      <button id="btnPayAdd" class="btn btn-primary">افزودن</button>
+  <section id="tab-finance" class="tab-panel">
+    <div class="card" style="margin-bottom:12px;">
+      <div style="display:grid; grid-template-columns: 1fr 140px 120px 1fr 120px; gap:8px; align-items:center;">
+        <input type="text" id="payTitle" placeholder="شرح تراکنش (مثلاً شهریه ترم 1)" style="padding:8px 10px; border:1px solid #D3D5DF; border-radius:6px;">
+        <input type="number" id="payAmount" min="1" placeholder="مبلغ" style="padding:8px 10px; border:1px solid #D3D5DF; border-radius:6px;">
+        <select id="payType" style="padding:8px 10px; border:1px solid #D3D5DF; border-radius:6px;">
+          <option value="IN">دریافت</option>
+          <option value="OUT">پرداخت</option>
+        </select>
+        <select id="payCourse" style="padding:8px 10px; border:1px solid #D3D5DF; border-radius:6px;">
+          <option value="">— نسبت‌دادن به دوره (اختیاری) —</option>
+        </select>
+        <button id="btnPayAdd" class="btn btn-primary">افزودن</button>
+      </div>
     </div>
-  </div>
 
-  <div class="stats mini" style="margin-bottom:10px;">
-    <div class="stat">
-      <div class="stat-val" id="balanceVal">0</div>
-      <div class="stat-label">تراز مالی</div>
+    <!-- خلاصه per-course -->
+    <div class="table-responsive" style="margin-bottom:10px;">
+      <table class="data-table" id="perCourseTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>دوره</th>
+            <th>شهریه</th>
+            <th>دریافت‌شده</th>
+            <th>بدهی</th>
+          </tr>
+        </thead>
+        <tbody><!-- پر می‌شود --></tbody>
+      </table>
     </div>
-  </div>
 
-  <div class="table-responsive">
-    <table class="data-table" id="payTable">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>شرح</th>
-          <th>نوع</th>
-          <th>مبلغ</th>
-          <th>تاریخ</th>
-          <th>اکشن</th>
-        </tr>
-      </thead>
-      <tbody><!-- پر می‌شود --></tbody>
-    </table>
-  </div>
-</section>
+    <!-- جدول تراکنش‌ها -->
+    <div class="table-responsive">
+      <table class="data-table" id="payTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>شرح</th>
+            <th>نوع</th>
+            <th>مبلغ</th>
+            <th>تاریخ</th>
+            <th>اکشن</th>
+          </tr>
+        </thead>
+        <tbody><!-- پر می‌شود --></tbody>
+      </table>
+    </div>
+  </section>
 
 </div>
 {% endblock %}
@@ -225,390 +235,311 @@
 .label { font-size:12px; color:#7C8A9A; margin-bottom:4px; }
 .value { font-weight:600; }
 
-/* Data tables (courses/payments) */
+/* Tables */
 .table-responsive { overflow-x:auto; }
 .data-table { width:100%; border-collapse:collapse; direction:rtl; table-layout:fixed; }
 .data-table th, .data-table td { padding:12px 14px; border-bottom:1px solid #F1F5F9; white-space:nowrap; text-align:right; }
 .data-table thead th { background:#F8FAFC; color:#7C8A9A; font-size:13px; font-weight:700; }
 
-/* Chips for skills */
+/* Skills */
 .chips { display:flex; gap:8px; flex-wrap:wrap; }
 .chip { background:#F3F4F6; color:#374151; padding:6px 10px; border-radius:999px; font-size:12px; }
 
 .muted { color:#94A3B8; }
-.skills {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  width: 100%;
-}
-.skills .skill-card-section {
-  background: #fff;
-  border: 1px solid #D3D5DF;
-  border-radius: 16px;
-  padding: 16px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
-  display: flex; flex-direction: column;
-}
-.skills h3 {
-  margin: 0 0 12px;
-  color: #02AD82;
-  font-size: 18px;
-  border-bottom: 2px solid #D3D5DF;
-  padding-bottom: 6px;
-}
+.skills { display:grid; grid-template-columns: 1fr 1fr; gap: 20px; width:100%; }
+.skills .skill-card-section { background:#fff; border:1px solid #D3D5DF; border-radius:16px; padding:16px; box-shadow:0 4px 10px rgba(0,0,0,0.05); display:flex; flex-direction:column; }
+.skills h3 { margin:0 0 12px; color:#02AD82; font-size:18px; border-bottom:2px solid #D3D5DF; padding-bottom:6px; }
 
 @media (max-width: 900px) { .skills { grid-template-columns: 1fr; } }
+.skill-input { display:grid; grid-template-columns: 1fr 0.8fr 0.6fr 45px; gap: 8px; margin-bottom:10px; width:100%; box-sizing:border-box; }
+.skill-input input, .skill-input select { padding: 6px 8px; border:1px solid #D3D5DF; border-radius:6px; font-size:13px; width:100%; box-sizing:border-box; }
+.skill-input button { width:45px; height:34px; font-size:16px; border-radius:6px; border:none; cursor:pointer; background:#02AD82; color:#fff; }
 
-.skill-input {
-  display: grid;
-  grid-template-columns: 1fr 0.8fr 0.6fr 45px; /* tech فقط ستون اول و آخری را پر می‌کند */
-  gap: 8px; margin-bottom: 10px; width: 100%; box-sizing: border-box;
-}
-.skill-input input, .skill-input select {
-  padding: 6px 8px; border: 1px solid #D3D5DF; border-radius: 6px;
-  font-size: 13px; width: 100%; box-sizing: border-box;
-}
-.skill-input button {
-  width: 45px; height: 34px; font-size: 16px; border-radius: 6px;
-  border: none; cursor: pointer; background: #02AD82; color: #fff;
-}
-@media (max-width: 900px) { .skill-input { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 600px) { .skill-input { grid-template-columns: 1fr; } }
-
-#softList, #techList { padding: 0; margin: 0; list-style: none; }
-#softList li, #techList li {
-  display: flex; justify-content: space-between; align-items: center;
-  text-align: right; direction: rtl;
-  padding: 8px 10px; margin-bottom: 6px;
-  border: 1px solid #D3D5DF; border-radius: 6px; background: #fff;
-}
-.skill-pill { display:inline-flex; gap:8px; align-items:center; }
-.skill-meta { color:#6B7280; font-size:12px; }
-
-.btn-x {
-  border: none; background: #F3F4F6; color: #374151; border-radius: 6px;
-  padding: 4px 8px; cursor: pointer;
-}
-.btn-x:hover { background:#E5E7EB; }
-/*course*/
-#enrollTable th, #enrollTable td { white-space: nowrap; }
+#enrollTable th, #enrollTable td { white-space:nowrap; }
 #enrollTable td .actions { display:inline-flex; gap:6px; align-items:center; }
-/* Responsive */
+
 @media (max-width: 900px) {
   .profile-header { grid-template-columns: 100px 1fr; }
   .stats { grid-column:1 / -1; }
 }
 @media (max-width: 640px) {
   .grid.two { grid-template-columns: 1fr; }
-  /*finance*/
-  #payTable th, #payTable td { white-space: nowrap; }
-#payTable td .actions { display:inline-flex; gap:6px; align-items:center; }
-.stats.mini .stat { min-width: 140px; }
 }
 </style>
 
 <script>
-(function () {
-  /* ------------------------------------------------------------------
-   🌿 مقداردهی اولیه
-  ------------------------------------------------------------------ */
-  const studentId = document.getElementById('profile').dataset.studentId;
+// ---------- Student ID (reliable, global)
+const PROFILE_EL = document.getElementById('profile');
+const STUDENT_ID = Number(PROFILE_EL?.dataset.studentId || 0);
 
-  // Helper برای درخواست‌های ساده
-  async function api(method, url, body) {
-    const res = await fetch(url, {
-      method,
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
-      body: body ? JSON.stringify(body) : undefined
-    });
-    return res;
+// ---------- helpers
+function formatMoney(n){ try { return (+n).toLocaleString('fa-IR'); } catch(e){ return n; } }
+
+// ---------- Tabs
+function initTabs(){
+  const tabBtns = document.querySelectorAll('.tabs .tab');
+  const panels = document.querySelectorAll('.tab-panel');
+  function show(key){
+    panels.forEach(p => p.style.display = 'none');
+    tabBtns.forEach(b => b.classList.remove('active'));
+    const btn = Array.from(tabBtns).find(b => b.dataset.tab === key);
+    if (btn) btn.classList.add('active');
+    const panel = document.getElementById('tab-'+key);
+    if (panel) panel.style.display = 'block';
   }
+  tabBtns.forEach(btn => btn.addEventListener('click', () => show(btn.dataset.tab)));
+  const first = Array.from(tabBtns).find(b => b.classList.contains('active')) || tabBtns[0];
+  if (first) show(first.dataset.tab);
+}
 
-  /* ------------------------------------------------------------------
-   📑 تب‌ها (Tabs)
-  ------------------------------------------------------------------ */
-  function initTabs() {
-    const tabBtns = document.querySelectorAll('.tabs .tab');
-    const panels = document.querySelectorAll('.tab-panel');
-    if (!tabBtns.length) return;
-
-    function show(key) {
-      panels.forEach(p => p.style.display = 'none');
-      tabBtns.forEach(b => b.classList.remove('active'));
-      const btn = Array.from(tabBtns).find(b => b.dataset.tab === key);
-      if (btn) btn.classList.add('active');
-      const panel = document.getElementById('tab-' + key);
-      if (panel) panel.style.display = 'block';
-    }
-
-    tabBtns.forEach(btn => btn.addEventListener('click', () => show(btn.dataset.tab)));
-    const first = Array.from(tabBtns).find(b => b.classList.contains('active')) || tabBtns[0];
-    if (first) show(first.dataset.tab);
-  }
-
-  /* ------------------------------------------------------------------
-   💻 مهارت‌ها (Skills)
-  ------------------------------------------------------------------ */
-  async function loadSkills() {
-    const techList = document.getElementById('techList');
-    const softList = document.getElementById('softList');
-    if (!techList || !softList) return;
-
-    techList.innerHTML = '';
-    softList.innerHTML = '';
-
-    const url = "{{ url_for('students.api_list_skills', student_id=0) }}"
-      .replace('/0/skills', `/${studentId}/skills`);
-    const res = await api('GET', url);
-    if (!res.ok) return;
-    const data = await res.json();
-
-    data.forEach(item => {
-      const li = document.createElement('li');
-      li.dataset.id = item.id;
-      li.innerHTML = `
-        <div class="skill-pill">
-          <strong>${item.name}</strong>
-          ${item.type === 'SOFT'
-            ? `<span class="skill-meta">• ${item.date_label || '—'} • ${item.hours || 0} ساعت</span>`
-            : ''}
-        </div>
-        <button class="btn-x" type="button">حذف</button>
-      `;
-      (item.type === 'TECH' ? techList : softList).appendChild(li);
-
-      li.querySelector('.btn-x').addEventListener('click', async () => {
-        if (!confirm('حذف این مهارت؟')) return;
-        const delUrl = "{{ url_for('students.api_delete_skill', student_id=0, ss_id=0) }}"
-          .replace('/0/skills/0', `/${studentId}/skills/${li.dataset.id}`);
-        const delRes = await api('DELETE', delUrl);
-        if (delRes.ok) li.remove();
-      });
-    });
-  }
-
-  function wireSkillButtons() {
-    const techInput = document.getElementById('techInput');
-    const softInput = document.getElementById('softInput');
-    const softDate  = document.getElementById('softDate');
-    const softHours = document.getElementById('softHours');
-    const addTech   = document.getElementById('btnAddTech');
-    const addSoft   = document.getElementById('btnAddSoft');
-
-    // افزودن مهارت فنی
-    if (addTech) {
-      addTech.addEventListener('click', async () => {
-        const name = (techInput.value || '').trim();
-        if (!name) return techInput.focus();
-        const url = "{{ url_for('students.api_add_skill', student_id=0) }}"
-          .replace('/0/skills', `/${studentId}/skills`);
-        const res = await api('POST', url, { type: 'TECH', name });
-        if (res.ok) { techInput.value = ''; loadSkills(); }
-      });
-      techInput.addEventListener('keydown', e => { if (e.key === 'Enter') addTech.click(); });
-    }
-
-    // افزودن مهارت نرم
-    if (addSoft) {
-      addSoft.addEventListener('click', async () => {
-        const name = (softInput.value || '').trim();
-        if (!name) return softInput.focus();
-        const url = "{{ url_for('students.api_add_skill', student_id=0) }}"
-          .replace('/0/skills', `/${studentId}/skills`);
-        const body = {
-          type: 'SOFT',
-          name,
-          date_label: (softDate.value || '').trim(),
-          hours: softHours.value ? parseInt(softHours.value, 10) : null
-        };
-        const res = await api('POST', url, body);
-        if (res.ok) { softInput.value=''; softDate.value=''; softHours.value=''; loadSkills(); }
-      });
-      [softInput, softDate, softHours].forEach(el =>
-        el.addEventListener('keydown', e => { if (e.key === 'Enter') addSoft.click(); })
-      );
-    }
-  }
-
-  /* ------------------------------------------------------------------
-   📚 دوره‌ها (Enrollments)
-  ------------------------------------------------------------------ */
-  function translateStatus(st) {
-    switch ((st || '').toUpperCase()) {
-      case 'ONGOING': return 'درحال برگزاری';
-      case 'DONE': return 'به‌اتمام‌رسیده';
-      case 'DROPPED': return 'انصراف';
-      default: return st || '—';
-    }
-  }
-
-  async function loadCourseOptions(filter = "") {
-    const sel = document.getElementById('courseSelect');
-    if (!sel) return;
-    const res = await api('GET', "{{ url_for('students.api_course_options') }}");
-    if (!res.ok) return;
-    const data = await res.json();
-    const q = (filter || '').trim();
-    const list = q ? data.filter(x => x.title.includes(q)) : data;
-    sel.innerHTML = '';
-    list.forEach(c => {
-      const opt = document.createElement('option');
-      opt.value = c.id;
-      opt.textContent = c.title + (c.mentor_name ? ` — ${c.mentor_name}` : '');
-      sel.appendChild(opt);
-    });
-  }
-
-  async function loadEnrollments() {
-    const tbody = document.querySelector('#enrollTable tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-    const url = "{{ url_for('students.api_list_enrollments', student_id=0) }}"
-      .replace('/0/enrollments', `/${studentId}/enrollments`);
-    const res = await api('GET', url);
-    if (!res.ok) return;
-    const rows = await res.json();
-    rows.forEach((r, idx) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${idx+1}</td>
-        <td>${r.course.title}</td>
-        <td>${r.course.mentor_name || '—'}</td>
-        <td>${translateStatus(r.status)}</td>
-        <td>${r.enrolled_at}</td>
-        <td>
-          <div class="actions">
-            <button class="btn btn-ghost btn-del" data-id="${r.id}">حذف</button>
-          </div>
-        </td>
-      `;
-      tbody.appendChild(tr);
-    });
-
-    // حذف ثبت‌نام
-    tbody.querySelectorAll('.btn-del').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!confirm('این ثبت‌نام حذف شود؟')) return;
-        const delUrl = "{{ url_for('students.api_delete_enrollment', student_id=0, en_id=0) }}"
-          .replace('/0/enrollments/0', `/${studentId}/enrollments/${btn.dataset.id}`);
-        const delRes = await api('DELETE', delUrl);
-        if (delRes.ok) loadEnrollments();
-      });
-    });
-  }
-
-  function wireCoursesUI() {
-    const inp = document.getElementById('courseSearch');
-    const sel = document.getElementById('courseSelect');
-    const status = document.getElementById('courseStatus');
-    const btn = document.getElementById('btnEnroll');
-
-    if (inp) inp.addEventListener('input', () => loadCourseOptions(inp.value));
-    if (btn) btn.addEventListener('click', async () => {
-      if (!sel || !sel.value) return alert('یک دوره انتخاب کنید');
-      const url = "{{ url_for('students.api_add_enrollment', student_id=0) }}"
-        .replace('/0/enrollments', `/${studentId}/enrollments`);
-      const res = await api('POST', url, { course_id: parseInt(sel.value, 10), status: status.value });
-      if (res.status === 409) { alert('قبلاً در این دوره ثبت‌نام شده است.'); return; }
-      if (res.ok) loadEnrollments();
-    });
-  }
-
-  /* ------------------------------------------------------------------
-   💸 امور مالی (Payments)
-  ------------------------------------------------------------------ */
-  function formatMoney(n) {
-    try { return (+n).toLocaleString('fa-IR'); } catch(e) { return n; }
-  }
-  function translateType(t) {
-    return (t || '').toUpperCase() === 'IN' ? 'دریافت' : 'پرداخت';
-  }
-
-  async function loadPayments() {
-    const tbody = document.querySelector('#payTable tbody');
-    const balEl = document.getElementById('balanceVal');
-    if (!tbody) return;
-
-    tbody.innerHTML = '';
-    const url = "{{ url_for('students.api_list_payments', student_id=0) }}".replace('/0/payments', `/${studentId}/payments`);
-    const res = await api('GET', url);
-    if (!res.ok) return;
-    const data = await res.json();
-    const items = data.items || [];
-    const balance = data.balance || 0;
-    if (balEl) balEl.textContent = formatMoney(balance);
-
-    items.forEach((p, idx) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${idx+1}</td>
-        <td>${p.title}</td>
-        <td>${translateType(p.type)}</td>
-        <td>${formatMoney(p.amount)}</td>
-        <td>${p.created_at}</td>
-        <td>
-          <div class="actions">
-            <button class="btn btn-ghost btn-del-pay" data-id="${p.id}">حذف</button>
-          </div>
-        </td>
-      `;
-      tbody.appendChild(tr);
-    });
-
-    // حذف تراکنش
-    tbody.querySelectorAll('.btn-del-pay').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!confirm('این تراکنش حذف شود؟')) return;
-        const delUrl = "{{ url_for('students.api_delete_payment', student_id=0, pay_id=0) }}"
-          .replace('/0/payments/0', `/${studentId}/payments/${btn.dataset.id}`);
-        const delRes = await api('DELETE', delUrl);
-        if (delRes.ok) loadPayments();
-      });
-    });
-  }
-
-  function wireFinanceUI() {
-    const title = document.getElementById('payTitle');
-    const amount = document.getElementById('payAmount');
-    const type   = document.getElementById('payType');
-    const btn    = document.getElementById('btnPayAdd');
-    if (!btn) return;
-
-    btn.addEventListener('click', async () => {
-      const t = (title.value || '').trim();
-      const a = amount.value ? parseInt(amount.value, 10) : 0;
-      const ty = type.value || 'IN';
-      if (!t) return title.focus();
-      if (!a || a <= 0) return amount.focus();
-
-      const url = "{{ url_for('students.api_add_payment', student_id=0) }}".replace('/0/payments', `/${studentId}/payments`);
-      const res = await api('POST', url, { title: t, amount: a, type: ty });
-      if (res.ok) {
-        title.value = ''; amount.value = ''; type.value = 'IN';
-        loadPayments();
-      }
-    });
-
-    [title, amount].forEach(el => el && el.addEventListener('keydown', e => {
-      if (e.key === 'Enter') btn.click();
-    }));
-  }
-
-  /* ------------------------------------------------------------------
-   🚀 اجرا هنگام آماده‌شدن صفحه
-  ------------------------------------------------------------------ */
-  document.addEventListener('DOMContentLoaded', () => {
-    initTabs();
-    wireSkillButtons();
-    loadSkills();
-    wireCoursesUI();
-    loadCourseOptions();
-    loadEnrollments();
-    wireFinanceUI();
-    loadPayments();
+// ---------- Skills
+async function api(method, url, body){
+  const res = await fetch(url, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined
   });
+  return res;
+}
+async function loadSkills(){
+  const techList = document.getElementById('techList');
+  const softList = document.getElementById('softList');
+  if (!techList || !softList) return;
+  techList.innerHTML = ''; softList.innerHTML = '';
+  const url = "{{ url_for('students.api_list_skills', student_id=0) }}".replace('/0/skills', `/${STUDENT_ID}/skills`);
+  const res = await api('GET', url); if (!res.ok) return;
+  const data = await res.json();
+  data.forEach(item=>{
+    const li = document.createElement('li');
+    li.dataset.id = item.id;
+    li.innerHTML = `
+      <div class="skill-pill">
+        <strong>${item.name}</strong>
+        ${item.type==='SOFT' ? `<span class="skill-meta">• ${item.date_label || '—'} • ${item.hours || 0} ساعت</span>` : ''}
+      </div>
+      <button class="btn-x" type="button">حذف</button>
+    `;
+    (item.type==='TECH'?techList:softList).appendChild(li);
+    li.querySelector('.btn-x').addEventListener('click', async ()=>{
+      if(!confirm('حذف این مهارت؟')) return;
+      const delUrl = "{{ url_for('students.api_delete_skill', student_id=0, ss_id=0) }}".replace('/0/skills/0', `/${STUDENT_ID}/skills/${li.dataset.id}`);
+      const delRes = await api('DELETE', delUrl);
+      if (delRes.ok) li.remove();
+    });
+  });
+}
+function wireSkillButtons(){
+  const techInput = document.getElementById('techInput');
+  const softInput = document.getElementById('softInput');
+  const softDate  = document.getElementById('softDate');
+  const softHours = document.getElementById('softHours');
+  const addTech   = document.getElementById('btnAddTech');
+  const addSoft   = document.getElementById('btnAddSoft');
 
-})();
+  addTech?.addEventListener('click', async ()=>{
+    const name = (techInput.value||'').trim(); if(!name) return techInput.focus();
+    const url = "{{ url_for('students.api_add_skill', student_id=0) }}".replace('/0/skills', `/${STUDENT_ID}/skills`);
+    const res = await api('POST', url, {type:'TECH', name});
+    if (res.ok){ techInput.value=''; loadSkills(); }
+  });
+  techInput?.addEventListener('keydown', e=>{ if(e.key==='Enter') addTech.click(); });
+
+  addSoft?.addEventListener('click', async ()=>{
+    const name = (softInput.value||'').trim(); if(!name) return softInput.focus();
+    const url = "{{ url_for('students.api_add_skill', student_id=0) }}".replace('/0/skills', `/${STUDENT_ID}/skills`);
+    const body = {type:'SOFT', name, date_label:(softDate.value||'').trim(), hours: softHours.value?parseInt(softHours.value,10):null};
+    const res = await api('POST', url, body);
+    if (res.ok){ softInput.value=''; softDate.value=''; softHours.value=''; loadSkills(); }
+  });
+  [softInput,softDate,softHours].forEach(el=> el?.addEventListener('keydown', e=>{ if(e.key==='Enter') addSoft.click(); }));
+}
+
+// ---------- Courses
+function translateStatus(st){
+  switch((st||'').toUpperCase()){
+    case 'ONGOING': return 'درحال برگزاری';
+    case 'DONE': return 'به‌اتمام‌رسیده';
+    case 'DROPPED': return 'انصراف';
+    default: return st || '—';
+  }
+}
+async function loadCourseOptions(filter=""){
+  const sel = document.getElementById('courseSelect'); if(!sel) return;
+  const res = await api('GET', "{{ url_for('students.api_course_options') }}"); if(!res.ok) return;
+  const data = await res.json();
+  const q = (filter||'').trim();
+  const list = q ? data.filter(x => x.title.includes(q)) : data;
+  sel.innerHTML=''; list.forEach(c=>{
+    const opt=document.createElement('option');
+    opt.value=c.id; opt.textContent=c.title + (c.mentor_name?` — ${c.mentor_name}`:'');
+    sel.appendChild(opt);
+  });
+}
+async function loadEnrollments(){
+  const tbody = document.querySelector('#enrollTable tbody'); if(!tbody) return;
+  tbody.innerHTML='';
+  const url = "{{ url_for('students.api_list_enrollments', student_id=0) }}".replace('/0/enrollments', `/${STUDENT_ID}/enrollments`);
+  const res = await api('GET', url); if(!res.ok) return;
+  const rows = await res.json();
+  rows.forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td>${i+1}</td>
+      <td>${r.course.title}</td>
+      <td>${r.course.mentor_name || '—'}</td>
+      <td>${translateStatus(r.status)}</td>
+      <td>${r.enrolled_at}</td>
+      <td><div class="actions"><button class="btn btn-ghost btn-del" data-id="${r.id}">حذف</button></div></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  tbody.querySelectorAll('.btn-del').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(!confirm('این ثبت‌نام حذف شود؟')) return;
+      const delUrl = "{{ url_for('students.api_delete_enrollment', student_id=0, en_id=0) }}".replace('/0/enrollments/0', `/${STUDENT_ID}/enrollments/${btn.dataset.id}`);
+      const delRes = await api('DELETE', delUrl);
+      if (delRes.ok) loadEnrollments();
+    });
+  });
+}
+function wireCoursesUI(){
+  const inp=document.getElementById('courseSearch');
+  const sel=document.getElementById('courseSelect');
+  const status=document.getElementById('courseStatus');
+  const btn=document.getElementById('btnEnroll');
+  inp?.addEventListener('input', ()=>loadCourseOptions(inp.value));
+  btn?.addEventListener('click', async ()=>{
+    if(!sel || !sel.value) return alert('یک دوره انتخاب کنید');
+    const url = "{{ url_for('students.api_add_enrollment', student_id=0) }}".replace('/0/enrollments', `/${STUDENT_ID}/enrollments`);
+    const res = await api('POST', url, {course_id: parseInt(sel.value,10), status: status.value});
+    if (res.status===409) return alert('قبلاً در این دوره ثبت‌نام شده است.');
+    if (res.ok) loadEnrollments();
+  });
+}
+
+// ---------- Finance
+async function loadFinanceSummary(){
+  const tbody = document.querySelector('#perCourseTable tbody');
+  const topBalEl = document.getElementById('topBalanceVal');
+  if (!tbody) return;
+  tbody.innerHTML='';
+  const res = await fetch(`{{ url_for('students.finance_summary', student_id=0) }}`.replace('/0/finance/summary', `/${STUDENT_ID}/finance/summary`));
+  if (!res.ok){
+    tbody.innerHTML = '<tr><td colspan="5" class="muted">خطا در دریافت خلاصه مالی</td></tr>';
+    if (topBalEl){ topBalEl.textContent='0'; topBalEl.style.color='#94A3B8'; }
+    return;
+  }
+  const data = await res.json();
+  const rows = data.items || [];
+  if (!rows.length){
+    tbody.innerHTML = '<tr><td colspan="5" class="muted">دانشجو در هیچ دوره‌ای ثبت‌نام نشده است.</td></tr>';
+  } else {
+    rows.forEach((r,i)=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML = `
+        <td>${i+1}</td>
+        <td>${r.course_title}</td>
+        <td>${formatMoney(r.fee)}</td>
+        <td>${formatMoney(r.paid)}</td>
+        <td style="color:${r.balance>0 ? '#EF4444' : '#059669'}">${r.balance>0 ? '-'+formatMoney(r.balance) : formatMoney(Math.abs(r.balance))}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+  // به‌روزرسانی تراز بالای صفحه با رنگ/علامت
+  if (topBalEl){
+    const bal = (data.totals && data.totals.balance) || 0;
+    const abs = Math.abs(bal);
+    let sign = '', color = '#94A3B8';
+    if (bal > 0){ sign='-'; color='#EF4444'; }      // بدهکار
+    else if (bal < 0){ sign='+'; color='#059669'; } // طلبکار
+    topBalEl.textContent = `${sign}${formatMoney(abs)}`;
+    topBalEl.style.color = color;
+  }
+}
+async function loadPayCourseOptions(){
+  const sel = document.getElementById('payCourse'); if (!sel) return;
+  const res = await fetch(`{{ url_for('students.api_course_options') }}`);
+  if (!res.ok) return;
+  const data = await res.json();
+  sel.innerHTML = '<option value="">— نسبت‌دادن به دوره (اختیاری) —</option>';
+  data.forEach(c=>{
+    const opt=document.createElement('option');
+    opt.value=c.id; opt.textContent=c.title + (c.mentor_name?` — ${c.mentor_name}`:'');
+    sel.appendChild(opt);
+  });
+}
+async function loadPayments(){
+  const tbody = document.querySelector('#payTable tbody'); if(!tbody) return;
+  tbody.innerHTML='';
+  const res = await fetch(`{{ url_for('students.api_list_payments', student_id=0) }}`.replace('/0/payments', `/${STUDENT_ID}/payments`));
+  if (!res.ok) return;
+  const data = await res.json();
+  (data.items || []).forEach((p,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML = `
+      <td>${i+1}</td>
+      <td>${p.title}</td>
+      <td>${(p.type||'').toUpperCase()==='IN' ? 'دریافت' : 'پرداخت'}</td>
+      <td>${formatMoney(p.amount)}</td>
+      <td>${p.created_at}</td>
+      <td><div class="actions"><button class="btn btn-ghost btn-del-pay" data-id="${p.id}">حذف</button></div></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  tbody.querySelectorAll('.btn-del-pay').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(!confirm('این تراکنش حذف شود؟')) return;
+      const del = await fetch(`{{ url_for('students.api_delete_payment', student_id=0, pay_id=0) }}`.replace('/0/payments/0', `/${STUDENT_ID}/payments/${btn.dataset.id}`), {method:'DELETE'});
+      if (del.ok){ loadPayments(); loadFinanceSummary(); }
+    });
+  });
+}
+function wireFinanceUI(){
+  const title=document.getElementById('payTitle');
+  const amount=document.getElementById('payAmount');
+  const type=document.getElementById('payType');
+  const course=document.getElementById('payCourse');
+  const btn=document.getElementById('btnPayAdd');
+  btn?.addEventListener('click', async ()=>{
+    const t=(title.value||'').trim();
+    const a=amount.value?parseInt(amount.value,10):0;
+    const ty=(type.value||'IN').toUpperCase();
+    const cid=course && course.value ? parseInt(course.value,10) : null;
+    if(!t) return title.focus();
+    if(!a || a<=0) return amount.focus();
+    const res = await fetch(`{{ url_for('students.api_add_payment', student_id=0) }}`.replace('/0/payments', `/${STUDENT_ID}/payments`), {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({title:t, amount:a, type:ty, course_id:cid})
+    });
+    if (res.ok){
+      title.value=''; amount.value=''; type.value='IN'; if(course) course.value='';
+      loadPayments(); loadFinanceSummary();
+    } else {
+      const j = await res.json().catch(()=>({}));
+      alert(j.error || 'خطا در ثبت تراکنش');
+    }
+  });
+  [title,amount].forEach(el=> el?.addEventListener('keydown', e=>{ if(e.key==='Enter') btn.click(); }));
+}
+
+// ---------- Boot
+document.addEventListener('DOMContentLoaded', ()=>{
+  if (!STUDENT_ID){ console.error('studentId missing'); return; }
+  initTabs();
+
+  // Skills
+  wireSkillButtons(); loadSkills();
+
+  // Courses
+  loadCourseOptions(); loadEnrollments(); wireCoursesUI();
+
+  // Finance
+  loadPayCourseOptions();
+  loadFinanceSummary();
+  loadPayments();
+  wireFinanceUI();
+});
 </script>
 {% endblock %}

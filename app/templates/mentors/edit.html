@@ -28,7 +28,8 @@
           <input type="file" name="avatar" id="avatarInput" accept="image/*" style="display:none;" onchange="this.form.submit()">
           <label for="avatarInput" class="btn btn-primary">تغییر تصویر</label>
         </form>
-        <a class="btn btn-ghost" href="{{ url_for('mentors.list') }}">بازگشت</a>
+        <!-- فقط همین خط عوض شده -->
+        <a class="btn btn-ghost" href="{{ back_url }}">بازگشت</a>
       </div>
     </div>
 
@@ -157,14 +158,12 @@
 
   <!-- تب مالی -->
   <section id="tab-finance" class="tab-panel">
-    <!-- کارت خلاصه -->
     <div class="card" style="margin-bottom:16px; display:flex; gap:24px; flex-wrap:wrap;">
       <div>💵 درآمد: <b id="tIncomeTop">۰</b></div>
       <div>💸 هزینه: <b id="tExpenseTop">۰</b></div>
       <div>⚖️ تراز: <b id="tBalanceTop">۰</b></div>
     </div>
 
-    <!-- جدول تراکنش‌ها -->
     <div class="table-responsive">
       <table class="data-table" id="finance-table">
         <thead>
@@ -181,7 +180,6 @@
       </table>
     </div>
 
-    <!-- افزودن تراکنش -->
     <div class="card" style="margin-top:20px;">
       <form id="paymentForm" style="display:grid; gap:10px;">
         <select name="kind" class="input">
@@ -250,92 +248,127 @@
 </style>
 
 <script>
-(function(){
-  const mentorId = document.querySelector('#mentor-profile').dataset.mentorId;
-  const tableBody = document.querySelector("#finance-table tbody");
-  const form = document.getElementById("paymentForm");
+(function () {
+  const root = document.querySelector('#mentor-profile');
+  const mentorId = root?.dataset.mentorId;
 
- async function loadPayments(){
-  const res = await fetch(`/mentors/${mentorId}/payments`);
-  const data = await res.json();
+  // ---------- Helpers ----------
+  function fmt(n){ try{ return (+n).toLocaleString('fa-IR'); }catch(e){ return n; } }
 
-  // پاک‌سازی جدول
-  tableBody.innerHTML = "";
+  // ---------- Tabs (بدون تغییر ظاهر) ----------
+  document.addEventListener("DOMContentLoaded", function() {
+    const tabs  = document.querySelectorAll(".tabs .tab");
+    const panes = document.querySelectorAll(".tab-panel");
 
-  // پر کردن ردیف‌ها
-  if (data.ok && data.items.length) {
-    data.items.forEach((p, i) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${i + 1}</td>
-        <td>${p.kind === 'INCOME' ? 'درآمد' : 'هزینه'}</td>
-        <td>${(p.amount || 0).toLocaleString('fa-IR')}</td>
-        <td>${p.paid_at ? p.paid_at.split('T')[0] : '-'}</td>
-        <td>${p.note || ''}</td>
-        <td style="display:flex;gap:6px;">
-          <button class="btn btn-ghost btn-sm" data-id="${p.id}" data-action="del">🗑️</button>
-        </td>`;
-      tableBody.appendChild(tr);
-    });
-  } else {
-    tableBody.innerHTML = `<tr><td colspan="6" class="muted">تراکنشی ثبت نشده.</td></tr>`;
+    function show(key){
+      panes.forEach(p=>p.style.display='none');
+      tabs.forEach(t=>t.classList.remove('active'));
+      const btn = Array.from(tabs).find(t => t.dataset.tab===key);
+      const pane= document.getElementById('tab-'+key);
+      if(btn) btn.classList.add('active');
+      if(pane) pane.style.display='block';
+    }
+
+    tabs.forEach(btn => btn.addEventListener('click', ()=> show(btn.dataset.tab)));
+    const first = Array.from(tabs).find(t=>t.classList.contains('active')) || tabs[0];
+    if(first) show(first.dataset.tab);
+  });
+
+  // ---------- مالی: خلاصهٔ سهم منتور از دوره‌ها ----------
+  async function loadMentorShareSummary(){
+    const res = await fetch(`/mentors/${mentorId}/finance/summary`);
+    if(!res.ok) return;
+    const data = await res.json();
+
+    // کارت بالا
+    const inc = document.getElementById('tIncomeTop');
+    const exp = document.getElementById('tExpenseTop');
+    const bal = document.getElementById('tBalanceTop');
+
+    if (inc) inc.textContent = fmt(data.totals.share_total || 0);  // مجموع سهم‌ها = درآمد منتور
+    if (exp) exp.textContent = fmt(Math.abs(data.totals.paid_total || 0)); // پرداخت/وصول‌ها
+    if (bal){
+      const b = +data.totals.balance || 0;               // بستانکاری(+)/بدهی(-)
+      bal.textContent = (b>=0 ? '+' : '−') + fmt(Math.abs(b));
+      bal.style.color = b<0 ? '#EF4444' : '#059669';
+    }
+
+    // اگر لازم داشتی این جدول را هم بساز، اینجا data.items موجود است (course_title, students, fee_per_student, income_total, share_percent, mentor_share)
   }
 
-  // ✅ نمایش جمع درآمد / هزینه / تراز در بالا
-  if (data.totals) {
-    const income = data.totals.income || 0;
-    const expense = data.totals.expense || 0;
-    const balance = data.totals.balance || 0;
+  // ---------- مالی: جدول تراکنش‌های منتور ----------
+  async function loadPayments(){
+    const tbody = document.querySelector("#finance-table tbody");
+    if(!tbody) return;
 
-    document.getElementById("tIncomeTop").textContent = income.toLocaleString('fa-IR');
-    document.getElementById("tExpenseTop").textContent = expense.toLocaleString('fa-IR');
-    document.getElementById("tBalanceTop").textContent = balance.toLocaleString('fa-IR');
+    const res = await fetch(`/mentors/${mentorId}/payments`);
+    const data = await res.json();
+
+    // کارت بالا را هم‌زمان تازه کن
+    if (data.totals){
+      const inc = document.getElementById('tIncomeTop');
+      const exp = document.getElementById('tExpenseTop');
+      const bal = document.getElementById('tBalanceTop');
+      if (inc) inc.textContent = fmt(data.totals.share_total || 0);
+      if (exp) exp.textContent = fmt(Math.abs(data.totals.paid_total || 0));
+      if (bal){
+        const b = +data.totals.balance || 0;
+        bal.textContent = (b>=0 ? '+' : '−') + fmt(Math.abs(b));
+        bal.style.color = b<0 ? '#EF4444' : '#059669';
+      }
+    }
+
+    tbody.innerHTML = "";
+    if (data.ok && data.items.length){
+      data.items.forEach((p, i) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${i+1}</td>
+          <td>${p.kind==='INCOME' ? 'درآمد' : 'هزینه'}</td>
+          <td>${fmt(p.amount)}</td>
+          <td>${p.paid_at ? p.paid_at.split('T')[0] : '-'}</td>
+          <td>${p.note || ''}</td>
+          <td style="display:flex;gap:6px;">
+            <button class="btn btn-ghost btn-sm" data-id="${p.id}" data-action="del">🗑️</button>
+          </td>`;
+        tbody.appendChild(tr);
+      });
+    } else {
+      tbody.innerHTML = `<tr><td colspan="6" class="muted">تراکنشی ثبت نشده.</td></tr>`;
+    }
   }
-}
 
-  tableBody.addEventListener('click', async e=>{
-    const btn=e.target.closest('button');
-    if(!btn)return;
-    const id=btn.dataset.id;
-    if(!confirm('تراکنش حذف شود؟'))return;
-    await fetch(`/mentors/${mentorId}/payments/${id}`,{method:'DELETE'});
+  // حذف تراکنش
+  document.querySelector("#finance-table tbody")?.addEventListener('click', async e=>{
+    const btn = e.target.closest('button[data-action="del"]');
+    if(!btn) return;
+    if(!confirm('تراکنش حذف شود؟')) return;
+    await fetch(`/mentors/${mentorId}/payments/${btn.dataset.id}`, {method:'DELETE'});
     loadPayments();
+    loadMentorShareSummary();
   });
 
-  form.addEventListener('submit',async e=>{
+  // ثبت تراکنش
+  document.getElementById("paymentForm")?.addEventListener('submit', async e=>{
     e.preventDefault();
-    const fd=new FormData(form);
-    const res=await fetch(`/mentors/${mentorId}/payments`,{method:'POST',body:fd});
-    const data=await res.json();
-    if(data.ok){ form.reset(); loadPayments(); }
+    const fd = new FormData(e.currentTarget);
+    const res = await fetch(`/mentors/${mentorId}/payments`, {method:'POST', body:fd});
+    const data = await res.json();
+    if (data.ok){
+      e.currentTarget.reset();
+      loadPayments();
+      loadMentorShareSummary();
+    } else {
+      alert(data.error || 'خطا در ثبت تراکنش');
+    }
   });
 
-  document.querySelector('[data-tab="finance"]').addEventListener('click',loadPayments);
+  // لود اولیه
+  document.addEventListener('DOMContentLoaded', ()=>{
+    loadMentorShareSummary();
+    // جدول تراکنش‌ها را وقتی تب «مالی» کلیک شد هم می‌آوریم
+    document.querySelector('[data-tab="finance"]')?.addEventListener('click', loadPayments);
+  });
 })();
-document.addEventListener("DOMContentLoaded", function() {
-  // تب‌ها: فعال‌سازی با کلیک
-  const tabs = document.querySelectorAll(".tabs .tab");
-  const panels = document.querySelectorAll(".tab-panel");
-
-  if (!tabs.length || !panels.length) return;
-
-  function showTab(key) {
-    panels.forEach(p => p.style.display = "none");
-    tabs.forEach(t => t.classList.remove("active"));
-    const btn = Array.from(tabs).find(t => t.dataset.tab === key);
-    const panel = document.getElementById("tab-" + key);
-    if (btn) btn.classList.add("active");
-    if (panel) panel.style.display = "block";
-  }
-
-  // وصل کردن کلیک
-  tabs.forEach(btn => {
-    btn.addEventListener("click", () => showTab(btn.dataset.tab));
-  });
-
-  // فعال‌سازی تب اول در شروع
-  const active = Array.from(tabs).find(t => t.classList.contains("active")) || tabs[0];
-  if (active) showTab(active.dataset.tab);
-});
 </script>
 {% endblock %}
