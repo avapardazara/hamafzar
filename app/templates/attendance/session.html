@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}حضور و غیاب | هم‌افزار{% endblock %}
+{% block page_title %}حضور و غیاب جلسه{% endblock %}
+
+{% block content %}
+<div class="card" style="direction:rtl; max-width:1100px; margin:auto;">
+
+  <!-- Header -->
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+    <div>
+      <div style="font-weight:700; color:#0F172A;">{{ course.title }}</div>
+      <div style="font-size:13px; color:#64748B;">
+        تاریخ جلسه: {{ session_obj.session_date }}
+        {% if session_obj.start_time %} | شروع: {{ session_obj.start_time.strftime('%H:%M') }}{% endif %}
+      </div>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <a class="btn btn-ghost" href="{{ url_for('attendance.list', course_id=course.id) }}">📅 تاریخچه جلسات</a>
+      <a class="btn btn-ghost" href="{{ url_for('courses.edit_form', course_id=course.id) }}">↩ بازگشت به دوره</a>
+    </div>
+  </div>
+
+  <form method="post" id="attForm">
+    <!-- Toolbar -->
+    <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
+      <span class="label">عملیات انبوه:</span>
+      <button type="button" class="btn btn-ghost" id="allPresent">✅ همه حاضر</button>
+      <button type="button" class="btn btn-ghost" id="allAbsent">❌ همه غایب</button>
+      <button type="button" class="btn btn-ghost" id="allExcused">🕓 همه موجه</button>
+      <button type="submit" class="btn btn-primary" style="margin-right:auto;">ذخیره</button>
+    </div>
+
+    <table class="table-rtl" style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr style="background:#F8FAFC; border-bottom:1px solid #EEF2F7;">
+          <th style="text-align:right; padding:10px;">#</th>
+          <th style="text-align:right; padding:10px;">دانشجو</th>
+          <th style="text-align:right; padding:10px;">وضعیت</th>
+          <th style="text-align:right; padding:10px;">یادداشت</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for st in students %}
+          {% set a = att_map.get(st.id) %}
+          {% set cur = (a.status if a else 'PRESENT') %}
+          <tr style="border-bottom:1px solid #F1F5F9;">
+            <td style="padding:8px 10px;">{{ loop.index }}</td>
+            <td style="padding:8px 10px;">{{ st.first_name }} {{ st.last_name }}</td>
+            <td style="padding:8px 10px;">
+              <select name="status_{{ st.id }}" class="input" style="min-width:140px;">
+                <option value="PRESENT" {% if cur=='PRESENT' %}selected{% endif %}>حاضر</option>
+                <option value="ABSENT"  {% if cur=='ABSENT'  %}selected{% endif %}>غایب</option>
+                <option value="LATE"    {% if cur=='LATE'    %}selected{% endif %}>تاخیر</option>
+                <option value="EXCUSED" {% if cur=='EXCUSED' %}selected{% endif %}>موجه</option>
+              </select>
+            </td>
+            <td style="padding:8px 10px;">
+              <input class="input" name="note_{{ st.id }}" value="{{ a.note if a else '' }}" placeholder="یادداشت (اختیاری)">
+            </td>
+          </tr>
+        {% endfor %}
+        {% if not students %}
+        <tr><td colspan="4" class="muted" style="padding:10px;">دانشجوی فعالی برای این دوره یافت نشد.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+
+    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
+      <button type="submit" class="btn btn-primary">ذخیره</button>
+    </div>
+  </form>
+</div>
+
+<style>
+  .label { display:inline-block; color:#6B7280; font-size:13px; }
+  .input { width:100%; padding:10px 12px; border:1px solid #D3D5DF; border-radius:8px; }
+  .btn { border-radius:12px; }
+  .btn-primary { background:#02AD82; color:#fff; border:none; }
+  .btn-ghost { background:#F6FAF9; color:#0F172A; border:1px solid #D3D5DF; }
+  .muted { color:#7C8A9A; }
+  .card { background:#fff; border:1px solid #D3D5DF; border-radius:12px; box-shadow:0 1px 3px rgba(15,23,42,0.1); padding:16px; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const form = document.getElementById('attForm');
+
+  function setAll(val){
+    document.querySelectorAll('select[name^="status_"]').forEach(sel => {
+      sel.value = val;
+    });
+  }
+
+  document.getElementById('allPresent')?.addEventListener('click', ()=> setAll('PRESENT'));
+  document.getElementById('allAbsent')?.addEventListener('click',  ()=> setAll('ABSENT'));
+  document.getElementById('allExcused')?.addEventListener('click', ()=> setAll('EXCUSED'));
+});
+</script>
+{% endblock %}

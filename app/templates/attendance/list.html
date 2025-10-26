@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}تاریخچه جلسات | هم‌افزار{% endblock %}
+{% block page_title %}تاریخچه جلسات دوره{% endblock %}
+
+{% block content %}
+<div class="card" style="direction:rtl; max-width:1100px; margin:auto;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+    <div>
+      <div style="font-weight:700; color:#0F172A;">{{ course.title }}</div>
+      <div class="muted" style="font-size:13px;">شناسه دوره: {{ course.id }}</div>
+    </div>
+    <div>
+      <a class="btn btn-ghost" href="{{ url_for('courses.edit_form', course_id=course.id) }}">↩ بازگشت به دوره</a>
+    </div>
+  </div>
+
+  {% if items %}
+  <table class="table-rtl" style="width:100%; border-collapse:collapse;">
+    <thead>
+      <tr style="background:#F8FAFC; border-bottom:1px solid #EEF2F7;">
+        <th style="text-align:right; padding:10px;">#</th>
+        <th style="text-align:right; padding:10px;">تاریخ</th>
+        <th style="text-align:right; padding:10px;">ساعت</th>
+        <th style="text-align:right; padding:10px;">آمار</th>
+        <th style="text-align:right; padding:10px;"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      <tr style="border-bottom:1px solid #F1F5F9;">
+        <td style="padding:8px 10px;">{{ loop.index }}</td>
+        <td style="padding:8px 10px;">{{ it.date }}</td>
+        <td style="padding:8px 10px;">
+          {% if it.start_time %}{{ it.start_time.strftime('%H:%M') }}{% endif %}
+          {% if it.end_time %}–{{ it.end_time.strftime('%H:%M') }}{% endif %}
+        </td>
+        <td style="padding:8px 10px;">
+          <span class="chip">حاضر: {{ it.stats.PRESENT }}</span>
+          <span class="chip">غایب: {{ it.stats.ABSENT }}</span>
+          <span class="chip">تاخیر: {{ it.stats.LATE }}</span>
+          <span class="chip">موجه: {{ it.stats.EXCUSED }}</span>
+        </td>
+        <td style="padding:8px 10px;">
+          <a class="btn btn-primary" href="{{ url_for('attendance.session_view', course_id=course.id, session_id=it.id) }}">نمایش و ویرایش</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">برای این دوره هنوز جلسه‌ای ثبت نشده است. ابتدا از «تولید جلسات از برنامه» در صفحه دوره استفاده کنید.</p>
+  {% endif %}
+</div>
+
+<style>
+  .chip { background:#F3F4F6; border:1px solid #E5E7EB; padding:4px 8px; border-radius:999px; margin-left:6px; display:inline-block; }
+  .btn { border-radius:12px; }
+  .btn-primary { background:#02AD82; color:#fff; border:none; }
+  .btn-ghost { background:#F6FAF9; color:#0F172A; border:1px solid #D3D5DF; }
+  .muted { color:#7C8A9A; }
+  .card { background:#fff; border:1px solid #D3D5DF; border-radius:12px; box-shadow:0 1px 3px rgba(15,23,42,0.1); padding:16px; }
+</style>
+{% endblock %}

@@ -1,9 +1,8 @@
 # app/blueprints/courses/routes.py
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required
-from sqlalchemy import or_, and_
-from datetime import datetime, timedelta
-from sqlalchemy import select
+from sqlalchemy import or_, and_, func
+from datetime import datetime, date as _date, timedelta as _td
 from app.extensions import db
 from app.models.course import Course
 from app.models.mentor import Mentor
@@ -11,11 +10,19 @@ from app.utils.media import save_uploaded_image
 from app.models.course_session import CourseSession, Attendance
 from app.models.core import Student
 from app.models.enrollment import Enrollment
-from sqlalchemy import func
 
+# ----------------------------
+# Blueprint
+# ----------------------------
 bp = Blueprint("courses", __name__, url_prefix="/courses")
 
-# ---------- لیست ----------
+# نگاشت کد روزهای هفته → weekday()
+_MAP_DAYS = {"SA": 5, "SU": 6, "MO": 0, "TU": 1, "WE": 2, "TH": 3, "FR": 4}
+
+
+# ============================
+# لیست دوره‌ها
+# ============================
 @bp.get("/")
 @login_required
 def list():
@@ -32,12 +39,16 @@ def list():
     items = pagination.items
     return render_template("courses/index.html", items=items, pagination=pagination, q=q)
 
-# ---------- ساخت ----------
+
+# ============================
+# ساخت دوره
+# ============================
 @bp.get("/new")
 @login_required
 def new_form():
     mentors = Mentor.query.order_by(Mentor.id.desc()).all()
     return render_template("courses/form.html", c=None, mentors=mentors, mode="create")
+
 
 @bp.post("/new")
 @login_required
@@ -46,7 +57,7 @@ def create():
     if not title:
         flash("نام دوره الزامی است.", "error")
         return redirect(url_for("courses.new_form"))
-    
+
     c = Course(
         title=title,
         description=(request.form.get("description") or "").strip() or None,
@@ -60,29 +71,35 @@ def create():
         status=(request.form.get("status") or "ACTIVE"),
     )
 
-    # کش نام منتور برای لیست‌ها (اختیاری)
+    # کش نام منتور
     if c.mentor_id:
         m = Mentor.query.get(c.mentor_id)
         c.mentor_name = (m.full_name or (f"{m.first_name or ''} {m.last_name or ''}".strip())) if m else None
-        
-    # JSONهای زمان‌بندی/اقساط
+
+    # JSONها/فیلدهای زمان‌بندی
     c.sessions_json = _safe_json(request.form.get("sessions_json")) or None
+
     wdays = _safe_json(request.form.get("weekly_days_json")) or []
     c.weekly_days_json = wdays or None
     sdays_csv = ",".join(wdays) if wdays else None
     if hasattr(Course, "schedule_days"):
         c.schedule_days = sdays_csv
+
     raw_pair = (request.form.get("pair_odd") or "").upper().strip() or None
-    mapped_pattern = None
-    if raw_pair == "PAIR":
-        mapped_pattern = "EVEN"
-    elif raw_pair == "ODD":
-        mapped_pattern = "ODD"
+    mapped_pattern = "EVEN" if raw_pair == "PAIR" else ("ODD" if raw_pair == "ODD" else None)
     c.pair_odd = raw_pair
     if hasattr(Course, "schedule_pattern"):
         c.schedule_pattern = mapped_pattern
+
     c.installments_json = _safe_json(request.form.get("installments_json")) or None
-    # تصویر
+
+    # ✅ اعتبارسنجی قبل از ذخیره
+    ok, err = _validate_schedule_inputs_for(c)
+    if not ok:
+        flash(err, "error")
+        return redirect(url_for("courses.new_form"))
+
+    # تصویر (پس از اعتبارسنجی)
     cover_file = request.files.get("cover_image")
     cover_rel = save_uploaded_image(cover_file, subdir="courses")
     if cover_rel:
@@ -93,13 +110,17 @@ def create():
     flash("دوره با موفقیت ایجاد شد.", "success")
     return redirect(url_for("courses.edit_form", course_id=c.id))
 
-# ---------- ویرایش ----------
+
+# ============================
+# ویرایش دوره
+# ============================
 @bp.get("/<int:course_id>/edit")
 @login_required
 def edit_form(course_id):
     c = Course.query.get_or_404(course_id)
     mentors = Mentor.query.order_by(Mentor.id.desc()).all()
     return render_template("courses/form.html", c=c, mentors=mentors, mode="edit")
+
 
 @bp.post("/<int:course_id>/edit")
 @login_required
@@ -127,23 +148,29 @@ def update(course_id):
         m = Mentor.query.get(c.mentor_id)
         c.mentor_name = (m.full_name or (f"{m.first_name or ''} {m.last_name or ''}".strip())) if m else None
 
-    # JSONها
+    # JSONها/فیلدهای زمان‌بندی
     c.sessions_json = _safe_json(request.form.get("sessions_json")) or None
+
     wdays = _safe_json(request.form.get("weekly_days_json")) or []
     c.weekly_days_json = wdays or None
     sdays_csv = ",".join(wdays) if wdays else None
     if hasattr(Course, "schedule_days"):
         c.schedule_days = sdays_csv
+
     raw_pair = (request.form.get("pair_odd") or "").upper().strip() or None
-    mapped_pattern = None
-    if raw_pair == "PAIR":
-        mapped_pattern = "EVEN"
-    elif raw_pair == "ODD":
-        mapped_pattern = "ODD"
+    mapped_pattern = "EVEN" if raw_pair == "PAIR" else ("ODD" if raw_pair == "ODD" else None)
     c.pair_odd = raw_pair
     if hasattr(Course, "schedule_pattern"):
         c.schedule_pattern = mapped_pattern
+
     c.installments_json = _safe_json(request.form.get("installments_json")) or None
+
+    # ✅ اعتبارسنجی قبل از commit
+    ok, err = _validate_schedule_inputs_for(c)
+    if not ok:
+        flash(err, "error")
+        return redirect(url_for("courses.edit_form", course_id=c.id))
+
     # تصویر
     cover_file = request.files.get("cover_image")
     if cover_file and getattr(cover_file, "filename", ""):
@@ -155,7 +182,10 @@ def update(course_id):
     flash("دوره به‌روزرسانی شد.", "success")
     return redirect(url_for("courses.edit_form", course_id=c.id))
 
-# ---------- بایگانی/حذف ----------
+
+# ============================
+# بایگانی / حذف
+# ============================
 @bp.post("/<int:course_id>/archive")
 @login_required
 def archive(course_id):
@@ -164,6 +194,7 @@ def archive(course_id):
     db.session.commit()
     flash("دوره بایگانی شد.", "info")
     return redirect(url_for("courses.list"))
+
 
 @bp.post("/<int:course_id>/delete")
 @login_required
@@ -174,52 +205,25 @@ def delete(course_id):
     flash("دوره حذف شد.", "info")
     return redirect(url_for("courses.list"))
 
-# ---------- helpers ----------
-def _to_int(x):
-    try:
-        s = str(x or "0").replace(",", "").replace("٬", "").strip()
-        return int(float(s))
-    except Exception:
-        return 0
 
-def _to_float(x):
-    try:
-        s = str(x or "0").replace(",", "").replace("٬", "").strip()
-        return float(s)
-    except Exception:
-        return None
-
-def _parse_date(s):
-    if not s:
-        return None
-    try:
-        return datetime.strptime(s, "%Y-%m-%d").date()
-    except Exception:
-        return None
-
-def _safe_json(s):
-    if not s:
-        return None
-    import json
-    try:
-        return json.loads(s)
-    except Exception:
-        return None
-
-# --------------- جلسات / حضور ---------------
+# ============================
+# جلسات / حضور و غیاب
+# ============================
 @bp.route("/<int:course_id>/sessions")
 @login_required
 def sessions_view(course_id):
-    # صفحه HTML که لیست جلسات و حضور غیاب را نشان می‌دهد
     return render_template("courses/sessions.html", course_id=course_id)
+
 
 @bp.route("/<int:course_id>/sessions.json")
 @login_required
 def sessions_json(course_id):
-    qs = (CourseSession.query
-          .filter_by(course_id=course_id)
-          .order_by(CourseSession.session_date)
-          .all())
+    qs = (
+        CourseSession.query
+        .filter_by(course_id=course_id)
+        .order_by(CourseSession.session_date)
+        .all()
+    )
     items = [{
         "id": s.id,
         "session_date": s.session_date.isoformat(),
@@ -229,6 +233,7 @@ def sessions_json(course_id):
         "note": s.note
     } for s in qs]
     return jsonify(items)
+
 
 @bp.route("/<int:course_id>/sessions/<int:session_id>/attendances")
 @login_required
@@ -242,6 +247,7 @@ def session_attendances(course_id, session_id):
         "note": a.note
     } for a in rows]
     return jsonify(items)
+
 
 @bp.route("/<int:course_id>/sessions/<int:session_id>/attendances", methods=["POST"])
 @login_required
@@ -262,48 +268,93 @@ def add_attendance(course_id, session_id):
     db.session.commit()
     return jsonify({"ok": True, "id": a.id})
 
+
+@bp.post("/<int:course_id>/sessions/preview")
+@login_required
+def sessions_preview(course_id):
+    c = Course.query.get_or_404(course_id)
+    ok, err = _validate_schedule_inputs_for(c)
+    if not ok:
+        return jsonify({"ok": False, "error": err}), 400
+
+    body = request.get_json(silent=True) or {}
+    exclude = _norm_dates_str_list(body.get("exclude") or [])
+
+    st = (c.schedule_type or "DATES").upper()
+    days = set()
+
+    if st == "WEEKLY":
+        days = _generate_dates_weekly(c, exclude)
+    else:
+        raw_dates = body.get("sessions_json") or []
+        cand = _norm_dates_str_list(raw_dates)
+        for d in cand:
+            if c.start_date <= d <= c.end_date and d not in exclude:
+                days.add(d)
+
+    res = sorted(days)
+    return jsonify({"ok": True, "dates": [d.isoformat() for d in res], "count": len(res)})
+
+
 @bp.post("/<int:course_id>/sessions/generate")
 @login_required
 def api_generate_sessions(course_id):
     c = Course.query.get_or_404(course_id)
-    if not (c.start_date and c.end_date):
-        return jsonify({"ok": False, "error": "start/end date لازم است"}), 400
 
-    # جلوگیری از ساخت تکراری
+    ok, err = _validate_schedule_inputs_for(c)
+    if not ok:
+        return jsonify({"ok": False, "error": err}), 400
+
+    # جلوگیری از ساخت تکراری کامل
     existing = CourseSession.query.filter_by(course_id=course_id).count()
     if existing:
         return jsonify({"ok": False, "error": "جلسات قبلاً ساخته شده"}), 409
 
-    # نگاشت روزهای هفته (اگر schedule_days دارید)
-    map_days = {"SA": 5, "SU": 6, "MO": 0, "TU": 1, "WE": 2, "TH": 3, "FR": 4}
-    wanted = set(map_days[d] for d in (c.schedule_days or "").split(",") if d in map_days)
+    body = request.get_json(silent=True) or {}
+    if not body and request.form:
+        import json
+        try:
+            body = json.loads(request.form.get("payload") or "{}")
+        except Exception:
+            body = {}
 
-    d = c.start_date
-    added = 0
-    while d <= c.end_date:
-        if c.schedule_pattern in ("EVEN", "ODD"):
-            delta = (d - c.start_date).days
-            ok = (delta % 2 == 0 and c.schedule_pattern == "EVEN") or (delta % 2 == 1 and c.schedule_pattern == "ODD")
-        else:
-            ok = (d.weekday() in wanted) if wanted else True
+    exclude = _norm_dates_str_list(body.get("exclude") or [])
 
-        if ok:
-            db.session.add(CourseSession(course_id=course_id, session_date=d))
-            added += 1
-        d += timedelta(days=1)
+    st = (c.schedule_type or "DATES").upper()
+    final_days = set()
+
+    if st == "WEEKLY":
+        final_days = _generate_dates_weekly(c, exclude)
+    else:
+        raw_dates = body.get("sessions_json") or []
+        cand = _norm_dates_str_list(raw_dates)
+        for d in cand:
+            if c.start_date <= d <= c.end_date and d not in exclude:
+                final_days.add(d)
+
+    if not final_days:
+        return jsonify({"ok": False, "error": "هیچ تاریخی برای ایجاد جلسه یافت نشد."}), 400
+
+    for d in sorted(final_days):
+        db.session.add(CourseSession(course_id=course_id, session_date=d))
 
     db.session.commit()
-    return jsonify({"ok": True, "created": added})
+    return jsonify({"ok": True, "created": len(final_days)})
 
-# صفحه حضور و غیاب HTML
+
+# ============================
+# صفحه حضور و غیاب (HTML)
+# ============================
 @bp.route("/<int:course_id>/attendance", methods=["GET"])
 @login_required
 def attendance_page(course_id):
     course = Course.query.get_or_404(course_id)
-    sessions = (CourseSession.query
-                .filter(CourseSession.course_id == course.id)
-                .order_by(CourseSession.session_date.asc(), CourseSession.start_time.asc())
-                .all())
+    sessions = (
+        CourseSession.query
+        .filter(CourseSession.course_id == course.id)
+        .order_by(CourseSession.session_date.asc(), CourseSession.start_time.asc())
+        .all()
+    )
 
     if not sessions:
         flash("برای این دوره هنوز جلسه‌ای ساخته نشده. ابتدا از «تولید جلسات از برنامه» استفاده کنید.", "warning")
@@ -312,21 +363,26 @@ def attendance_page(course_id):
     selected_id = request.args.get("session_id", type=int) or sessions[0].id
     selected_session = next((s for s in sessions if s.id == selected_id), sessions[0])
 
-    enrolls = (Enrollment.query
-               .filter(and_(Enrollment.course_id == course.id,
-                            Enrollment.status == "ACTIVE"))
-               .all())
+    enrolls = (
+        Enrollment.query
+        .filter(and_(Enrollment.course_id == course.id, Enrollment.status == "ACTIVE"))
+        .all()
+    )
     student_ids = [e.student_id for e in enrolls]
 
-    students = (Student.query
-                .filter(Student.id.in_(student_ids) if student_ids else False)
-                .order_by(Student.last_name.asc(), Student.first_name.asc())
-                .all())
+    students = (
+        Student.query
+        .filter(Student.id.in_(student_ids) if student_ids else False)
+        .order_by(Student.last_name.asc(), Student.first_name.asc())
+        .all()
+    )
 
-    existing = (Attendance.query
-                .filter(and_(Attendance.session_id == selected_session.id,
-                             Attendance.student_id.in_(student_ids) if student_ids else False))
-                .all())
+    existing = (
+        Attendance.query
+        .filter(and_(Attendance.session_id == selected_session.id,
+                     Attendance.student_id.in_(student_ids) if student_ids else False))
+        .all()
+    )
     att_map = {a.student_id: a for a in existing}
 
     return render_template(
@@ -337,6 +393,7 @@ def attendance_page(course_id):
         students=students,
         att_map=att_map
     )
+
 
 @bp.route("/<int:course_id>/attendance", methods=["POST"])
 @login_required
@@ -352,16 +409,19 @@ def attendance_save(course_id):
         flash("جلسه یافت نشد.", "error")
         return redirect(url_for("courses.attendance_page", course_id=course.id))
 
-    enrolls = (Enrollment.query
-               .filter(and_(Enrollment.course_id == course.id,
-                            Enrollment.status == "ACTIVE"))
-               .all())
+    enrolls = (
+        Enrollment.query
+        .filter(and_(Enrollment.course_id == course.id, Enrollment.status == "ACTIVE"))
+        .all()
+    )
     student_ids = [e.student_id for e in enrolls]
 
-    existing = (Attendance.query
-                .filter(and_(Attendance.session_id == session_id,
-                             Attendance.student_id.in_(student_ids) if student_ids else False))
-                .all())
+    existing = (
+        Attendance.query
+        .filter(and_(Attendance.session_id == session_id,
+                     Attendance.student_id.in_(student_ids) if student_ids else False))
+        .all()
+    )
     existing_map = {(a.session_id, a.student_id): a for a in existing}
 
     created, updated = 0, 0
@@ -385,17 +445,20 @@ def attendance_save(course_id):
     flash(f"حضور و غیاب ذخیره شد. (جدید: {created}، به‌روزشده: {updated})", "success")
     return redirect(url_for("courses.attendance_page", course_id=course.id, session_id=session_id))
 
-# ---------- Enrollment ----------
+
+# ============================
+# Enrollment (API ساده)
+# ============================
 @bp.get("/<int:course_id>/enrollments")
 @login_required
 def api_list_enrollments(course_id):
-    # join با Student برای دسترسی به نام‌ها
-    ens = (db.session.query(Enrollment)
-           .filter(Enrollment.course_id == course_id)
-           .join(Student, Student.id == Enrollment.student_id)
-           # مرتب‌سازی با ستون‌های واقعی، نه property
-           .order_by(Student.last_name.asc(), Student.first_name.asc(), Student.id.asc())
-           .all())
+    ens = (
+        db.session.query(Enrollment)
+        .filter(Enrollment.course_id == course_id)
+        .join(Student, Student.id == Enrollment.student_id)
+        .order_by(Student.last_name.asc(), Student.first_name.asc(), Student.id.asc())
+        .all()
+    )
 
     def _full_name(st):
         fn = (st.first_name or "").strip()
@@ -412,7 +475,6 @@ def api_list_enrollments(course_id):
 @bp.post("/<int:course_id>/enrollments")
 @login_required
 def api_add_enrollment(course_id):
-    # پشتیبانی از JSON و FormData
     if request.is_json:
         payload = request.get_json(silent=True) or {}
         student_id = payload.get("student_id")
@@ -431,12 +493,8 @@ def api_add_enrollment(course_id):
     if exists:
         return jsonify({"ok": False, "error": "قبلاً ثبت شده"}), 409
 
-    from datetime import datetime
     now_utc = datetime.utcnow()
-
-    # مقداردهی شفاف به فیلدهای زمانی برای جلوگیری از NOT NULL
     e = Enrollment(course_id=course_id, student_id=student_id, status="ACTIVE")
-    # اگر مدل ستون‌ها را دارد، مقدار بدهیم (بدون نیاز به تغییر اسکیما)
     if hasattr(Enrollment, "enrolled_at"):
         setattr(e, "enrolled_at", now_utc)
     if hasattr(Enrollment, "joined_at"):
@@ -446,6 +504,7 @@ def api_add_enrollment(course_id):
     db.session.commit()
     return jsonify({"ok": True, "id": e.id})
 
+
 @bp.delete("/<int:course_id>/enrollments/<int:en_id>")
 @login_required
 def api_delete_enrollment(course_id, en_id):
@@ -454,23 +513,19 @@ def api_delete_enrollment(course_id, en_id):
     db.session.commit()
     return jsonify({"ok": True})
 
-# ---------- Students: available for enrollment ----------
+
+# ============================
+# Students: available for enrollment
+# ============================
 @bp.get("/<int:course_id>/students/available")
 @login_required
 def students_available(course_id):
-    """
-    دانشجویانی که هنوز در این دوره Enroll نشده‌اند.
-    پارامترها:
-      q: متن جست‌وجو (اختیاری) — نام/نام‌خانوادگی/تلفن/ID
-      limit: سقف نتایج (پیش‌فرض 50، حداکثر 100)
-    """
     Course.query.get_or_404(course_id)
 
     q = (request.args.get("q") or "").strip()
     limit = request.args.get("limit", type=int) or 50
     limit = max(1, min(limit, 100))
 
-    # شناسه‌هایی که قبلاً عضو این دوره شده‌اند
     enrolled_ids_subq = db.session.query(Enrollment.student_id).filter(
         Enrollment.course_id == course_id
     ).subquery()
@@ -489,8 +544,10 @@ def students_available(course_id):
             )
         )
 
-    students = (qry.order_by(Student.last_name.asc(), Student.first_name.asc())
-                .limit(limit).all())
+    students = (
+        qry.order_by(Student.last_name.asc(), Student.first_name.asc())
+        .limit(limit).all()
+    )
 
     def label_for(s):
         full = f"{(s.first_name or '').strip()} {(s.last_name or '').strip()}".strip() or f"دانشجو #{s.id}"
@@ -499,22 +556,27 @@ def students_available(course_id):
 
     return jsonify([{"id": s.id, "label": label_for(s)} for s in students])
 
+
 @bp.get("/test/datepicker")
 def test_datepicker():
     return render_template("test_datepicker.html")
 
+
+# ============================
+# Students JSON (برای UI فرم)
+# ============================
 def _student_dict(s: Student):
     name = ((s.first_name or '').strip() + ' ' + (s.last_name or '').strip()).strip()
     if not name and hasattr(s, "full_name"):
         name = (s.full_name or "").strip()
     return {"id": s.id, "name": name or "—", "email": s.email or "", "phone": s.phone or ""}
 
+
 @bp.get("/<int:course_id>/students/json")
 @login_required
 def students_json(course_id: int):
     course = Course.query.get_or_404(course_id)
 
-    # enrolled
     enrolled = (
         Student.query.join(Enrollment, Enrollment.student_id == Student.id)
         .filter(Enrollment.course_id == course.id)
@@ -522,13 +584,11 @@ def students_json(course_id: int):
         .all()
     )
 
-    # available = همه به جز ثبت‌نام‌شده‌ها (+ فیلتر q)
     enrolled_ids_q = db.session.query(Enrollment.student_id).filter_by(course_id=course.id)
     q = (request.args.get("q") or "").strip()
     available_q = Student.query.filter(~Student.id.in_(enrolled_ids_q))
     if q:
         like = f"%{q}%"
-        # concat امن برای SQLite/Postgres
         full = (func.trim(func.coalesce(Student.first_name, "")) + " " + func.trim(func.coalesce(Student.last_name, "")))
         available_q = available_q.filter(
             Student.first_name.ilike(like) |
@@ -546,6 +606,7 @@ def students_json(course_id: int):
         "count": {"enrolled": len(enrolled), "available": len(available)},
     })
 
+
 @bp.post("/<int:course_id>/students/enroll")
 @login_required
 def students_enroll(course_id: int):
@@ -562,6 +623,7 @@ def students_enroll(course_id: int):
     db.session.commit()
     return jsonify({"ok": True})
 
+
 @bp.post("/<int:course_id>/students/unenroll")
 @login_required
 def students_unenroll(course_id: int):
@@ -577,3 +639,239 @@ def students_unenroll(course_id: int):
     db.session.delete(enr)
     db.session.commit()
     return jsonify({"ok": True})
+
+
+# ============================
+# Helpers
+# ============================
+def _to_int(x):
+    try:
+        s = str(x or "0").replace(",", "").replace("٬", "").strip()
+        return int(float(s))
+    except Exception:
+        return 0
+
+
+def _to_float(x):
+    try:
+        s = str(x or "0").replace(",", "").replace("٬", "").strip()
+        return float(s)
+    except Exception:
+        return None
+
+
+def _parse_date(s):
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def _safe_json(s):
+    if not s:
+        return None
+    import json
+    try:
+        return json.loads(s)
+    except Exception:
+        return None
+
+
+def _norm_date_str(s: str):
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s.strip(), "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def _norm_dates_str_list(raw):
+    """raw می‌تواند list[{'date': 'yyyy-mm-dd'}] یا list['yyyy-mm-dd'] باشد."""
+    if not raw:
+        return set()
+    out = set()
+    for it in raw:
+        if isinstance(it, dict):
+            d = _norm_date_str(it.get("date"))
+        else:
+            d = _norm_date_str(str(it))
+        if d:
+            out.add(d)
+    return out
+
+
+def _validate_schedule_inputs_for(course) -> tuple[bool, str]:
+    """در WEEKLY باید دقیقاً یکی از schedule_days یا schedule_pattern (EVEN/ODD) پر باشد."""
+    if not (course.start_date and course.end_date):
+        return False, "تاریخ شروع/پایان دوره تنظیم نشده است."
+    if course.start_date > course.end_date:
+        return False, "تاریخ پایان نباید قبل از تاریخ شروع باشد."
+
+    st = (course.schedule_type or "CUSTOM").upper()
+    if st == "WEEKLY":
+        days = (course.schedule_days or "").strip()
+        patt = (course.schedule_pattern or "").strip().upper()
+        has_days = bool(days)
+        has_pair = patt in ("EVEN", "ODD")
+        if has_days == has_pair:
+            return False, "در زمان‌بندی هفتگی، باید دقیقاً یکی از «روزهای هفته» یا «الگوی زوج/فرد» را انتخاب کنید."
+    return True, ""
+
+
+def _generate_dates_weekly(c: Course, exclude: set[_date] | None = None) -> set[_date]:
+    """تولید تاریخ‌ها بر اساس روزهای هفته یا زوج/فرد؛ خروجی set[date]."""
+    exclude = exclude or set()
+    start, end = c.start_date, c.end_date
+    out = set()
+
+    days_csv = (c.schedule_days or "").strip()
+    patt = (c.schedule_pattern or "").upper().strip()
+
+    if days_csv:
+        wanted = {_MAP_DAYS[d] for d in days_csv.split(",") if d in _MAP_DAYS}
+        d = start
+        while d <= end:
+            if (d.weekday() in wanted) and (d not in exclude):
+                out.add(d)
+            d += _td(days=1)
+        return out
+
+    if patt in ("EVEN", "ODD"):
+        d = start
+        while d <= end:
+            delta = (d - start).days
+            ok = (delta % 2 == 0 and patt == "EVEN") or (delta % 2 == 1 and patt == "ODD")
+            if ok and d not in exclude:
+                out.add(d)
+            d += _td(days=1)
+        return out
+
+    return out
+
+
+def _pick_ids(raw_list):
+    """لیست ورودی می‌تواند [1,2] یا [{'id':1},...] باشد → set[int]."""
+    ids = set()
+    for it in (raw_list or []):
+        try:
+            if isinstance(it, dict):
+                ids.add(int(it.get("id")))
+            else:
+                ids.add(int(it))
+        except Exception:
+            continue
+    return ids
+
+
+def _serialize_student(st: Student):
+    return {
+        "id": st.id,
+        "name": f"{st.first_name or ''} {st.last_name or ''}".strip(),
+        "email": st.email,
+        "phone": st.phone,
+    }
+
+
+@bp.get("/<int:course_id>/enrollments/json")
+@login_required
+def enrollments_json(course_id):
+    """برای پر کردن UI: وضعیت فعلی ثبت‌نام‌ها + لیست available."""
+    Course.query.get_or_404(course_id)
+
+    enrolled_q = (
+        db.session.query(Student)
+        .join(Enrollment, Enrollment.student_id == Student.id)
+        .filter(Enrollment.course_id == course_id, Enrollment.status == "ACTIVE")
+        .order_by(Student.id.asc())
+    )
+    enrolled = [_serialize_student(s) for s in enrolled_q.all()]
+
+    all_ids = {s.id for s in db.session.query(Student.id).all()}
+    enrolled_ids = {s["id"] for s in enrolled}
+    available_ids = list(all_ids - enrolled_ids)
+    if available_ids:
+        available_students = db.session.query(Student).filter(Student.id.in_(available_ids)).order_by(Student.id.asc()).all()
+        available = [_serialize_student(s) for s in available_students]
+    else:
+        available = []
+
+    return jsonify({
+        "ok": True,
+        "course_id": course_id,
+        "available": available,
+        "enrolled": enrolled,
+        "count": {"available": len(available), "enrolled": len(enrolled)}
+    })
+
+
+@bp.post("/<int:course_id>/enrollments/sync")
+@login_required
+def enrollments_sync(course_id):
+    """
+    بدنه‌ی ورودی:
+    { "enrolled": [1,2] | [{"id":1}, {"id":2}] }
+    """
+    Course.query.get_or_404(course_id)
+    payload = request.get_json(silent=True) or {}
+
+    new_enrolled_ids = _pick_ids(payload.get("enrolled"))
+
+    current_enrs = (
+        db.session.query(Enrollment)
+        .filter(Enrollment.course_id == course_id)
+        .all()
+    )
+    current_active = {e.student_id for e in current_enrs if e.status == "ACTIVE"}
+
+    # اضافه‌ها
+    to_add = new_enrolled_ids - current_active
+    for sid in to_add:
+        e = next((x for x in current_enrs if x.student_id == sid), None)
+        if e:
+            e.status = "ACTIVE"
+        else:
+            db.session.add(Enrollment(course_id=course_id, student_id=sid, status="ACTIVE"))
+
+    # غیرفعال کردن حذف‌شده‌ها
+    to_deactivate = current_active - new_enrolled_ids
+    if to_deactivate:
+        (
+            db.session.query(Enrollment)
+            .filter(
+                Enrollment.course_id == course_id,
+                Enrollment.student_id.in_(to_deactivate),
+                Enrollment.status == "ACTIVE",
+            )
+            .update({Enrollment.status: "INACTIVE"}, synchronize_session=False)
+        )
+
+    db.session.commit()
+
+    enrolled_students = (
+        db.session.query(Student)
+        .join(Enrollment, Enrollment.student_id == Student.id)
+        .filter(Enrollment.course_id == course_id, Enrollment.status == "ACTIVE")
+        .order_by(Student.id.asc())
+        .all()
+    )
+    enrolled = [_serialize_student(s) for s in enrolled_students]
+
+    all_ids = {s.id for s in db.session.query(Student.id).all()}
+    enrolled_ids = {s["id"] for s in enrolled}
+    available_ids = list(all_ids - enrolled_ids)
+    if available_ids:
+        available_students = db.session.query(Student).filter(Student.id.in_(available_ids)).order_by(Student.id.asc()).all()
+        available = [_serialize_student(s) for s in available_students]
+    else:
+        available = []
+
+    return jsonify({
+        "ok": True,
+        "course_id": course_id,
+        "available": available,
+        "enrolled": enrolled,
+        "count": {"available": len(available), "enrolled": len(enrolled)}
+    })

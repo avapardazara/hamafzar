@@ -10,8 +10,9 @@
       <label class="label">تاریخ جلسه</label>
       <!-- Hidden ISO که به بک‌اند ارسال می‌شود -->
       <input type="hidden" name="date" id="att_date" value="{{ selected_session.session_date if selected_session else '' }}">
-      <!-- ورودی شمسی برای کاربر -->
-      <input type="text" class="input" id="attDateFa" autocomplete="off" placeholder="مثال: 1404/07/24" style="min-width:180px;">
+      <!-- ورودی بومی (میلادی ISO) برای کاربر -->
+      <input type="date" class="input" id="attDateNative" autocomplete="off" style="min-width:180px;"
+             value="{{ selected_session.session_date if selected_session else '' }}">
     </div>
 
     {% if sessions %}
@@ -32,7 +33,6 @@
     </div>
   </div>
 
-  <!-- جدول دانشجوها/وضعیت‌ها (بدون تغییر ساختاری) -->
   <table class="table-rtl" style="width:100%;">
     <thead>
       <tr>
@@ -62,16 +62,22 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function(){
-  // شمسی‌سازی تاریخ جلسه
-  attachPDatepicker('#attDateFa', '#att_date', '{{ selected_session.session_date if selected_session else "" }}');
+  // سنکرون: هر تغییری روی input[type=date]، hidden ISO را به‌روز می‌کند
+  const vis = document.getElementById('attDateNative');
+  const hid = document.getElementById('att_date');
+  if (vis && hid) {
+    // مقدار اولیه اگر hidden پر بود و visible خالیست
+    if (!vis.value && hid.value) vis.value = hid.value;
+    vis.addEventListener('change', () => { hid.value = vis.value; });
+  }
 
   // اگر انتخاب جلسه داری و می‌خواهی با تغییر آن، تاریخ هم sync شود (اختیاری):
   const sessionSel = document.getElementById('session_id');
-  const attHidden = document.getElementById('att_date');
-  if (sessionSel && attHidden) {
+  if (sessionSel && vis && hid) {
     sessionSel.addEventListener('change', function(){
-      // اگر روی option‌ها تاریخ iso داری، می‌تونی از data-attr پر کنی
-      // یا اگر در بک‌اند URL با ?session_id=... رفرش می‌کنی، لازم نیست اینجا sync کنی.
+      // اگر optionها data-date ندارند، بک‌اند با رفرش صفحه تاریخ را ست می‌کند.
+      // اینجا فقط مطمئن می‌شویم hidden از visible عقب نماند.
+      hid.value = vis.value;
     });
   }
 });

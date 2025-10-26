@@ -44,3 +44,33 @@
   // اجرا پس از لود DOM
   document.addEventListener('DOMContentLoaded', window.__initAllFaDates);
 })();
+window.attachPDatepicker = function (visibleSel, hiddenSel, initialISO) {
+  try {
+    const vis = document.querySelector(visibleSel);
+    const hid = document.querySelector(hiddenSel);
+    if (!vis) return;
+
+    // اگر از قبل type='text' بود، به date تغییرش می‌دهیم
+    if (vis.type !== 'date') {
+      try { vis.type = 'date'; } catch (_) {}
+    }
+
+    // مقدار اولیه
+    if (initialISO) {
+      vis.value = initialISO;
+      if (hid) hid.value = initialISO;
+    } else if (hid && hid.value && !vis.value) {
+      vis.value = hid.value;
+    }
+
+    // سنکرون دوطرفه
+    vis.addEventListener('change', () => { if (hid) hid.value = vis.value; });
+    if (hid) {
+      hid.addEventListener('change', () => {
+        if (!vis.value) vis.value = hid.value;
+      });
+    }
+  } catch (e) {
+    console.warn('attachPDatepicker shim warning:', e);
+  }
+};

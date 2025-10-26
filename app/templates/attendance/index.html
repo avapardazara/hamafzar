@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}حضور و غیاب | انتخاب دوره{% endblock %}
+{% block page_title %}حضور و غیاب – انتخاب دوره{% endblock %}
+
+{% block content %}
+<div class="card" style="direction:rtl; max-width:1100px; margin:auto;">
+  <form method="get" style="display:flex; gap:8px; margin-bottom:12px;">
+    <input class="input" name="q" placeholder="جست‌وجوی دوره یا منتور..." value="{{ request.args.get('q','') }}">
+    <button class="btn btn-primary" type="submit">جست‌وجو</button>
+  </form>
+
+  {% if courses %}
+  <table class="table-rtl" style="width:100%; border-collapse:collapse;">
+    <thead>
+      <tr style="background:#F8FAFC; border-bottom:1px solid #EEF2F7;">
+        <th style="text-align:right; padding:10px;">#</th>
+        <th style="text-align:right; padding:10px;">نام دوره</th>
+        <th style="text-align:right; padding:10px;">منتور</th>
+        <th style="text-align:right; padding:10px;">اقدامات</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in courses %}
+      <tr style="border-bottom:1px solid #F1F5F9;">
+        <td style="padding:8px 10px;">{{ loop.index }}</td>
+        <td style="padding:8px 10px;">{{ c.title }}</td>
+        <td style="padding:8px 10px;">{{ c.mentor_name or '' }}</td>
+        <td style="padding:8px 10px; display:flex; gap:8px;">
+          <a class="btn btn-ghost" href="{{ url_for('attendance.list', course_id=c.id) }}">📅 تاریخچه جلسات</a>
+          {% set sid = today_session_id.get(c.id) %}
+          {% if sid %}
+            <a class="btn btn-primary" href="{{ url_for('attendance.session_view', course_id=c.id, session_id=sid) }}">🗓️ جلسه امروز</a>
+          {% else %}
+            <a class="btn btn-ghost" href="{{ url_for('courses.edit_form', course_id=c.id) }}">تنظیم زمان‌بندی</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">دوره‌ای یافت نشد.</p>
+  {% endif %}
+</div>
+
+<style>
+  .input { width:100%; padding:10px 12px; border:1px solid #D3D5DF; border-radius:8px; }
+  .btn { border-radius:12px; }
+  .btn-primary { background:#02AD82; color:#fff; border:none; }
+  .btn-ghost { background:#F6FAF9; color:#0F172A; border:1px solid #D3D5DF; }
+  .muted { color:#7C8A9A; }
+  .card { background:#fff; border:1px solid #D3D5DF; border-radius:12px; box-shadow:0 1px 3px rgba(15,23,42,0.1); padding:16px; }
+</style>
+{% endblock %}
