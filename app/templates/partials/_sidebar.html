@@ -5,10 +5,7 @@
     <a href="{{ url_for('courses.list') }}" class="{{ 'active' if request.blueprint=='courses' else '' }}">📚 دوره‌ها</a>
     <a href="{{ url_for('mentors.list') }}" class="{{ 'active' if request.blueprint=='mentors' else '' }}">👨‍🏫 منتورها</a>
     <a href="{{ url_for('students.list') }}" class="{{ 'active' if request.blueprint=='students' else '' }}">👨‍🎓 کارآموزها</a>
-
-    <!-- تغییر فقط این خط: لینک به لاندر حضور و غیاب بدون پارامتر -->
     <a href="{{ url_for('attendance.index') }}" class="{{ 'active' if request.blueprint=='attendance' else '' }}">🗓️ حضور و غیاب</a>
-
     <a href="{{ url_for('finance.dashboard') }}" class="{{ 'active' if request.blueprint=='finance' else '' }}">💳 مالی</a>
     <a href="{{ url_for('admin.users_index') }}" class="{{ 'active' if request.blueprint=='admin' else '' }}">👥 کاربران</a>
     <a href="{{ url_for('auth.logout') }}">🚪 خروج</a>

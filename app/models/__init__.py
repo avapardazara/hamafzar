@@ -44,6 +44,14 @@ except Exception:
     Enrollment = None
 
 try:
+    from .asset import Asset
+except Exception:
+    Asset = None
+try:
     from .mentor_payment import MentorPayment
 except Exception:
     MentorPayment = None
+try:
+    from .expense import Expense
+except Exception:
+    Expense = None

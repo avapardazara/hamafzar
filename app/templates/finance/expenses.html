@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}هزینه‌ها | هم‌افزار{% endblock %}
+{% block page_title %}💸 هزینه‌ها{% endblock %}
+{% block content %}
+<div class="card">
+  <h3>مجموع هزینه‌ها: <strong>{{ "{:,}".format(total_spent) }}</strong> تومان</h3>
+</div>
+
+<table class="table-rtl">
+  <thead>
+    <tr>
+      <th>عنوان</th><th>دسته‌بندی</th><th>مبلغ</th><th>تاریخ پرداخت</th><th>دوره مرتبط</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in expenses %}
+    <tr>
+      <td>{{ e.title }}</td>
+      <td>{{ e.category or "-" }}</td>
+      <td>{{ "{:,}".format(e.amount|int) }}</td>
+      <td>{{ e.paid_at }}</td>
+      <td>{{ e.course.title if e.course else "-" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

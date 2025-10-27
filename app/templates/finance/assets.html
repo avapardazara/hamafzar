@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}دارایی‌ها | هم‌افزار{% endblock %}
+{% block page_title %}📦 دارایی‌ها{% endblock %}
+{% block content %}
+<div class="card">
+  <h3>مجموع ارزش فعلی دارایی‌ها: <strong>{{ "{:,}".format(total_value) }}</strong> تومان</h3>
+</div>
+
+<table class="table-rtl">
+  <thead>
+    <tr>
+      <th>نام</th><th>دسته‌بندی</th><th>تاریخ خرید</th><th>هزینه اولیه</th><th>ارزش فعلی</th><th>وضعیت</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for a in assets %}
+    <tr>
+      <td>{{ a.name }}</td>
+      <td>{{ a.category or "-" }}</td>
+      <td>{{ a.purchase_date }}</td>
+      <td>{{ "{:,}".format(a.cost|int) }}</td>
+      <td>{{ "{:,}".format(a.current_value()|int) }}</td>
+      <td>{{ a.status }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

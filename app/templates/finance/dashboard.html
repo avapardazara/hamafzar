@@ -1,41 +1,308 @@
 {% extends "base.html" %}
-{% block title %}داشبورد مالی | هم‌افزار{% endblock %}
+{% block title %}مالی | هم‌افزار{% endblock %}
 {% block page_title %}داشبورد مالی{% endblock %}
 
 {% block content %}
-<div class="card" style="direction:rtl;">
-  <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px;">
-    <div class="card" style="padding:12px;">
-      <div class="muted">شهریهٔ اسمی</div>
-      <div style="font-size:20px; font-weight:700;">{{ '{:,}'.format(kpis.total_face) }} تومان</div>
+<div class="card" style="direction:rtl; max-width:1100px; margin:auto;">
+
+  <!-- KPI ها -->
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="kpi-label">شهریه اسمی کل</div>
+      <div class="kpi-val">{{ "{:,}".format(kpis.total_face) }}</div>
     </div>
-    <div class="card" style="padding:12px;">
-      <div class="muted">دریافتی نقدی</div>
-      <div style="font-size:20px; font-weight:700; color:#02AD82;">{{ '{:,}'.format(kpis.total_received) }} تومان</div>
+    <div class="kpi">
+      <div class="kpi-label">مجموع دریافتی</div>
+      <div class="kpi-val">{{ "{:,}".format(kpis.total_received) }}</div>
     </div>
-    <div class="card" style="padding:12px;">
-      <div class="muted">مطالبات باز</div>
-      <div style="font-size:20px; font-weight:700; color:#ef4444;">{{ '{:,}'.format(kpis.total_receivables) }} تومان</div>
+    <div class="kpi">
+      <div class="kpi-label">مطالبات باز</div>
+      <div class="kpi-val text-danger">{{ "{:,}".format(kpis.total_receivables) }}</div>
     </div>
-    <div class="card" style="padding:12px;">
-      <div class="muted">اقساط سررسیدگذشته</div>
-      <div style="font-size:20px; font-weight:700;">{{ overdue_count or kpis.overdue_count }}</div>
+    <div class="kpi">
+      <div class="kpi-label">اقساط سررسیدگذشته</div>
+      <div class="kpi-val">{{ kpis.overdue_count }}</div>
     </div>
   </div>
 
-  <h3 style="margin:16px 0 8px 0;">دریافتی ماهانه (cash-basis)</h3>
-  <div class="card" style="padding:12px;">
-    {% if monthly and monthly|length %}
-      <div style="display:flex; gap:12px; align-items:flex-end;">
-        {% for m in monthly %}
-{% set max_amt = (monthly|map(attribute='amount')|max if monthly and monthly|length > 0 else 1) %}
-        {% endfor %}
-        
-      </div>
-      <div class="muted" style="margin-top:6px;">از قدیم به جدید</div>
-    {% else %}
-      <div class="muted">داده‌ای نیست.</div>
-    {% endif %}
+  <!-- تب‌ها -->
+  <div class="tabs" style="margin-top:14px;">
+    <button class="tab active" data-tab="overview">نمای کلی</button>
+    <button class="tab" data-tab="receivables">مطالبات دانشجو</button>
+    <button class="tab" data-tab="courses">صورت‌حساب دوره‌ها</button>
+    <button class="tab" data-tab="mentors">تسویه منتورها</button>
+    <button class="tab" data-tab="installments">اقساط</button>
+    <button class="tab" data-tab="assets">دارایی‌ها</button>
+    <button class="tab" data-tab="expenses">هزینه‌ها</button>
   </div>
+
+  <!-- پنل: نمای کلی -->
+  <section id="tab-overview" class="tab-panel" style="display:block;">
+    <div class="card soft">
+      <h3 style="margin:0 0 8px;">درآمد ماهانه</h3>
+      <div class="muted" style="margin-bottom:6px;">(Paid tuition per month)</div>
+      <div class="chart-rows">
+        {% if monthly and monthly|length %}
+          {% for r in monthly %}
+            <div class="row">
+              <div class="row-label">{{ r.ym }}</div>
+              <div class="row-bar">
+                <div class="bar"></div>
+              </div>
+              <div class="row-val">{{ "{:,}".format(r.amount|int) }}</div>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="muted">داده‌ای برای نمایش نیست.</div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <!-- پنل: مطالبات -->
+  <section id="tab-receivables" class="tab-panel">
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>#</th><th>دانشجو</th><th>دوره</th><th>شهریه</th><th>دریافتی</th><th>مانده</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if receivables and receivables|length %}
+            {% for it in receivables %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ it.student_name }}</td>
+                <td>{{ it.course_title }}</td>
+                <td>{{ "{:,}".format(it.fee) }}</td>
+                <td>{{ "{:,}".format(it.received) }}</td>
+                <td class="{{ 'text-danger' if it.remain>0 else 'text-success' }}">{{ "{:,}".format(it.remain) }}</td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="6" class="muted">موردی یافت نشد.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- پنل: دوره‌ها -->
+  <section id="tab-courses" class="tab-panel">
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>#</th><th>دوره</th><th>دانشجو</th><th>اسمی</th><th>دریافتی</th><th>بدهی</th><th>سهم منتور</th><th>پرداخت‌شده به منتور</th><th>مانده تسویه</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if courses and courses|length %}
+            {% for r in courses %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ r.course.title }}</td>
+                <td>{{ r.students }}</td>
+                <td>{{ "{:,}".format(r.face) }}</td>
+                <td>{{ "{:,}".format(r.received) }}</td>
+                <td class="{{ 'text-danger' if r.remain>0 else '' }}">{{ "{:,}".format(r.remain) }}</td>
+                <td>{{ "{:,}".format(r.mentor_share) }}</td>
+                <td>{{ "{:,}".format(r.mentor_paid) }}</td>
+                <td class="{{ 'text-danger' if r.mentor_due>0 else 'text-success' }}">{{ "{:,}".format(r.mentor_due) }}</td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="9" class="muted">داده‌ای برای نمایش نیست.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- پنل: منتورها -->
+  <section id="tab-mentors" class="tab-panel">
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>#</th><th>منتور</th><th>تعداد دوره</th><th>دریافتی دوره‌ها</th><th>سهم منتور</th><th>پرداخت‌شده</th><th>مانده</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if mentors and mentors|length %}
+            {% for r in mentors %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ r.mentor.full_name or r.mentor.first_name ~ ' ' ~ (r.mentor.last_name or '') }}</td>
+                <td>{{ r.courses }}</td>
+                <td>{{ "{:,}".format(r.received) }}</td>
+                <td>{{ "{:,}".format(r.share) }}</td>
+                <td>{{ "{:,}".format(r.paid) }}</td>
+                <td class="{{ 'text-danger' if r.due>0 else 'text-success' }}">{{ "{:,}".format(r.due) }}</td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="7" class="muted">اطلاعاتی وجود ندارد.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- پنل: اقساط -->
+  <section id="tab-installments" class="tab-panel">
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>#</th><th>عنوان</th><th>دوره</th><th>سررسید</th><th>مبلغ</th><th>وضعیت</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if installments and installments|length %}
+            {% for p in installments %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ p.title }}</td>
+                <td>{{ p.course.title if p.course else '—' }}</td>
+                <td>{{ p.due }}</td>
+                <td>{{ "{:,}".format(p.amount) }}</td>
+                <td class="{{ 'text-danger' if p.overdue else 'text-success' }}">{{ 'معوق' if p.overdue else 'باز' }}</td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="6" class="muted">قسطی برای نمایش نیست.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- پنل: دارایی‌ها -->
+  <section id="tab-assets" class="tab-panel">
+    {% if AssetModelPresent %}
+      <div class="card soft">
+        <strong>مجموع ارزش فعلی:</strong> {{ "{:,}".format(assets_total) }} تومان
+      </div>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>#</th><th>نام</th><th>دسته‌بندی</th><th>تاریخ خرید</th><th>هزینه اولیه</th><th>ارزش فعلی</th><th>وضعیت</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if assets and assets|length %}
+              {% for a in assets %}
+                <tr>
+                  <td>{{ loop.index }}</td>
+                  <td>{{ a.name }}</td>
+                  <td>{{ a.category or '—' }}</td>
+                  <td>{{ a.purchase_date }}</td>
+                  <td>{{ "{:,}".format((a.cost or 0)|int) }}</td>
+                  <td>
+                    {% if a.current_value %}
+                      {{ "{:,}".format(a.current_value()|int) }}
+                    {% else %}
+                      {{ "{:,}".format((a.cost or 0)|int) }}
+                    {% endif %}
+                  </td>
+                  <td>{{ a.status or 'ACTIVE' }}</td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="7" class="muted">دارایی‌ای ثبت نشده.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="muted">مدل دارایی‌ها (Asset) هنوز در سیستم تعریف نشده است.</div>
+    {% endif %}
+  </section>
+
+  <!-- پنل: هزینه‌ها -->
+  <section id="tab-expenses" class="tab-panel">
+    {% if ExpenseModelPresent %}
+      <div class="card soft">
+        <strong>مجموع هزینه‌ها:</strong> {{ "{:,}".format(expenses_total) }} تومان
+      </div>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>#</th><th>عنوان</th><th>دسته‌بندی</th><th>مبلغ</th><th>تاریخ</th><th>دوره مرتبط</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if expenses and expenses|length %}
+              {% for e in expenses %}
+                <tr>
+                  <td>{{ loop.index }}</td>
+                  <td>{{ e.title }}</td>
+                  <td>{{ e.category or '—' }}</td>
+                  <td>{{ "{:,}".format((e.amount or 0)|int) }}</td>
+                  <td>{{ e.paid_at or '—' }}</td>
+                  <td>{{ e.course.title if e.course else '—' }}</td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="6" class="muted">هزینه‌ای ثبت نشده.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="muted">مدل هزینه‌ها (Expense) هنوز در سیستم تعریف نشده است.</div>
+    {% endif %}
+  </section>
+
 </div>
+
+<style>
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .kpi{background:#F8FAFC;border:1px solid #EEF2F7;border-radius:12px;padding:12px}
+  .kpi-label{font-size:12px;color:#7C8A9A;margin-bottom:6px}
+  .kpi-val{font-size:20px;font-weight:800;color:#0F172A}
+  .text-danger{color:#EF4444}
+  .text-success{color:#059669}
+
+  .tabs{display:flex;gap:6px;flex-wrap:wrap}
+  .tab{background:#F3F4F6;border:none;border-radius:8px;padding:8px 14px;cursor:pointer}
+  .tab.active{background:#02AD82;color:#fff}
+  .tab-panel{display:none;margin-top:12px}
+
+  .card.soft{border:1px solid #E5E7EB;border-radius:12px;padding:12px;margin-bottom:10px;background:#fff}
+  .chart-rows .row{display:grid;grid-template-columns:90px 1fr 110px;gap:8px;align-items:center;margin:6px 0}
+  .chart-rows .row-label{font-size:12px;color:#6B7280}
+  .chart-rows .row-bar{background:#F3F4F6;border-radius:8px;overflow:hidden;height:10px}
+  .chart-rows .bar{height:100%;background:#02AD82}
+  .chart-rows .row-val{text-align:left;color:#0F172A;font-weight:700}
+
+  .table-responsive{overflow-x:auto}
+  .data-table{width:100%;border-collapse:collapse;direction:rtl}
+  .data-table th,.data-table td{padding:10px 12px;border-bottom:1px solid #F1F5F9;white-space:nowrap;text-align:right}
+  .data-table thead th{background:#F8FAFC;color:#7C8A9A;font-size:13px;font-weight:700}
+  .muted{color:#94A3B8}
+  @media (max-width: 900px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width: 520px){.kpi-grid{grid-template-columns:1fr}}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const tabs = document.querySelectorAll('.tabs .tab');
+  const panels = document.querySelectorAll('.tab-panel');
+  function show(key){
+    panels.forEach(p=>p.style.display='none');
+    tabs.forEach(t=>t.classList.remove('active'));
+    const btn=[...tabs].find(b=>b.dataset.tab===key);
+    const panel=document.getElementById('tab-'+key);
+    if(btn) btn.classList.add('active');
+    if(panel) panel.style.display='block';
+  }
+  tabs.forEach(t=> t.addEventListener('click', ()=> show(t.dataset.tab)));
+  show('overview');
+});
+</script>
 {% endblock %}
