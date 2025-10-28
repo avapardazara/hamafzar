@@ -6,5 +6,5 @@ from .mentors.routes import bp as mentors_bp
 from .finance.routes import bp as finance_bp
 from .admin.routes import bp as admin_bp  
 from app.blueprints.attendance import bp as attendance_bp
-
-blueprints = [auth_bp, dashboard_bp, courses_bp, students_bp, mentors_bp, finance_bp, admin_bp, attendance_bp]
+from app.blueprints.installments import bp as installments_bp
+blueprints = [auth_bp, dashboard_bp, courses_bp, students_bp, mentors_bp, finance_bp, admin_bp, attendance_bp, installments_bp]

@@ -38,10 +38,12 @@
 
   <!-- پنل: نمای کلی -->
   <section id="tab-overview" class="tab-panel" style="display:block;">
+
+    <!-- درآمد ماهانه (همان استایل قبلی) -->
     <div class="card soft">
       <h3 style="margin:0 0 8px;">درآمد ماهانه</h3>
       <div class="muted" style="margin-bottom:6px;">(Paid tuition per month)</div>
-      <div class="chart-rows">
+      <div class="chart-rows" id="monthlyChart" data-vals='{{ monthly|tojson }}'>
         {% if monthly and monthly|length %}
           {% for r in monthly %}
             <div class="row">
@@ -57,6 +59,120 @@
         {% endif %}
       </div>
     </div>
+
+    <!-- A/R Aging (معوقات به تفکیک روز) -->
+    <div class="card soft">
+      <h3 style="margin:0 0 8px;">A/R Aging (معوقات به تفکیک روز)</h3>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>0–30</th>
+              <th>31–60</th>
+              <th>61–90</th>
+              <th>90+</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>{{ "{:,}".format(kpis.aging["0-30"] if kpis and kpis.aging else 0) }}</td>
+              <td>{{ "{:,}".format(kpis.aging["31-60"] if kpis and kpis.aging else 0) }}</td>
+              <td>{{ "{:,}".format(kpis.aging["61-90"] if kpis and kpis.aging else 0) }}</td>
+              <td>{{ "{:,}".format(kpis.aging["90+"] if kpis and kpis.aging else 0) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- اقساط ۷ روز آینده -->
+    <div class="card soft">
+      <h3 style="margin:0 0 8px;">اقساط ۷ روز آینده</h3>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>دانشجو/شرح</th>
+              <th>تاریخ سررسید</th>
+              <th>مبلغ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if upcoming_7 %}
+              {% for p in upcoming_7 %}
+                <tr>
+                  <td>
+                    {% set st = getattr(p, 'student', None) %}
+                    {{ getattr(st, 'full_name', None) or getattr(st, 'name', None) or (p.note or "—") }}
+                  </td>
+                  <td>{{ p.due_date or "—" }}</td>
+                  <td>{{ "{:,}".format(p.amount or 0) }}</td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="3" class="muted">موردی ندارد</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- دوره‌های پرفروش ماه جاری -->
+    <div class="card soft">
+      <h3 style="margin:0 0 8px;">دوره‌های پرفروش ماه جاری</h3>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>عنوان دوره</th>
+              <th>تعداد تراکنش</th>
+              <th>دریافتی (MTD)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if top_courses_mtd %}
+              {% for c in top_courses_mtd %}
+                <tr>
+                  <td>{{ c.title }}</td>
+                  <td>{{ c.count }}</td>
+                  <td>{{ "{:,}".format(c.amount or 0) }}</td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="3" class="muted">موردی ندارد</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- هزینه‌های ماه جاری (به تفکیک دسته) -->
+    <div class="card soft">
+      <h3 style="margin:0 0 8px;">هزینه‌های ماه جاری (به تفکیک دسته)</h3>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>دسته</th>
+              <th>جمع</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if expense_mtd_by_cat %}
+              {% for cat, val in expense_mtd_by_cat.items() %}
+                <tr>
+                  <td>{{ cat }}</td>
+                  <td>{{ "{:,}".format(val or 0) }}</td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="2" class="muted">موردی ثبت نشده</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
   </section>
 
   <!-- پنل: مطالبات -->
@@ -277,7 +393,7 @@
   .chart-rows .row{display:grid;grid-template-columns:90px 1fr 110px;gap:8px;align-items:center;margin:6px 0}
   .chart-rows .row-label{font-size:12px;color:#6B7280}
   .chart-rows .row-bar{background:#F3F4F6;border-radius:8px;overflow:hidden;height:10px}
-  .chart-rows .bar{height:100%;background:#02AD82}
+  .chart-rows .bar{height:100%;background:#02AD82;width:0}
   .chart-rows .row-val{text-align:left;color:#0F172A;font-weight:700}
 
   .table-responsive{overflow-x:auto}
@@ -291,6 +407,7 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function(){
+  // Tabs
   const tabs = document.querySelectorAll('.tabs .tab');
   const panels = document.querySelectorAll('.tab-panel');
   function show(key){
@@ -303,6 +420,21 @@ document.addEventListener('DOMContentLoaded', function(){
   }
   tabs.forEach(t=> t.addEventListener('click', ()=> show(t.dataset.tab)));
   show('overview');
+
+  // Monthly bars width
+  const holder = document.getElementById('monthlyChart');
+  if (holder){
+    try{
+      const data = JSON.parse(holder.dataset.vals || '[]');
+      const max = Math.max(1, ...data.map(d => Math.max(0, +d.amount || 0)));
+      const bars = holder.querySelectorAll('.bar');
+      const vals = data.map(d => Math.max(0, +d.amount || 0));
+      bars.forEach((b,i)=>{
+        const w = Math.round((vals[i] / max) * 100);
+        b.style.width = w + '%';
+      });
+    }catch(e){}
+  }
 });
 </script>
 {% endblock %}

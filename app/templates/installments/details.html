@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}جزئیات اقساط | هم‌افزار{% endblock %}
+{% block page_title %}جزئیات برنامه اقساط{% endblock %}
+
+{% block content %}
+<div class="card" style="direction:rtl; max-width:1100px; margin:auto;">
+
+  <div class="card soft" style="margin-bottom:12px;">
+    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px;">
+      <div><div class="muted">عنوان</div><div>{{ plan.title or '—' }}</div></div>
+      <div>
+        <div class="muted">دانشجو</div>
+        <div>
+          {% if plan.enrollment and plan.enrollment.student %}
+            {{ (plan.enrollment.student.first_name or '') ~ ' ' ~ (plan.enrollment.student.last_name or '') }}
+          {% elif plan.student %}
+            {{ (plan.student.first_name or '') ~ ' ' ~ (plan.student.last_name or '') }}
+          {% else %} — {% endif %}
+        </div>
+      </div>
+      <div><div class="muted">دوره</div><div>{{ plan.enrollment.course.title if plan.enrollment and plan.enrollment.course else (plan.course.title if plan.course else '—') }}</div></div>
+      <div><div class="muted">اقساط</div><div>{{ installments|length }}</div></div>
+    </div>
+  </div>
+
+  <div class="kpi-grid" style="margin-bottom:12px;">
+    <div class="kpi"><div class="kpi-label">جمع کل</div><div class="kpi-val">{{ "{:,}".format(total) }}</div></div>
+    <div class="kpi"><div class="kpi-label">پرداخت‌شده</div><div class="kpi-val">{{ "{:,}".format(paid) }}</div></div>
+    <div class="kpi"><div class="kpi-label">مانده</div><div class="kpi-val text-danger">{{ "{:,}".format(remain) }}</div></div>
+    <div class="kpi"><div class="kpi-label">کارمزد چک (کل)</div><div class="kpi-val">{{ "{:,}".format(int(plan.cheque_fee_total or 0)) }}</div></div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>#</th><th>سررسید</th><th>اصل قسط</th><th>کارمزد چک</th><th>جمع قسط</th><th>وضعیت</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if installments %}
+          {% for i in installments %}
+            <tr>
+              <td>{{ i.seq }}</td>
+              <td>{{ i.due_date or '—' }}</td>
+              <td>{{ "{:,}".format(int(i.amount_base or 0)) }}</td>
+              <td>{{ "{:,}".format(int(i.cheque_fee_amount or 0)) }}</td>
+              <td><strong>{{ "{:,}".format(int(i.amount_total or 0)) }}</strong></td>
+              <td class="{{ 'text-success' if (i.status or '').upper()=='PAID' else 'text-danger' }}">{{ i.status }}</td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="6" class="muted">قسطی تعریف نشده.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin-top:12px;">
+    <a class="btn btn-ghost" href="{{ url_for('installments.index') }}">بازگشت</a>
+  </div>
+</div>
+{% endblock %}

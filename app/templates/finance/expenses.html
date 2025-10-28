@@ -1,27 +1,124 @@
-{% extends "base.html" %}
-{% block title %}هزینه‌ها | هم‌افزار{% endblock %}
-{% block page_title %}💸 هزینه‌ها{% endblock %}
-{% block content %}
-<div class="card">
-  <h3>مجموع هزینه‌ها: <strong>{{ "{:,}".format(total_spent) }}</strong> تومان</h3>
-</div>
+<!-- این قطعه مستقیم داخل تب inject می‌شود؛ پس نیازی به extends ندارد -->
+<div class="card" style="border:none; box-shadow:none; padding:0;">
+  <h3 style="margin:0 0 10px;">هزینه‌ها</h3>
 
-<table class="table-rtl">
-  <thead>
-    <tr>
-      <th>عنوان</th><th>دسته‌بندی</th><th>مبلغ</th><th>تاریخ پرداخت</th><th>دوره مرتبط</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for e in expenses %}
-    <tr>
-      <td>{{ e.title }}</td>
-      <td>{{ e.category or "-" }}</td>
-      <td>{{ "{:,}".format(e.amount|int) }}</td>
-      <td>{{ e.paid_at }}</td>
-      <td>{{ e.course.title if e.course else "-" }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% endblock %}
+  <!-- فرم افزودن -->
+  <form method="post" action="{{ url_for('finance.expenses_new') }}" class="card" style="margin-bottom:12px;">
+    <div style="display:grid; grid-template-columns: 1.4fr 120px 100px 140px 140px 1fr; gap:8px;">
+      <input class="input" name="title" placeholder="شرح هزینه" required>
+
+      <input class="input" type="number" name="amount_net" min="0" step="1000" placeholder="مبلغ (قبل VAT)" required>
+      <input class="input" type="number" name="vat_rate" min="0" max="50" step="0.5" placeholder="VAT %">
+
+      <select class="input" name="payment_method">
+        <option value="CASH">نقد/کارت</option>
+        <option value="TRANSFER">واریز</option>
+        <option value="CHEQUE">چک</option>
+      </select>
+
+      <select class="input" name="status">
+        <option value="PAID">پرداخت‌شده</option>
+        <option value="PENDING">در انتظار</option>
+        <option value="CANCELLED">لغو</option>
+      </select>
+
+      <select class="input" name="category">
+        <option value="">— دسته‌بندی —</option>
+        <option value="CLASS">هزینه کلاس</option>
+        <option value="HUMAN_RESOURCE">منابع انسانی</option>
+        <option value="CATERING">پذیرایی</option>
+        <option value="OTHER">سایر</option>
+      </select>
+    </div>
+
+    <div style="display:grid; grid-template-columns: 180px 140px 1fr 140px 1fr; gap:8px; margin-top:8px;">
+      <select class="input" name="course_id">
+        <option value="">— نسبت‌دادن به دوره (اختیاری) —</option>
+        {% for c in courses %}
+          <option value="{{ c.id }}">{{ c.title }}</option>
+        {% endfor %}
+      </select>
+
+      <select class="input" name="is_fixed">
+        <option value="">متغیر</option>
+        <option value="1">ثابت</option>
+      </select>
+
+      <input class="input" type="number" name="surcharge_percent" step="0.5" min="0" placeholder="کارمزد چک (%)">
+      <input class="input" type="date" name="paid_at" placeholder="تاریخ پرداخت">
+      <input class="input" name="note" placeholder="یادداشت (اختیاری)">
+    </div>
+
+    <!-- فیلدهای چک (اختیاری) -->
+    <details style="margin-top:8px;">
+      <summary>جزئیات چک (اختیاری)</summary>
+      <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; margin-top:8px;">
+        <input class="input" name="cheque_number" placeholder="شماره چک">
+        <input class="input" name="bank_name" placeholder="بانک">
+        <input class="input" name="issuer_name" placeholder="صادرکننده">
+        <input class="input" type="date" name="issue_date" placeholder="تاریخ صدور">
+        <input class="input" type="date" name="due_date" placeholder="تاریخ سررسید">
+        <select class="input" name="cheque_status">
+          <option value="">— وضعیت چک —</option>
+          <option value="PENDING">در انتظار</option>
+          <option value="CLEARED">پاس‌شده</option>
+          <option value="BOUNCED">برگشتی</option>
+        </select>
+      </div>
+    </details>
+
+    <div style="margin-top:10px; display:flex; gap:8px;">
+      <button class="btn btn-primary" type="submit">افزودن هزینه</button>
+    </div>
+  </form>
+
+  <!-- جدول -->
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>شرح</th>
+          <th>مبلغ پایه</th>
+          <th>VAT%</th>
+          <th>VAT</th>
+          <th>کارمزد چک</th>
+          <th>جمع کل</th>
+          <th>روش</th>
+          <th>وضعیت</th>
+          <th>دسته</th>
+          <th>دوره</th>
+          <th>تاریخ پرداخت</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in items %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ getattr(e,'title','—') }}</td>
+            <td>{{ "{:,.0f}".format(getattr(e,'amount_net',0) or 0) }}</td>
+            <td>{{ "{:.1f}".format(getattr(e,'vat_rate',0) or 0) }}</td>
+            <td>{{ "{:,.0f}".format(getattr(e,'vat_amount',0) or 0) }}</td>
+            <td>
+              {% set s = (getattr(e,'surcharge_amount',0) or 0) %}
+              {% set sp = (getattr(e,'surcharge_percent',0) or 0) %}
+              {{ "{:,.0f}".format(s) }}{% if sp %} ({{ sp }}٪){% endif %}
+            </td>
+            <td>{{ "{:,.0f}".format(getattr(e,'amount_total', (getattr(e,'amount_net',0) or 0) + (getattr(e,'vat_amount',0) or 0) + (getattr(e,'surcharge_amount',0) or 0))) }}</td>
+            <td>{{ getattr(e,'payment_method','—') }}</td>
+            <td>{{ getattr(e,'status','—') }}</td>
+            <td>{{ getattr(e,'category','—') }}</td>
+            <td>{{ e.course.title if e.course else '—' }}</td>
+            <td>
+              {% set p = getattr(e,'paid_at', None) %}
+              {{ p.isoformat() if p else '—' }}
+            </td>
+          </tr>
+        {% endfor %}
+        {% if not items %}
+          <tr><td colspan="12" class="muted">هنوز هزینه‌ای ثبت نشده است.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>

@@ -1,28 +1,67 @@
-{% extends "base.html" %}
-{% block title %}دارایی‌ها | هم‌افزار{% endblock %}
-{% block page_title %}📦 دارایی‌ها{% endblock %}
-{% block content %}
-<div class="card">
-  <h3>مجموع ارزش فعلی دارایی‌ها: <strong>{{ "{:,}".format(total_value) }}</strong> تومان</h3>
-</div>
+<!-- این قطعه نیز مستقیم داخل تب inject می‌شود -->
+<div class="card" style="border:none; box-shadow:none; padding:0;">
+  <h3 style="margin:0 0 10px;">دارایی‌ها</h3>
 
-<table class="table-rtl">
-  <thead>
-    <tr>
-      <th>نام</th><th>دسته‌بندی</th><th>تاریخ خرید</th><th>هزینه اولیه</th><th>ارزش فعلی</th><th>وضعیت</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for a in assets %}
-    <tr>
-      <td>{{ a.name }}</td>
-      <td>{{ a.category or "-" }}</td>
-      <td>{{ a.purchase_date }}</td>
-      <td>{{ "{:,}".format(a.cost|int) }}</td>
-      <td>{{ "{:,}".format(a.current_value()|int) }}</td>
-      <td>{{ a.status }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% endblock %}
+  <!-- فرم افزودن -->
+  <form method="post" action="{{ url_for('finance.assets_new') }}" class="card" style="margin-bottom:12px;">
+    <div style="display:grid; grid-template-columns: 1.4fr 140px 140px 140px 1fr; gap:8px;">
+      <input class="input" name="title" placeholder="عنوان دارایی" required>
+      <input class="input" type="number" name="purchase_price" step="1000" min="0" placeholder="قیمت خرید">
+      <input class="input" type="date" name="purchase_date" placeholder="تاریخ خرید">
+      <input class="input" type="date" name="in_service_date" placeholder="تاریخ بهره‌برداری">
+      <select class="input" name="course_id">
+        <option value="">— نسبت‌دادن به دوره (اختیاری) —</option>
+        {% for c in courses %}
+          <option value="{{ c.id }}">{{ c.title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="display:grid; grid-template-columns: 160px 180px 1fr; gap:8px; margin-top:8px;">
+      <input class="input" type="number" name="useful_life_months" min="1" placeholder="عمر مفید (ماه)">
+      <select class="input" name="depreciation_method">
+        <option value="STRAIGHT_LINE">استهلاک خط مستقیم</option>
+      </select>
+      <input class="input" type="number" name="residual_value" step="1000" min="0" placeholder="ارزش اسقاط (اختیاری)">
+    </div>
+
+    <div style="margin-top:10px; display:flex; gap:8px;">
+      <button class="btn btn-primary" type="submit">افزودن دارایی</button>
+    </div>
+  </form>
+
+  <!-- جدول -->
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>عنوان</th>
+          <th>قیمت خرید</th>
+          <th>تاریخ خرید</th>
+          <th>تاریخ بهره‌برداری</th>
+          <th>عمر (ماه)</th>
+          <th>روش</th>
+          <th>دوره</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in items %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ getattr(a,'title','—') }}</td>
+            <td>{{ "{:,.0f}".format(getattr(a,'purchase_price',0) or 0) }}</td>
+            <td>{{ a.purchase_date.isoformat() if getattr(a,'purchase_date',None) else '—' }}</td>
+            <td>{{ a.in_service_date.isoformat() if getattr(a,'in_service_date',None) else '—' }}</td>
+            <td>{{ getattr(a,'useful_life_months','—') }}</td>
+            <td>{{ getattr(a,'depreciation_method','—') }}</td>
+            <td>{{ a.course.title if a.course else '—' }}</td>
+          </tr>
+        {% endfor %}
+        {% if not items %}
+          <tr><td colspan="8" class="muted">هنوز دارایی‌ای ثبت نشده است.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>

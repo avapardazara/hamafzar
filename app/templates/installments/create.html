@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}ایجاد برنامه اقساط | هم‌افزار{% endblock %}
+{% block page_title %}ایجاد برنامه اقساط{% endblock %}
+
+{% block content %}
+<div class="card" style="direction:rtl; max-width:900px; margin:auto;">
+  <form method="post" action="{{ url_for('installments.create_submit') }}" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+    <div class="card soft" style="grid-column:1 / -1;">
+      <div class="muted">انتخاب موجودیت‌ها</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-top:10px;">
+        <div>
+          <label class="muted">دوره</label>
+          <select name="course_id" class="input" style="width:100%;">
+            <option value="">—</option>
+            {% for c in courses %}
+              <option value="{{ c.id }}">{{ c.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="muted">دانشجو</label>
+          <select name="student_id" class="input" style="width:100%;">
+            <option value="">—</option>
+            {% for s in students %}
+              <option value="{{ s.id }}">{{ (s.first_name or '') ~ ' ' ~ (s.last_name or '') }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="muted">ثبت‌نام</label>
+          <select name="enrollment_id" class="input" style="width:100%;">
+            <option value="">—</option>
+            {% for e in enrollments %}
+              <option value="{{ e.id }}">#{{ e.id }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card soft">
+      <label class="muted">عنوان برنامه</label>
+      <input class="input" name="title" placeholder="مثلاً: اقساط ترم پاییز">
+    </div>
+
+    <div class="card soft">
+      <label class="muted">مبلغ کل پایه (تومان)</label>
+      <input class="input" name="total_amount" type="number" step="0.01" min="0" required>
+    </div>
+
+    <div class="card soft">
+      <label class="muted">تعداد اقساط</label>
+      <input class="input" name="installments_count" type="number" min="1" value="3" required>
+    </div>
+
+    <div class="card soft">
+      <label class="muted">تاریخ سررسید اولین قسط</label>
+      <input class="input" name="first_due_date" type="date" placeholder="YYYY-MM-DD">
+    </div>
+
+    <div class="card soft" style="grid-column:1 / -1;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <label class="muted">دریافت با چک؟</label>
+        <input type="checkbox" name="use_cheques" value="1" onchange="document.getElementById('chequeBox').style.display=this.checked?'block':'none'">
+      </div>
+      <div id="chequeBox" style="display:none; margin-top:10px;">
+        <label class="muted">درصد کارمزد چک روی کل مبلغ (%)</label>
+        <input class="input" name="cheque_fee_percent" type="number" step="0.01" min="0" value="0">
+        <div class="muted" style="margin-top:6px;">این درصد بین اقساط تقسیم و به عنوان «کارمزد چک» در گزارش‌ها جداگانه نمایش داده می‌شود.</div>
+      </div>
+    </div>
+
+    <div style="grid-column:1 / -1; display:flex; gap:8px; justify-content:flex-end;">
+      <a class="btn btn-ghost" href="{{ url_for('installments.index') }}">انصراف</a>
+      <button class="btn btn-primary" type="submit">ایجاد برنامه</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

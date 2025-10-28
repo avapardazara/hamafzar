@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}برنامه‌های اقساط | هم‌افزار{% endblock %}
+{% block page_title %}برنامه‌های اقساط{% endblock %}
+
+{% block content %}
+<div class="card" style="direction:rtl; max-width:1100px; margin:auto;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+    <div class="muted">فهرست همه برنامه‌ها</div>
+    <a class="btn btn-primary" href="{{ url_for('installments.create_form') }}">ایجاد برنامه جدید</a>
+  </div>
+
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>عنوان</th>
+          <th>دانشجو</th>
+          <th>دوره</th>
+          <th>تعداد اقساط</th>
+          <th>مبلغ کل</th>
+          <th>پرداخت‌شده</th>
+          <th>مانده</th>
+          <th>وضعیت</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if rows %}
+          {% for r in rows %}
+            <tr>
+              <td>{{ loop.index }}</td>
+              <td>{{ r.plan.title or '—' }}</td>
+              <td>
+                {% if r.plan.enrollment and r.plan.enrollment.student %}
+                  {{ (r.plan.enrollment.student.first_name or '') ~ ' ' ~ (r.plan.enrollment.student.last_name or '') }}
+                {% elif r.plan.student %}
+                  {{ (r.plan.student.first_name or '') ~ ' ' ~ (r.plan.student.last_name or '') }}
+                {% else %} — {% endif %}
+              </td>
+              <td>{{ r.plan.enrollment.course.title if r.plan.enrollment and r.plan.enrollment.course else (r.plan.course.title if r.plan.course else '—') }}</td>
+              <td>{{ r.count }}</td>
+              <td>{{ "{:,}".format(r.total) }}</td>
+              <td>{{ "{:,}".format(r.paid) }}</td>
+              <td class="{{ 'text-danger' if r.remain>0 else 'text-success' }}">{{ "{:,}".format(r.remain) }}</td>
+              <td>{{ r.plan.status }}</td>
+              <td><a class="btn btn-ghost" href="{{ url_for('installments.details', plan_id=r.plan.id) }}">جزئیات</a></td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="10" class="muted">موردی وجود ندارد.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
