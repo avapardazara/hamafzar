@@ -59,7 +59,3 @@ try:
     from .installment import Installment
 except Exception:
     Installment = None
-try:
-    from .installment_plan import InstallmentPlan
-except Exception:
-    InstallmentPlan = None

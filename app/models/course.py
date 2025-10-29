@@ -29,7 +29,16 @@ class Course(db.Model):
     mentor_share_percent  = db.Column(db.Integer)   # درصد سهم منتور از درآمد کل
 
     created_at   = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-
+    allow_installments = db.Column(db.Boolean, nullable=False, default=False)
+    default_inst_count = db.Column(db.Integer,  nullable=False, default=1)
+    default_use_cheques = db.Column(db.Boolean, nullable=False, default=False)
+    default_cheque_fee_percent = db.Column(db.Float, nullable=False, default=0.0)
+    installment_plans = db.relationship(
+    "InstallmentPlan",
+    backref="course",
+    lazy="dynamic",
+    cascade="all, delete-orphan"
+)
     @property
     def fee_per_student(self):
         return self.tuition_per_student

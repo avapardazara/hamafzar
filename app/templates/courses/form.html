@@ -1,492 +1,206 @@
 {% extends "base.html" %}
-{% block title %}{{ 'ویرایش دوره' if mode == 'edit' else 'دوره جدید' }} | هم‌افزار{% endblock %}
+{% block title %}دوره{% endblock %}
+{% block page_title %}فرم دوره{% endblock %}
 
 {% block content %}
-<form id="courseForm" method="post" enctype="multipart/form-data" class="card"
-      style="direction:rtl; max-width:1100px; margin:auto;"
-      data-course-id="{{ c.id if c and c.id is not none else '' }}">
+<div class="card" style="direction:rtl; max-width:1100px; margin:auto;">
 
   <!-- Tabs -->
-  <div class="tabs" style="display:flex; gap:8px; margin-bottom:12px;">
-    <button type="button" class="tab active" data-tab="main">اطلاعات اصلی</button>
-    <button type="button" class="tab" data-tab="schedule">زمان‌بندی جلسات</button>
-    <button type="button" class="tab" data-tab="finance">مالی</button>
-    <button type="button" class="tab" data-tab="students">دانشجوها</button>
+  <div class="tabs" style="margin-bottom:12px; display:flex; gap:6px; flex-wrap:wrap;">
+    <button class="tab active" data-tab="main">اطلاعات</button>
+    <button class="tab" data-tab="schedule">زمان‌بندی</button>
+    <button class="tab" data-tab="finance">مالی</button>
+    <button class="tab" data-tab="students">دانشجوها</button>
+    <button class="tab" data-tab="installments">اقساط</button> <!-- ✅ تب جدید -->
   </div>
 
-  <!-- Tab: Main -->
-  <section id="tab-main" class="tab-panel" style="display:block;">
-    <div style="display:grid; grid-template-columns: 220px 1fr; gap:16px; align-items:start;">
-      <!-- Cover -->
-      <div>
-        <div style="width:220px; height:140px; border-radius:16px; overflow:hidden; border:1px solid #E5E7EB; background:#F8FAFC; display:flex; align-items:center; justify-content:center;">
-          {% if c and c.cover_image %}
-            <img id="coverPreview" src="{{ url_for('uploaded_file', filename=c.cover_image) }}" style="width:100%; height:100%; object-fit:cover;">
-          {% else %}
-            <img id="coverPreview"
-                 src="{{ url_for('static', filename='images/cover-default.png') }}"
-                 style="width:100%; height:100%; object-fit:cover;"
-                 onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<?xml version=&quot;1.0&quot;?><svg xmlns=&quot;http://www.w3.org/2000/svg&quot; width=&quot;440&quot; height=&quot;280&quot;><rect width=&quot;100%&quot; height=&quot;100%&quot; fill=&quot;%23F3F4F6&quot;/><text x=&quot;50%&quot; y=&quot;50%&quot; dominant-baseline=&quot;middle&quot; text-anchor=&quot;middle&quot; fill=&quot;%239CA3AF&quot; font-family=&quot;Arial&quot; font-size=&quot;18&quot;>Cover</text></svg>';"/>
-          {% endif %}
-        </div>
-        <div style="margin-top:10px;">
-          <input type="file" class="input" name="cover_image" id="coverInput" accept="image/*">
-        </div>
-      </div>
+  <form method="post" action="{{ save_action }}" enctype="multipart/form-data">
+    {{ form.csrf_token }}
 
-      <!-- Fields -->
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-        <div style="grid-column:1 / -1;">
-          <label class="label">نام دوره<span style="color:#ef4444;"> *</span></label>
-          <input class="input" name="title" value="{{ c.title if c else '' }}" required>
-        </div>
+    <!-- پنل: اطلاعات -->
+    <section id="tab-main" class="tab-panel" style="display:block;">
+      {% include 'courses/_form_main.html' %}
+    </section>
 
-        <div>
-          <label class="label">منتور</label>
-          <select class="input" name="mentor_id">
-            <option value="">— انتخاب منتور —</option>
-            {% for m in mentors %}
-            <option value="{{ m.id }}" {% if c and c.mentor_id==m.id %}selected{% endif %}>
-              {{ m.full_name or (m.first_name ~ ' ' ~ (m.last_name or '')) }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
+    <!-- پنل: زمان‌بندی -->
+    <section id="tab-schedule" class="tab-panel">
+      {% include 'courses/_form_schedule.html' %}
+    </section>
 
-        <div>
-          <label class="label">وضعیت</label>
-          <select class="input" name="status">
-            <option value="ACTIVE"  {% if not c or (c and c.status=='ACTIVE') %}selected{% endif %}>فعال</option>
-            <option value="ARCHIVED" {% if c and c.status=='ARCHIVED' %}selected{% endif %}>آرشیو</option>
-          </select>
-        </div>
+    <!-- پنل: مالی -->
+    <section id="tab-finance" class="tab-panel">
+      {% include 'courses/_form_finance.html' %}
+    </section>
 
-        <div>
-          <label class="label">تاریخ شروع</label>
-          <input class="input" type="date" name="start_date" id="start_date"
-                 value="{{ c.start_date if c and c.start_date else '' }}">
-        </div>
+    <!-- پنل: دانشجوها -->
+    <section id="tab-students" class="tab-panel">
+      {% include 'courses/_form_students.html' %}
+    </section>
 
-        <div>
-          <label class="label">تاریخ پایان</label>
-          <input class="input" type="date" name="end_date" id="end_date"
-                 value="{{ c.end_date if c and c.end_date else '' }}">
-        </div>
-
-        <div style="grid-column:1 / -1;">
-          <label class="label">توضیحات دوره</label>
-          <textarea class="input" name="description" rows="4">{{ c.description if c else '' }}</textarea>
-        </div>
-      </div>
-    </div>
-
-    {% if mode == 'edit' %}
-      <hr>
-      <div id="generateSessionsBox" style="margin-top:12px;">
-        <button class="btn btn-primary" type="button" id="btnGenerateSessions">🗓️ تولید جلسات از برنامه</button>
-        <small class="muted">بر اساس تاریخ شروع/پایان و الگوی زمانی دوره</small>
-      </div>
-    {% endif %}
-  </section>
-
-  <!-- Tab: Schedule -->
-  <section id="tab-schedule" class="tab-panel" style="display:none;">
-    <div class="card" style="border:none; box-shadow:none; padding:0; display:grid; gap:12px;">
-
-      <div>
-        <label class="label">نوع زمان‌بندی</label>
-        <div style="display:flex; gap:10px; align-items:center;">
-          <label><input type="radio" name="schedule_type" value="CUSTOM" {% if not c or (c and c.schedule_type!='WEEKLY') %}checked{% endif %}> سفارشی</label>
-          <label><input type="radio" name="schedule_type" value="WEEKLY" {% if c and c.schedule_type=='WEEKLY' %}checked{% endif %}> هفتگی</label>
-        </div>
-      </div>
-
-      <!-- CUSTOM -->
-      <div id="customBox" {% if not c or (c and c.schedule_type!='WEEKLY') %}class="show"{% else %}class="hide"{% endif %}>
-        <div class="label">لیست تاریخ‌های جلسات</div>
-        <div style="display:grid; grid-template-columns: 1fr 120px; gap:8px; margin-bottom:8px;">
-          <input id="customDate" type="date" class="input">
-          <button type="button" class="btn btn-primary" id="btnAddDate">➕ افزودن</button>
-        </div>
-        <ul id="customDates" style="list-style:none; padding:0; margin:0; display:flex; flex-wrap:wrap; gap:6px;"></ul>
-      </div>
-
-      <!-- WEEKLY -->
-      <div id="weeklyBox" {% if c and c.schedule_type=='WEEKLY' %}class="show"{% else %}class="hide"{% endif %}>
-        <div class="label">روزهای هفته (مولتی انتخاب)</div>
-        {% set _wd_init =
-            (c.weekly_days_json if c and c.weekly_days_json else
-             (c.schedule_days.split(',') if c and c.schedule_days else [])) %}
-        {% set _wdays = [('SA','شنبه'),('SU','یکشنبه'),('MO','دوشنبه'),('TU','سه‌شنبه'),('WE','چهارشنبه'),('TH','پنجشنبه'),('FR','جمعه')] %}
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          {% for code, label in _wdays %}
-          <label style="display:inline-flex; gap:6px; align-items:center; background:#F8FAFC; border:1px solid #E5E7EB; padding:6px 10px; border-radius:10px;">
-            <input type="checkbox" class="weekly-day" value="{{ code }}" {% if code in _wd_init %}checked{% endif %}> {{ label }}
+    <!-- پنل: اقساط (جدید) -->
+    <section id="tab-installments" class="tab-panel">
+      <div class="card soft" style="margin-top:8px;">
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <label style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" name="is_installment" value="1" {% if is_installment %}checked{% endif %}>
+            <span>این دوره به‌صورت قسطی ارائه می‌شود</span>
           </label>
-          {% endfor %}
-        </div>
 
-        <div class="label" style="margin-top:10px;">الگوی زوج/فرد</div>
-        {# مقدار اولیه برای رادیو: از pair_odd یا (در صورت نبود) از schedule_pattern استنتاج کن #}
-        {% set _pair = (
-            c.pair_odd if c and c.pair_odd
-            else ('PAIR' if c and c.schedule_pattern=='EVEN'
-                  else ('ODD' if c and c.schedule_pattern=='ODD' else None))
-        ) %}
-        <div style="display:flex; gap:10px; align-items:center;">
-          <label><input type="radio" name="pair_odd" value=""    {% if not _pair %}checked{% endif %}> بدون الگو</label>
-          <label><input type="radio" name="pair_odd" value="PAIR" {% if _pair=='PAIR' %}checked{% endif %}> زوج</label>
-          <label><input type="radio" name="pair_odd" value="ODD"  {% if _pair=='ODD'  %}checked{% endif %}> فرد</label>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Tab: Finance -->
-  <section id="tab-finance" class="tab-panel" style="display:none;">
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-      <div>
-        <label class="label">شهریه هر دانشجو (تومان)</label>
-        <input class="input" name="fee_per_student" type="number" min="0" value="{{ c.fee_per_student if c else '' }}">
-      </div>
-      <div>
-        <label class="label">سهم منتور (%)</label>
-        <input class="input" name="mentor_share_percent" type="number" step="0.1" min="0" max="100" value="{{ c.mentor_share_percent if c else '' }}">
-      </div>
-    </div>
-  </section>
-
-  <!-- Tab: Students -->
-  <section id="tab-students" class="tab-panel" style="display:none;">
-    {% if mode == 'edit' %}
-    <div id="course-students"
-         data-course-id="{{ c.id }}"
-         data-json-url="{{ url_for('courses.students_json', course_id=c.id) }}"
-         data-enroll-url="{{ url_for('courses.students_enroll', course_id=c.id) }}"
-         data-unenroll-url="{{ url_for('courses.students_unenroll', course_id=c.id) }}"
-         style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-
-      <div class="card" style="border:1px solid #E5E7EB; border-radius:12px; padding:12px;">
-        <h3 style="margin:0 0 8px 0;">👥 دانشجوهای دوره</h3>
-        <div id="enroll-list"><p class="muted">در حال بارگذاری…</p></div>
-      </div>
-
-      <div class="card" style="border:1px solid #E5E7EB; border-radius:12px; padding:12px;">
-        <h3 style="margin:0 0 8px 0;">➕ افزودن به دوره</h3>
-        <div id="enroll-add-box">
-          <label class="label" for="studentSelectBox">انتخاب دانشجو</label>
-          <select id="studentSelectBox" class="input" style="width:100%;">
-            <option value="">— انتخاب دانشجو —</option>
-          </select>
-          <div style="display:flex; gap:8px; margin-top:10px;">
-            <button class="btn" type="button" id="btnAddStudent">افزودن به دوره</button>
-            <button class="btn btn-ghost" type="button" id="refreshSelectBox">🔄 بروزرسانی لیست</button>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span>تعداد اقساط:</span>
+            <input class="input" type="number" min="1" max="36" name="installments_count"
+                   value="{{ installments_count or '' }}" style="width:90px;">
+            <button class="btn btn-ghost" type="button" id="btnGenInst">تولید ردیف‌ها</button>
           </div>
-          <p class="muted" style="margin-top:6px;">می‌توانید با نوشتن نام یا شماره، بین دانشجوها جست‌وجو کنید.</p>
+
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span>درصد کارمزد/سورشارژ بابت چک (درصورت وجود):</span>
+            <input class="input" type="number" step="0.1" name="inst_surcharge_percent"
+                   value="{{ inst_surcharge_percent or '' }}" style="width:120px;" placeholder="مثلا 2.5">
+          </div>
+        </div>
+
+        <div class="table-responsive" style="margin-top:12px;">
+          <table class="data-table" id="instTable">
+            <thead>
+            <tr>
+              <th>#</th>
+              <th>عنوان</th>
+              <th>مبلغ</th>
+              <th>سررسید</th>
+              <th>روش پرداخت</th>
+              <th>چک؟</th>
+              <th>شماره چک</th>
+              <th>بانک</th>
+              <th>صادرکننده</th>
+              <th>تاریخ صدور</th>
+              <th>تاریخ سررسید چک</th>
+              <th>حذف</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% if installments and installments|length %}
+              {% for i in installments %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td><input class="input" name="inst_title[]" value="{{ i.title or ('قسط '+loop.index|string) }}"></td>
+                <td><input class="input" name="inst_amount[]" type="number" step="1" value="{{ i.amount or '' }}"></td>
+                <td><input class="input" name="inst_due_date[]" type="date" value="{{ i.due_date or '' }}"></td>
+                <td>
+                  <select class="input" name="inst_method[]">
+                    {% set m = (i.method or '').upper() %}
+                    <option value="">—</option>
+                    <option value="CASH"     {% if m=='CASH' %}selected{% endif %}>نقدی</option>
+                    <option value="CARD"     {% if m=='CARD' %}selected{% endif %}>کارت</option>
+                    <option value="TRANSFER" {% if m=='TRANSFER' %}selected{% endif %}>انتقال</option>
+                    <option value="CHEQUE"   {% if m=='CHEQUE' %}selected{% endif %}>چک</option>
+                  </select>
+                </td>
+                <td style="text-align:center;">
+                  <input type="checkbox" name="inst_has_cheque_{{ loop.index0 }}" value="1"
+                         {% if i.cheque %}checked{% endif %}>
+                </td>
+                <td><input class="input" name="inst_cheque_number[]" value="{{ i.cheque.cheque_number if i.cheque else '' }}"></td>
+                <td><input class="input" name="inst_bank_name[]" value="{{ i.cheque.bank_name if i.cheque else '' }}"></td>
+                <td><input class="input" name="inst_issuer_name[]" value="{{ i.cheque.issuer_name if i.cheque else '' }}"></td>
+                <td><input class="input" name="inst_issue_date[]" type="date" value="{{ i.cheque.issue_date if i.cheque else '' }}"></td>
+                <td><input class="input" name="inst_cheque_due_date[]" type="date" value="{{ i.cheque.due_date if i.cheque else '' }}"></td>
+                <td><button class="btn btn-ghost" type="button" onclick="this.closest('tr').remove()">حذف</button></td>
+              </tr>
+              {% endfor %}
+            {% endif %}
+            </tbody>
+          </table>
+        </div>
+
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button class="btn btn-ghost" type="button" id="btnAddInst">افزودن قسط</button>
+          <div class="muted">جمع اقساط باید با شهریه کل هم‌خوان باشد (روی گزارش مالی هم اعمال می‌شود).</div>
         </div>
       </div>
+
+      <script>
+      (function(){
+        const tbody = document.querySelector('#instTable tbody');
+        const addBtn = document.getElementById('btnAddInst');
+        const genBtn = document.getElementById('btnGenInst');
+
+        function addRow(i){
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td></td>
+            <td><input class="input" name="inst_title[]" value="قسط"></td>
+            <td><input class="input" name="inst_amount[]" type="number" step="1" value=""></td>
+            <td><input class="input" name="inst_due_date[]" type="date" value=""></td>
+            <td>
+              <select class="input" name="inst_method[]">
+                <option value="">—</option>
+                <option value="CASH">نقدی</option>
+                <option value="CARD">کارت</option>
+                <option value="TRANSFER">انتقال</option>
+                <option value="CHEQUE">چک</option>
+              </select>
+            </td>
+            <td style="text-align:center;">
+              <input type="checkbox" name="inst_has_cheque_${i}" value="1">
+            </td>
+            <td><input class="input" name="inst_cheque_number[]" ></td>
+            <td><input class="input" name="inst_bank_name[]" ></td>
+            <td><input class="input" name="inst_issuer_name[]" ></td>
+            <td><input class="input" name="inst_issue_date[]" type="date"></td>
+            <td><input class="input" name="inst_cheque_due_date[]" type="date"></td>
+            <td><button class="btn btn-ghost" type="button" onclick="this.closest('tr').remove()">حذف</button></td>
+          `;
+          tbody.appendChild(tr);
+          reindex();
+        }
+
+        function reindex(){
+          [...tbody.querySelectorAll('tr')].forEach((tr, idx) => {
+            tr.querySelector('td:first-child').textContent = (idx+1).toString();
+          });
+        }
+
+        addBtn && addBtn.addEventListener('click', () => addRow(Date.now()));
+        genBtn && genBtn.addEventListener('click', () => {
+          const cntEl = document.querySelector('input[name="installments_count"]');
+          const cnt = Math.max(1, parseInt(cntEl && cntEl.value || '1', 10));
+          tbody.innerHTML = '';
+          for(let i=0;i<cnt;i++) addRow(i);
+        });
+
+        reindex();
+      })();
+      </script>
+    </section>
+
+    <div style="margin-top:14px; display:flex; gap:8px; justify-content:flex-start;">
+      <button class="btn btn-primary" type="submit">ذخیره</button>
+      <a class="btn btn-ghost" href="{{ url_for('courses.new') }}">انصراف</a>
     </div>
-    {% else %}
-      <div class="muted">برای افزودن دانشجو ابتدا دوره را ذخیره کنید.</div>
-    {% endif %}
-  </section>
-
-  <!-- Hidden ها -->
-  <input type="hidden" name="sessions_json" id="sessions_json" value='{{ c.sessions_json|tojson if c and c.sessions_json else "[]" }}'>
-  <input type="hidden" name="weekly_days_json" id="weekly_days_json" value='{{ c.weekly_days_json|tojson if c and c.weekly_days_json else "[]" }}'>
-  <input type="hidden" name="schedule_days" id="schedule_days" value="{{ c.schedule_days if c and c.schedule_days else '' }}">
-  <input type="hidden" name="schedule_pattern" id="schedule_pattern" value="{{ c.schedule_pattern if c and c.schedule_pattern else '' }}">
-
-  <div style="margin-top:14px; display:flex; gap:12px;">
-    <button class="btn btn-primary" type="submit">{{ 'ذخیره تغییرات' if mode == 'edit' else 'ثبت دوره' }}</button>
-    <a class="btn btn-ghost" href="{{ url_for('courses.list') }}">بازگشت</a>
-  </div>
-</form>
+  </form>
+</div>
 
 <style>
-  .label { display:block; margin-bottom:6px; color:#6B7280; font-size:13px; }
-  .input { width:100%; padding:10px 12px; border:1px solid #D3D5DF; border-radius:8px; }
-  .tabs .tab { background:#F3F4F6; border:none; border-radius:8px; padding:8px 14px; cursor:pointer; }
-  .tabs .tab.active { background:#02AD82; color:#fff; }
-  .table-rtl thead th { background:#F8FAFC; border-bottom:1px solid #EEF2F7; padding:10px; color:#7C8A9A; text-align:right; }
-  .table-rtl td { border-bottom:1px solid #F1F5F9; padding:8px 10px; text-align:right; }
-  .chip { background:#F3F4F6; border:1px solid #E5E7EB; padding:4px 8px; border-radius:999px; }
-  .show { display:block; }
-  .hide { display:none; }
+  .card.soft{border:1px solid #E5E7EB;border-radius:12px;padding:12px;margin-bottom:10px;background:#fff}
+  .tab-panel{display:none}
+  .tabs .tab.active{background:#02AD82;color:#fff}
 </style>
 
 <script>
 document.addEventListener('DOMContentLoaded', function(){
-  /* تب‌ها */
   const tabs = document.querySelectorAll('.tabs .tab');
-  function showTab(key){
-    document.querySelectorAll('.tab-panel').forEach(p=>p.style.display='none');
+  const panels = document.querySelectorAll('.tab-panel');
+  function show(key){
+    panels.forEach(p=>p.style.display='none');
     tabs.forEach(t=>t.classList.remove('active'));
-    const btn = Array.from(tabs).find(b=>b.dataset.tab===key);
+    const btn=[...tabs].find(b=>b.dataset.tab===key);
+    const panel=document.getElementById('tab-'+key);
     if(btn) btn.classList.add('active');
-    const panel = document.getElementById('tab-'+key);
     if(panel) panel.style.display='block';
-    const studentSelect = document.getElementById('studentSelectBox');
-    if (studentSelect) studentSelect.disabled = (key !== 'students');
   }
-  tabs.forEach(t=>t.addEventListener('click',()=>showTab(t.dataset.tab)));
-  showTab('main');
-
-  /* پیش‌نمایش کاور */
-  const coverInput = document.getElementById('coverInput');
-  const coverPreview = document.getElementById('coverPreview');
-  if (coverInput && coverPreview) {
-    coverInput.addEventListener('change', e => {
-      const f = e.target.files && e.target.files[0];
-      if (f) coverPreview.src = URL.createObjectURL(f);
-    });
-  }
-
-  /* Students (AJAX) */
-  const root = document.getElementById('course-students');
-  if (root){
-    const JSON_URL     = root.dataset.jsonUrl;
-    const ENROLL_URL   = root.dataset.enrollUrl;
-    const UNENROLL_URL = root.dataset.unenrollUrl;
-
-    const selectBox = document.getElementById('studentSelectBox');
-    const listBox   = document.getElementById('enroll-list');
-    const btnAdd    = document.getElementById('btnAddStudent');
-    const btnRefresh= document.getElementById('refreshSelectBox');
-
-    async function fetchJSON(url){
-      const res = await fetch(url, {credentials:'same-origin'});
-      if (!res.ok) throw new Error('HTTP '+res.status+' @ '+url);
-      return res.json();
-    }
-    async function postForm(url, data){
-      const fd = new FormData();
-      Object.entries(data).forEach(([k,v])=>fd.append(k,v));
-      const res = await fetch(url, {method:'POST', body:fd, credentials:'same-origin'});
-      const ct = res.headers.get('content-type')||'';
-      if (ct.includes('application/json')) return res.json();
-      return {ok: res.ok};
-    }
-
-    function renderEnrolled(list){
-      if (!list || !list.length){
-        listBox.innerHTML = '<p class="muted">دانشجویی در این دوره ثبت‌نام نشده است.</p>';
-        return;
-      }
-      let html = '<ul style="list-style:none; padding:0; margin:0;">';
-      list.forEach(s=>{
-        html += `
-          <li style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #F1F5F9;">
-            <div>
-              <strong>${s.name}</strong><br>
-              <small class="muted">${s.email || ''} ${s.phone ? ' · '+s.phone : ''}</small>
-            </div>
-            <button class="btn btn-ghost btn-sm" data-unenroll="${s.id}">❌</button>
-          </li>`;
-      });
-      html += '</ul>';
-      listBox.innerHTML = html;
-    }
-
-    function renderAvailable(list){
-      selectBox.innerHTML = '<option value="">— انتخاب دانشجو —</option>';
-      if (!list || !list.length){
-        const opt = document.createElement('option');
-        opt.textContent = 'هیچ دانشجویی یافت نشد';
-        selectBox.appendChild(opt);
-        return;
-      }
-      list.forEach(s=>{
-        const opt = document.createElement('option');
-        opt.value = s.id;
-        opt.textContent = `${s.name} (${s.email || s.phone || '—'})`;
-        selectBox.appendChild(opt);
-      });
-    }
-
-    async function refreshLists(){
-      listBox.innerHTML = '<p class="muted">در حال بارگذاری…</p>';
-      selectBox.innerHTML = '<option>در حال بارگذاری...</option>';
-      try{
-        const data = await fetchJSON(JSON_URL);
-        renderEnrolled(data.enrolled);
-        renderAvailable(data.available);
-      }catch(err){
-        console.error(err);
-        alert('خطا در دریافت فهرست دانشجوها: ' + err.message);
-        listBox.innerHTML = '<p class="muted text-danger">خطا در بارگذاری</p>';
-        selectBox.innerHTML = '<option value="">خطا در دریافت لیست</option>';
-      }
-    }
-
-    btnAdd?.addEventListener('click', async ()=>{
-      const sid = selectBox.value;
-      if (!sid){ alert('ابتدا دانشجو را انتخاب کنید'); return; }
-      btnAdd.disabled = true;
-      const res = await postForm(ENROLL_URL, {student_id: sid});
-      btnAdd.disabled = false;
-      if (res && res.ok) await refreshLists();
-      else alert((res && res.error) || 'افزودن انجام نشد');
-    });
-
-    btnRefresh?.addEventListener('click', refreshLists);
-
-    listBox.addEventListener('click', async e=>{
-      const btn = e.target.closest('[data-unenroll]');
-      if (!btn) return;
-      const sid = btn.dataset.unenroll;
-      if (!confirm('دانشجو از دوره حذف شود؟')) return;
-      btn.disabled = true;
-      const res = await postForm(UNENROLL_URL, {student_id: sid});
-      if (res && res.ok) await refreshLists();
-      else alert((res && res.error) || 'خطا در حذف');
-    });
-
-    refreshLists();
-  }
-
-  /* زمان‌بندی */
-  const weeklyDaysInput       = document.getElementById('weekly_days_json');
-  const scheduleDaysHidden    = document.getElementById('schedule_days');     // CSV
-  const schedulePatternHidden = document.getElementById('schedule_pattern');
-  const pairRadios            = document.querySelectorAll('input[name="pair_odd"]');
-  const weeklyChecks          = document.querySelectorAll('.weekly-day');
-  const scheduleTypeRadios    = document.querySelectorAll('input[name="schedule_type"]');
-
-  function pushWeekly(){
-    const arr = [];
-    weeklyChecks.forEach(ch => { if (ch.checked) arr.push(ch.value); });
-    if (weeklyDaysInput) weeklyDaysInput.value = JSON.stringify(arr);
-    return arr;
-  }
-  function mapPattern(){
-    const sel = Array.from(pairRadios).find(r => r.checked);
-    if (!sel) return '';
-    return sel.value === 'PAIR' ? 'EVEN' : (sel.value === 'ODD' ? 'ODD' : '');
-  }
-  // انحصار متقابل: انتخاب یکی، دیگری را پاک می‌کند
-  weeklyChecks.forEach(ch => ch.addEventListener('change', () => {
-    // اگر حداقل یک تیک زده شد → رادیوها را روی «بدون الگو» بگذار
-    const picked = Array.from(weeklyChecks).some(x=>x.checked);
-    if (picked) {
-      const none = document.querySelector('input[name="pair_odd"][value=""]');
-      if (none) none.checked = true;
-    }
-    pushWeekly();
-  }));
-  pairRadios.forEach(r => r.addEventListener('change', () => {
-    // اگر زوج/فرد انتخاب شد → همه‌ی تیک‌های روزها برداشته شوند
-    const v = Array.from(pairRadios).find(x=>x.checked)?.value || '';
-    if (v === 'PAIR' || v === 'ODD') {
-      weeklyChecks.forEach(ch => ch.checked = false);
-      pushWeekly();
-    }
-  }));
-  // هنگام تغییر نوع زمان‌بندی: پاکسازی فیلدهای غیرمرتبط
-  scheduleTypeRadios.forEach(r => r.addEventListener('change', () => {
-    const v = Array.from(scheduleTypeRadios).find(x=>x.checked)?.value || 'CUSTOM';
-    if (v !== 'WEEKLY') {
-      scheduleDaysHidden.value = '';
-      schedulePatternHidden.value = '';
-    }
-  }));
-
-  // مقدار اولیه را بنویس
-  pushWeekly();
-
-  // CUSTOM dates
-  const sessionsInput = document.getElementById('sessions_json');
-  const listUl = document.getElementById('customDates');
-  const addDateBtn = document.getElementById('btnAddDate');
-  const customDate = document.getElementById('customDate');
-  let sessions = [];
-  try { sessions = JSON.parse(sessionsInput.value || "[]") || []; } catch(e) { sessions = []; }
-  function renderSessions(){
-    listUl.innerHTML = '';
-    if (!sessions.length) { listUl.innerHTML = '<li class="muted">تاریخی ثبت نشده.</li>'; return; }
-    sessions.forEach((s, i) => {
-      const li = document.createElement('li');
-      li.className = 'chip';
-      li.innerHTML = `${i+1}. ${s.date} <button type="button" class="btn btn-ghost" style="margin-right:6px;" data-i="${i}">حذف</button>`;
-      li.querySelector('button').addEventListener('click', (e) => {
-        const idx = +e.currentTarget.getAttribute('data-i');
-        sessions.splice(idx, 1);
-        sessionsInput.value = JSON.stringify(sessions);
-        renderSessions();
-      });
-      listUl.appendChild(li);
-    });
-  }
-  renderSessions();
-  addDateBtn?.addEventListener('click', () => {
-    const d = (customDate.value || '').trim();
-    if (!d) return;
-    sessions.push({date: d});
-    sessionsInput.value = JSON.stringify(sessions);
-    customDate.value = '';
-    renderSessions();
-  });
-
-  // قبل از submit: نگاشت نهایی
-  const rootFormEl = document.getElementById('courseForm');
-  rootFormEl.addEventListener('submit', () => {
-    const typeSel = document.querySelector('input[name="schedule_type"]:checked');
-    const typeVal = typeSel ? typeSel.value : 'CUSTOM';
-    if (typeVal === 'WEEKLY') {
-      const arr = pushWeekly();                                  // ["SA","MO",...]
-      scheduleDaysHidden.value    = arr.join(',');               // "SA,MO"
-      schedulePatternHidden.value = mapPattern();                // "EVEN"/"ODD" یا ""
-    } else {
-      scheduleDaysHidden.value    = '';
-      schedulePatternHidden.value = '';
-    }
-  });
-    const genBtn = document.getElementById('btnGenerateSessions');
-  if (genBtn) {
-    genBtn.addEventListener('click', async () => {
-      const courseId    = "{{ c.id }}";
-      const genUrl      = "{{ url_for('courses.api_generate_sessions', course_id=c.id) }}";
-      const sessionsUrl = "{{ url_for('courses.sessions_json', course_id=c.id) }}";
-
-      const gotoSession = (sid) => { window.location.href = `/attendance/${courseId}/session/${sid}`; };
-
-      genBtn.disabled = true;
-      genBtn.textContent = 'در حال تولید...';
-
-      try {
-        // سعی در تولید؛ اگر از قبل ساخته شده باشد 409 برمی‌گردد که قابل چشم‌پوشی است
-        const res = await fetch(genUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({})   // برای WEEKLY نیازی به payload نیست
-        });
-
-        if (!res.ok && res.status !== 409) {
-          let err = 'خطا در تولید جلسات';
-          try { const j = await res.json(); if (j && j.error) err = j.error; } catch(_){}
-          alert(err);
-          return;
-        }
-
-        // لیست جلسات را بگیر و به «امروز» یا اولین جلسه برو
-        const j = await (await fetch(sessionsUrl, { credentials:'same-origin' })).json();
-        if (!Array.isArray(j) || j.length === 0) {
-          alert('جلسه‌ای یافت نشد. بازه زمانی و الگوی زمان‌بندی را بررسی کنید.');
-          return;
-        }
-        const today = new Date().toISOString().slice(0,10); // yyyy-mm-dd
-        const todaySession = j.find(s => s.session_date === today);
-        const target = todaySession || j[0];
-        gotoSession(target.id);
-      } catch (e) {
-        console.error(e);
-        alert('اشکال در تولید/بارگیری جلسات');
-      } finally {
-        genBtn.disabled = false;
-        genBtn.textContent = '🗓️ تولید جلسات از برنامه';
-      }
-    });
-  }
+  tabs.forEach(t=> t.addEventListener('click', ()=> show(t.dataset.tab)));
+  show('main');
 });
 </script>
 {% endblock %}
