@@ -12,6 +12,10 @@
     <button type="button" class="tab" data-tab="schedule">زمان‌بندی جلسات</button>
     <button type="button" class="tab" data-tab="finance">مالی</button>
     <button type="button" class="tab" data-tab="students">دانشجوها</button>
+    {# فقط در حالت ویرایش تب اقساط را نشان بده #}
+    {% if mode == 'edit' %}
+      <button type="button" class="tab" data-tab="installments">اقساط</button>
+    {% endif %}
   </div>
 
   <!-- Tab: Main -->
@@ -127,7 +131,6 @@
         </div>
 
         <div class="label" style="margin-top:10px;">الگوی زوج/فرد</div>
-        {# مقدار اولیه برای رادیو: از pair_odd یا (در صورت نبود) از schedule_pattern استنتاج کن #}
         {% set _pair = (
             c.pair_odd if c and c.pair_odd
             else ('PAIR' if c and c.schedule_pattern=='EVEN'
@@ -191,6 +194,16 @@
     {% endif %}
   </section>
 
+  {# Tab: Installments (فقط در حالت ویرایش) #}
+  {% if mode == 'edit' %}
+  <section id="tab-installments" class="tab-panel" style="display:none;">
+    <div class="card" style="border:1px solid #E5E7EB; border-radius:12px; padding:12px;">
+      <p style="margin-bottom:10px;">برای مدیریت پلن و اقساط این دوره از صفحه‌ی اختصاصی اقساط استفاده کنید.</p>
+      <a class="btn btn-primary" href="{{ url_for('installments.index', course_id=c.id) }}">💳 مدیریت اقساط دوره</a>
+    </div>
+  </section>
+  {% endif %}
+
   <!-- Hidden ها -->
   <input type="hidden" name="sessions_json" id="sessions_json" value='{{ c.sessions_json|tojson if c and c.sessions_json else "[]" }}'>
   <input type="hidden" name="weekly_days_json" id="weekly_days_json" value='{{ c.weekly_days_json|tojson if c and c.weekly_days_json else "[]" }}'>
@@ -199,7 +212,7 @@
 
   <div style="margin-top:14px; display:flex; gap:12px;">
     <button class="btn btn-primary" type="submit">{{ 'ذخیره تغییرات' if mode == 'edit' else 'ثبت دوره' }}</button>
-    <a class="btn btn-ghost" href="{{ url_for('courses.list') }}">بازگشت</a>
+    <a class="btn btn-ghost" href="{{ url_for('courses.index') }}">بازگشت</a>
   </div>
 </form>
 
@@ -218,6 +231,9 @@
 <script>
 document.addEventListener('DOMContentLoaded', function(){
   /* تب‌ها */
+  const courseId    = "{{ c.id }}";
+const genUrl      = "{{ url_for('courses.api_generate_sessions', course_id=c.id) }}";
+const sessionsUrl = "{{ url_for('courses.sessions_json', course_id=c.id) }}";
   const tabs = document.querySelectorAll('.tabs .tab');
   function showTab(key){
     document.querySelectorAll('.tab-panel').forEach(p=>p.style.display='none');
@@ -242,7 +258,7 @@ document.addEventListener('DOMContentLoaded', function(){
     });
   }
 
-  /* Students (AJAX) */
+  /* Students (AJAX) — فقط وقتی تب و داده‌ها وجود دارد */
   const root = document.getElementById('course-students');
   if (root){
     const JSON_URL     = root.dataset.jsonUrl;
@@ -347,7 +363,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
   /* زمان‌بندی */
   const weeklyDaysInput       = document.getElementById('weekly_days_json');
-  const scheduleDaysHidden    = document.getElementById('schedule_days');     // CSV
+  const scheduleDaysHidden    = document.getElementById('schedule_days');
   const schedulePatternHidden = document.getElementById('schedule_pattern');
   const pairRadios            = document.querySelectorAll('input[name="pair_odd"]');
   const weeklyChecks          = document.querySelectorAll('.weekly-day');
@@ -364,9 +380,7 @@ document.addEventListener('DOMContentLoaded', function(){
     if (!sel) return '';
     return sel.value === 'PAIR' ? 'EVEN' : (sel.value === 'ODD' ? 'ODD' : '');
   }
-  // انحصار متقابل: انتخاب یکی، دیگری را پاک می‌کند
   weeklyChecks.forEach(ch => ch.addEventListener('change', () => {
-    // اگر حداقل یک تیک زده شد → رادیوها را روی «بدون الگو» بگذار
     const picked = Array.from(weeklyChecks).some(x=>x.checked);
     if (picked) {
       const none = document.querySelector('input[name="pair_odd"][value=""]');
@@ -375,14 +389,12 @@ document.addEventListener('DOMContentLoaded', function(){
     pushWeekly();
   }));
   pairRadios.forEach(r => r.addEventListener('change', () => {
-    // اگر زوج/فرد انتخاب شد → همه‌ی تیک‌های روزها برداشته شوند
     const v = Array.from(pairRadios).find(x=>x.checked)?.value || '';
     if (v === 'PAIR' || v === 'ODD') {
       weeklyChecks.forEach(ch => ch.checked = false);
       pushWeekly();
     }
   }));
-  // هنگام تغییر نوع زمان‌بندی: پاکسازی فیلدهای غیرمرتبط
   scheduleTypeRadios.forEach(r => r.addEventListener('change', () => {
     const v = Array.from(scheduleTypeRadios).find(x=>x.checked)?.value || 'CUSTOM';
     if (v !== 'WEEKLY') {
@@ -390,8 +402,6 @@ document.addEventListener('DOMContentLoaded', function(){
       schedulePatternHidden.value = '';
     }
   }));
-
-  // مقدار اولیه را بنویس
   pushWeekly();
 
   // CUSTOM dates
@@ -427,38 +437,24 @@ document.addEventListener('DOMContentLoaded', function(){
     renderSessions();
   });
 
-  // قبل از submit: نگاشت نهایی
-  const rootFormEl = document.getElementById('courseForm');
-  rootFormEl.addEventListener('submit', () => {
-    const typeSel = document.querySelector('input[name="schedule_type"]:checked');
-    const typeVal = typeSel ? typeSel.value : 'CUSTOM';
-    if (typeVal === 'WEEKLY') {
-      const arr = pushWeekly();                                  // ["SA","MO",...]
-      scheduleDaysHidden.value    = arr.join(',');               // "SA,MO"
-      schedulePatternHidden.value = mapPattern();                // "EVEN"/"ODD" یا ""
-    } else {
-      scheduleDaysHidden.value    = '';
-      schedulePatternHidden.value = '';
-    }
-  });
-    const genBtn = document.getElementById('btnGenerateSessions');
+  /* تولید جلسات — فقط وقتی در حالت ویرایش هستیم */
+  const genBtn = document.getElementById('btnGenerateSessions');
   if (genBtn) {
-    genBtn.addEventListener('click', async () => {
-      const courseId    = "{{ c.id }}";
-      const genUrl      = "{{ url_for('courses.api_generate_sessions', course_id=c.id) }}";
-      const sessionsUrl = "{{ url_for('courses.sessions_json', course_id=c.id) }}";
+    const courseId    = "{{ c.id }}";
+    const genUrl      = "{{ url_for('courses.api_generate_sessions', course_id=c.id) }}";
+    const sessionsUrl = "{{ url_for('courses.sessions_json', course_id=c.id) }}";
 
+    genBtn.addEventListener('click', async () => {
       const gotoSession = (sid) => { window.location.href = `/attendance/${courseId}/session/${sid}`; };
 
       genBtn.disabled = true;
       genBtn.textContent = 'در حال تولید...';
 
       try {
-        // سعی در تولید؛ اگر از قبل ساخته شده باشد 409 برمی‌گردد که قابل چشم‌پوشی است
         const res = await fetch(genUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({})   // برای WEEKLY نیازی به payload نیست
+          body: JSON.stringify({})
         });
 
         if (!res.ok && res.status !== 409) {
@@ -468,13 +464,12 @@ document.addEventListener('DOMContentLoaded', function(){
           return;
         }
 
-        // لیست جلسات را بگیر و به «امروز» یا اولین جلسه برو
         const j = await (await fetch(sessionsUrl, { credentials:'same-origin' })).json();
         if (!Array.isArray(j) || j.length === 0) {
           alert('جلسه‌ای یافت نشد. بازه زمانی و الگوی زمان‌بندی را بررسی کنید.');
           return;
         }
-        const today = new Date().toISOString().slice(0,10); // yyyy-mm-dd
+        const today = new Date().toISOString().slice(0,10);
         const todaySession = j.find(s => s.session_date === today);
         const target = todaySession || j[0];
         gotoSession(target.id);
@@ -487,6 +482,7 @@ document.addEventListener('DOMContentLoaded', function(){
       }
     });
   }
+
 });
 </script>
 {% endblock %}
