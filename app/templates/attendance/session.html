@@ -16,7 +16,7 @@
     </div>
     <div style="display:flex; gap:8px;">
       <a class="btn btn-ghost" href="{{ url_for('attendance.list', course_id=course.id) }}">📅 تاریخچه جلسات</a>
-      <a class="btn btn-ghost" href="{{ url_for('courses.edit_form', course_id=course.id) }}">↩ بازگشت به دوره</a>
+      <a class="btn btn-ghost" href="{{ url_for('courses.edit', id=course.id)}}">↩ بازگشت به دوره</a>
     </div>
   </div>
 

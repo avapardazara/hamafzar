@@ -3,11 +3,20 @@
 {% block page_title %}جزئیات برنامه اقساط{% endblock %}
 
 {% block content %}
+
+{% macro money(v) -%}
+  {{ "{:,}".format((v or 0)|int) }}
+{%- endmacro %}
+
 <div class="card" style="direction:rtl; max-width:1100px; margin:auto;">
 
   <div class="card soft" style="margin-bottom:12px;">
     <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px;">
-      <div><div class="muted">عنوان</div><div>{{ plan.title or '—' }}</div></div>
+      <div>
+        <div class="muted">عنوان</div>
+        <div>{{ plan.title or '—' }}</div>
+      </div>
+
       <div>
         <div class="muted">دانشجو</div>
         <div>
@@ -18,16 +27,26 @@
           {% else %} — {% endif %}
         </div>
       </div>
-      <div><div class="muted">دوره</div><div>{{ plan.enrollment.course.title if plan.enrollment and plan.enrollment.course else (plan.course.title if plan.course else '—') }}</div></div>
-      <div><div class="muted">اقساط</div><div>{{ installments|length }}</div></div>
+
+      <div>
+        <div class="muted">دوره</div>
+        <div>
+          {{ plan.enrollment.course.title if plan.enrollment and plan.enrollment.course else (plan.course.title if plan.course else '—') }}
+        </div>
+      </div>
+
+      <div>
+        <div class="muted">اقساط</div>
+        <div>{{ installments|length }}</div>
+      </div>
     </div>
   </div>
 
   <div class="kpi-grid" style="margin-bottom:12px;">
-    <div class="kpi"><div class="kpi-label">جمع کل</div><div class="kpi-val">{{ "{:,}".format(total) }}</div></div>
-    <div class="kpi"><div class="kpi-label">پرداخت‌شده</div><div class="kpi-val">{{ "{:,}".format(paid) }}</div></div>
-    <div class="kpi"><div class="kpi-label">مانده</div><div class="kpi-val text-danger">{{ "{:,}".format(remain) }}</div></div>
-    <div class="kpi"><div class="kpi-label">کارمزد چک (کل)</div><div class="kpi-val">{{ "{:,}".format(int(plan.cheque_fee_total or 0)) }}</div></div>
+    <div class="kpi"><div class="kpi-label">جمع کل</div><div class="kpi-val">{{ money(total) }}</div></div>
+    <div class="kpi"><div class="kpi-label">پرداخت‌شده</div><div class="kpi-val">{{ money(paid) }}</div></div>
+    <div class="kpi"><div class="kpi-label">مانده</div><div class="kpi-val text-danger">{{ money(remain) }}</div></div>
+    <div class="kpi"><div class="kpi-label">کارمزد چک (کل)</div><div class="kpi-val">{{ money(plan.cheque_fee_total) }}</div></div>
   </div>
 
   <div class="table-responsive">
@@ -43,10 +62,10 @@
             <tr>
               <td>{{ i.seq }}</td>
               <td>{{ i.due_date or '—' }}</td>
-              <td>{{ "{:,}".format(int(i.amount_base or 0)) }}</td>
-              <td>{{ "{:,}".format(int(i.cheque_fee_amount or 0)) }}</td>
-              <td><strong>{{ "{:,}".format(int(i.amount_total or 0)) }}</strong></td>
-              <td class="{{ 'text-success' if (i.status or '').upper()=='PAID' else 'text-danger' }}">{{ i.status }}</td>
+              <td>{{ money(i.amount_base) }}</td>
+              <td>{{ money(i.cheque_fee_amount) }}</td>
+              <td><strong>{{ money(i.amount_total) }}</strong></td>
+              <td class="{{ 'text-success' if (i.status or '').upper()=='PAID' else 'text-danger' }}">{{ i.status or '—' }}</td>
             </tr>
           {% endfor %}
         {% else %}

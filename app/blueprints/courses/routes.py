@@ -1,5 +1,5 @@
 # app/blueprints/courses/routes.py
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
 from flask_login import login_required
 from sqlalchemy import or_, and_, func
 from datetime import datetime, date as _date, timedelta as _td
@@ -10,15 +10,29 @@ from app.utils.media import save_uploaded_image
 from app.models.course_session import CourseSession, Attendance
 from app.models.core import Student
 from app.models.enrollment import Enrollment
+from werkzeug.utils import secure_filename
+import os
 
 bp = Blueprint("courses", __name__, url_prefix="/courses")
 
 _MAP_DAYS = {"SA": 5, "SU": 6, "MO": 0, "TU": 1, "WE": 2, "TH": 3, "FR": 4}
 
+def _save_cover(file_storage):
+    if not file_storage or not getattr(file_storage, "filename", ""):
+        return None
+    fname = secure_filename(file_storage.filename)
+    if not fname:
+        return None
+    upload_dir = os.path.join(current_app.instance_path, "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+    path = os.path.join(upload_dir, fname)
+    file_storage.save(path)
+    return fname
+
 # ============================
 # لیست دوره‌ها
 # ============================
-@bp.get("/", endpoint="index")
+@bp.get("/", endpoint="index")  # ❗ methods حذف شد
 @login_required
 def index():
     q = (request.args.get("q") or "").strip()
@@ -37,7 +51,7 @@ def index():
 # ============================
 # ساخت دوره
 # ============================
-@bp.get("/new", endpoint="new")
+@bp.get("/new", endpoint="new")  # ❗ فقط GET؛ POST جداگانه داریم
 @login_required
 def new_form():
     mentors = Mentor.query.order_by(Mentor.id.desc()).all()
@@ -102,7 +116,7 @@ def create():
 # ============================
 # ویرایش دوره
 # ============================
-@bp.get("/<int:id>/edit")
+@bp.get("/<int:id>/edit")   # ❗ فقط GET؛ POST جداگانه داریم
 @login_required
 def edit(id):
     c = Course.query.get_or_404(id)
@@ -189,12 +203,12 @@ def delete(id):
 # ============================
 # جلسات / حضور و غیاب
 # ============================
-@bp.route("/<int:course_id>/sessions")
+@bp.route("/<int:course_id>/sessions")  # GET
 @login_required
 def sessions_view(course_id):
     return render_template("courses/sessions.html", course_id=course_id)
 
-@bp.route("/<int:course_id>/sessions.json")
+@bp.route("/<int:course_id>/sessions.json")  # GET
 @login_required
 def sessions_json(course_id):
     qs = (
@@ -213,7 +227,7 @@ def sessions_json(course_id):
     } for s in qs]
     return jsonify(items)
 
-@bp.route("/<int:course_id>/sessions/<int:session_id>/attendances")
+@bp.route("/<int:course_id>/sessions/<int:session_id>/attendances")  # GET
 @login_required
 def session_attendances(course_id, session_id):
     rows = Attendance.query.filter_by(session_id=session_id).all()

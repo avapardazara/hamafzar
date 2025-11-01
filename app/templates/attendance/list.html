@@ -10,7 +10,7 @@
       <div class="muted" style="font-size:13px;">شناسه دوره: {{ course.id }}</div>
     </div>
     <div>
-      <a class="btn btn-ghost" href="{{ url_for('courses.edit_form', course_id=course.id) }}">↩ بازگشت به دوره</a>
+      <a class="btn btn-ghost" href="{{ url_for('courses.edit', id=course.id) }}">↩ بازگشت به دوره</a>
     </div>
   </div>
 
@@ -31,8 +31,8 @@
         <td style="padding:8px 10px;">{{ loop.index }}</td>
         <td style="padding:8px 10px;">{{ it.date }}</td>
         <td style="padding:8px 10px;">
-          {% if it.start_time %}{{ it.start_time.strftime('%H:%M') }}{% endif %}
-          {% if it.end_time %}–{{ it.end_time.strftime('%H:%M') }}{% endif %}
+          {% if it.start_time %}{{ it.start_time.strftime('%H:%M') if it.start_time.strftime else it.start_time }}{% endif %}
+          {% if it.end_time %}–{{ it.end_time.strftime('%H:%M') if it.end_time.strftime else it.end_time }}{% endif %}
         </td>
         <td style="padding:8px 10px;">
           <span class="chip">حاضر: {{ it.stats.PRESENT }}</span>

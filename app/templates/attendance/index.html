@@ -26,12 +26,12 @@
         <td style="padding:8px 10px;">{{ c.title }}</td>
         <td style="padding:8px 10px;">{{ c.mentor_name or '' }}</td>
         <td style="padding:8px 10px; display:flex; gap:8px;">
-          <a class="btn btn-ghost" href="{{ url_for('attendance.list', course_id=c.id) }}">📅 تاریخچه جلسات</a>
+        <a class="btn btn-ghost" href="{{ url_for('attendance.list', course_id=c.id) }}">📅 تاریخچه جلسات</a>
           {% set sid = today_session_id.get(c.id) %}
           {% if sid %}
-            <a class="btn btn-primary" href="{{ url_for('attendance.session_view', course_id=c.id, session_id=sid) }}">🗓️ جلسه امروز</a>
+<a class="btn btn-primary" href="{{ url_for('attendance.session_view', course_id=c.id, session_id=sid) }}">🗓️ جلسه امروز</a>
           {% else %}
-            <a class="btn btn-ghost" href="{{ url_for('courses.edit_form', course_id=c.id) }}">تنظیم زمان‌بندی</a>
+            <a class="btn btn-ghost" href="{{ url_for('courses.edit', id=c.id) }}">تنظیم زمان‌بندی</a>
           {% endif %}
         </td>
       </tr>

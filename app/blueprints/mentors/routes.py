@@ -3,13 +3,12 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required
 from sqlalchemy import func, literal
 from sqlalchemy.orm.attributes import InstrumentedAttribute
-
 from ...extensions import db
 from ...models.mentor import Mentor
 from ...models.course import Course
 from ...models.enrollment import Enrollment
 from ...models.mentor_payment import MentorPayment
-from ...utils.files import save_student_avatar  # همان util موجود
+from ...utils.files import save_mentor_avatar  # همان util موجود
 
 bp = Blueprint("mentors", __name__, url_prefix="/mentors")
 
@@ -155,7 +154,7 @@ def create_form():
 
         file = request.files.get("avatar")
         if file and file.filename:
-            rel = save_student_avatar(file, m.id)
+            rel = save_mentor_avatar(file, m.id)
             if rel:
                 m.avatar = rel
                 db.session.commit()
@@ -217,7 +216,7 @@ def upload_avatar(mentor_id):
     m = Mentor.query.get_or_404(mentor_id)
     file = request.files.get("avatar")
     if file and file.filename:
-        rel = save_student_avatar(file, m.id)
+        rel = save_mentor_avatar(file, m.id)
         if rel:
             m.avatar = rel
             db.session.commit()
