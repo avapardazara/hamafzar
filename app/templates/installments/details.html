@@ -3,13 +3,9 @@
 {% block page_title %}جزئیات برنامه اقساط{% endblock %}
 
 {% block content %}
-
-{% macro money(v) -%}
-  {{ "{:,}".format((v or 0)|int) }}
-{%- endmacro %}
-
 <div class="card" style="direction:rtl; max-width:1100px; margin:auto;">
 
+  <!-- هدر اطلاعات برنامه -->
   <div class="card soft" style="margin-bottom:12px;">
     <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px;">
       <div>
@@ -24,52 +20,94 @@
             {{ (plan.enrollment.student.first_name or '') ~ ' ' ~ (plan.enrollment.student.last_name or '') }}
           {% elif plan.student %}
             {{ (plan.student.first_name or '') ~ ' ' ~ (plan.student.last_name or '') }}
-          {% else %} — {% endif %}
+          {% else %}
+            —
+          {% endif %}
         </div>
       </div>
 
       <div>
         <div class="muted">دوره</div>
         <div>
-          {{ plan.enrollment.course.title if plan.enrollment and plan.enrollment.course else (plan.course.title if plan.course else '—') }}
+          {% if plan.enrollment and plan.enrollment.course %}
+            {{ plan.enrollment.course.title }}
+          {% elif plan.course %}
+            {{ plan.course.title }}
+          {% else %}
+            —
+          {% endif %}
         </div>
       </div>
 
       <div>
-        <div class="muted">اقساط</div>
+        <div class="muted">تعداد اقساط</div>
         <div>{{ installments|length }}</div>
       </div>
     </div>
   </div>
 
+  <!-- KPI ها -->
   <div class="kpi-grid" style="margin-bottom:12px;">
-    <div class="kpi"><div class="kpi-label">جمع کل</div><div class="kpi-val">{{ money(total) }}</div></div>
-    <div class="kpi"><div class="kpi-label">پرداخت‌شده</div><div class="kpi-val">{{ money(paid) }}</div></div>
-    <div class="kpi"><div class="kpi-label">مانده</div><div class="kpi-val text-danger">{{ money(remain) }}</div></div>
-    <div class="kpi"><div class="kpi-label">کارمزد چک (کل)</div><div class="kpi-val">{{ money(plan.cheque_fee_total) }}</div></div>
+    <div class="kpi">
+      <div class="kpi-label">جمع کل</div>
+      <div class="kpi-val">{{ "{:,}".format(total|int) }}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">پرداخت‌شده</div>
+      <div class="kpi-val">{{ "{:,}".format(paid|int) }}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">مانده</div>
+      <div class="kpi-val text-danger">{{ "{:,}".format(remain|int) }}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">کارمزد چک (کل)</div>
+      <div class="kpi-val">{{ "{:,}".format((plan.cheque_fee_total or 0)|int) }}</div>
+    </div>
   </div>
 
+  <!-- جدول اقساط -->
   <div class="table-responsive">
-    <table class="data-table">
+    <table class="data-table" style="width:100%; border-collapse:collapse;">
       <thead>
         <tr>
-          <th>#</th><th>سررسید</th><th>اصل قسط</th><th>کارمزد چک</th><th>جمع قسط</th><th>وضعیت</th>
+          <th style="text-align:right; padding:10px;">#</th>
+          <th style="text-align:right; padding:10px;">سررسید</th>
+          <th style="text-align:right; padding:10px;">اصل قسط</th>
+          <th style="text-align:right; padding:10px;">کارمزد چک</th>
+          <th style="text-align:right; padding:10px;">جمع قسط</th>
+          <th style="text-align:right; padding:10px;">وضعیت</th>
+          <th style="text-align:right; padding:10px;">عملیات</th>
         </tr>
       </thead>
       <tbody>
         {% if installments %}
           {% for i in installments %}
-            <tr>
-              <td>{{ i.seq }}</td>
-              <td>{{ i.due_date or '—' }}</td>
-              <td>{{ money(i.amount_base) }}</td>
-              <td>{{ money(i.cheque_fee_amount) }}</td>
-              <td><strong>{{ money(i.amount_total) }}</strong></td>
-              <td class="{{ 'text-success' if (i.status or '').upper()=='PAID' else 'text-danger' }}">{{ i.status or '—' }}</td>
+            {% set is_paid = ((i.status or '')|upper) == 'PAID' %}
+            <tr style="border-bottom:1px solid #F1F5F9;">
+              <td style="padding:8px 10px;">{{ i.seq }}</td>
+              <td style="padding:8px 10px;">{{ i.due_date or '—' }}</td>
+              <td style="padding:8px 10px;">{{ "{:,}".format((i.amount_base or 0)|int) }}</td>
+              <td style="padding:8px 10px;">{{ "{:,}".format((i.cheque_fee_amount or 0)|int) }}</td>
+              <td style="padding:8px 10px;"><strong>{{ "{:,}".format((i.amount_total or 0)|int) }}</strong></td>
+              <td style="padding:8px 10px;" class="{{ 'text-success' if is_paid else 'text-danger' }}">
+                {{ i.status or 'PENDING' }}
+              </td>
+              <td style="padding:8px 10px;">
+                {% if not is_paid %}
+                  <form method="post" action="{{ url_for('installments.pay_installment', plan_id=plan.id, inst_id=i.id) }}" style="display:inline;">
+                    <button class="btn btn-primary btn-sm" type="submit">✅ پرداخت</button>
+                  </form>
+                {% else %}
+                  <form method="post" action="{{ url_for('installments.unpay_installment', plan_id=plan.id, inst_id=i.id) }}" style="display:inline;">
+                    <button class="btn btn-ghost btn-sm" type="submit">↩ لغو پرداخت</button>
+                  </form>
+                {% endif %}
+              </td>
             </tr>
           {% endfor %}
         {% else %}
-          <tr><td colspan="6" class="muted">قسطی تعریف نشده.</td></tr>
+          <tr><td colspan="7" class="muted" style="padding:10px;">قسطی تعریف نشده.</td></tr>
         {% endif %}
       </tbody>
     </table>
@@ -79,4 +117,19 @@
     <a class="btn btn-ghost" href="{{ url_for('installments.index') }}">بازگشت</a>
   </div>
 </div>
+
+<style>
+  .card { background:#fff; border:1px solid #D3D5DF; border-radius:12px; box-shadow:0 1px 3px rgba(15,23,42,0.1); padding:16px; }
+  .kpi-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+  .kpi { background:#F6FAF9; border:1px solid #D3D5DF; border-radius:12px; padding:12px; }
+  .kpi-label { color:#7C8A9A; font-size:12px; margin-bottom:6px; }
+  .kpi-val { font-weight:700; color:#0F172A; }
+  .muted { color:#7C8A9A; font-size:13px; }
+  .btn { border-radius:12px; padding:8px 12px; font-weight:600; }
+  .btn-sm { padding:6px 10px; font-size:13px; }
+  .btn-primary { background:#02AD82; color:#fff; border:none; }
+  .btn-ghost { background:#F6FAF9; color:#0F172A; border:1px solid #D3D5DF; }
+  .text-success { color:#16a34a; }
+  .text-danger { color:#dc2626; }
+</style>
 {% endblock %}

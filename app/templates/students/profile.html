@@ -142,6 +142,10 @@
 
   <!-- Tab: Finance -->
   <section id="tab-finance" class="tab-panel">
+    {# ست‌کردن نام مورد انتظار پارتشیال اقساط #}
+    {% set student = s %}
+    {% include "installments/_student_finance.html" %}
+
     <div class="card" style="margin-bottom:12px;">
       <div style="display:grid; grid-template-columns: 1fr 140px 120px 1fr 120px; gap:8px; align-items:center;">
         <input type="text" id="payTitle" placeholder="شرح تراکنش (مثلاً شهریه ترم 1)" style="padding:8px 10px; border:1px solid #D3D5DF; border-radius:6px;">
@@ -446,13 +450,12 @@ async function loadFinanceSummary(){
       tbody.appendChild(tr);
     });
   }
-  // به‌روزرسانی تراز بالای صفحه با رنگ/علامت
   if (topBalEl){
     const bal = (data.totals && data.totals.balance) || 0;
     const abs = Math.abs(bal);
     let sign = '', color = '#94A3B8';
-    if (bal > 0){ sign='-'; color='#EF4444'; }      // بدهکار
-    else if (bal < 0){ sign='+'; color='#059669'; } // طلبکار
+    if (bal > 0){ sign='-'; color='#EF4444'; }
+    else if (bal < 0){ sign='+'; color='#059669'; }
     topBalEl.textContent = `${sign}${formatMoney(abs)}`;
     topBalEl.style.color = color;
   }

@@ -4,76 +4,161 @@
 
 {% block content %}
 <div class="card" style="direction:rtl; max-width:900px; margin:auto;">
-  <form method="post" action="{{ url_for('installments.create_submit') }}" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-    <div class="card soft" style="grid-column:1 / -1;">
-      <div class="muted">انتخاب موجودیت‌ها</div>
-      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-top:10px;">
-        <div>
-          <label class="muted">دوره</label>
-          <select name="course_id" class="input" style="width:100%;">
-            <option value="">—</option>
-            {% for c in courses %}
-              <option value="{{ c.id }}">{{ c.title }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div>
-          <label class="muted">دانشجو</label>
-          <select name="student_id" class="input" style="width:100%;">
-            <option value="">—</option>
-            {% for s in students %}
-              <option value="{{ s.id }}">{{ (s.first_name or '') ~ ' ' ~ (s.last_name or '') }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div>
-          <label class="muted">ثبت‌نام</label>
-          <select name="enrollment_id" class="input" style="width:100%;">
-            <option value="">—</option>
-            {% for e in enrollments %}
-              <option value="{{ e.id }}">#{{ e.id }}</option>
-            {% endfor %}
-          </select>
-        </div>
+  <form method="post" action="{{ url_for('installments.create_submit') }}" style="display:grid; gap:16px;">
+    
+    {# ---- دوره ---- #}
+    {% if course %}
+      <input type="hidden" name="course_id" value="{{ course.id }}">
+      <div>
+        <label class="muted">دوره</label>
+        <div style="font-weight:600;">{{ course.title }}</div>
+      </div>
+    {% else %}
+      <div>
+        <label for="course_id">دوره</label>
+        <select class="input" id="course_id" name="course_id" required>
+          <option value="">انتخاب کنید...</option>
+          {% for c in courses %}
+            <option value="{{ c.id }}">{{ c.title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    {% endif %}
+
+    {# ---- دانشجو / ثبت‌نام ---- #}
+    {% if course %}
+      <div>
+        <label for="enrollment_id">دانشجو</label>
+        <select class="input" id="enrollment_id" name="enrollment_id" required>
+          <option value="">انتخاب دانشجو...</option>
+          {% for e in enrollments %}
+            {% set st = e.student %}
+            <option value="{{ e.id }}">
+              {{ (st.first_name or '') ~ ' ' ~ (st.last_name or '') }} (ID {{ st.id }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    {% else %}
+      <div>
+        <label for="student_id">دانشجو</label>
+        <select class="input" id="student_id" name="student_id" required>
+          <option value="">انتخاب دانشجو...</option>
+          {% for s in students %}
+            <option value="{{ s.id }}">{{ (s.first_name or '') ~ ' ' ~ (s.last_name or '') }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="enrollment_id">ثبت‌نام (اختیاری)</label>
+        <select class="input" id="enrollment_id" name="enrollment_id">
+          <option value="">—</option>
+          {% for e in enrollments %}
+            <option value="{{ e.id }}">#{{ e.id }} — دانشجو {{ e.student_id }} | دوره {{ e.course_id }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    {% endif %}
+
+    {# ---- عنوان ---- #}
+    <div>
+      <label for="title">عنوان (اختیاری)</label>
+      <input class="input" id="title" name="title" placeholder="مثلاً اقساط شهریه ترم پاییز">
+    </div>
+
+    {# ---- مبلغ پایه و پیش‌پرداخت ---- #}
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px;">
+      <div>
+        <label>مبلغ پایه (تومان)</label>
+        <input class="input" id="base_amount" name="base_amount" type="text" readonly
+               placeholder="به‌صورت خودکار از شهریه دوره خوانده می‌شود">
+      </div>
+      <div>
+        <label for="down_payment">پیش‌پرداخت (تومان)</label>
+        <input class="input" id="down_payment" name="down_payment" type="number" min="0" value="0">
       </div>
     </div>
 
-    <div class="card soft">
-      <label class="muted">عنوان برنامه</label>
-      <input class="input" name="title" placeholder="مثلاً: اقساط ترم پاییز">
-    </div>
-
-    <div class="card soft">
-      <label class="muted">مبلغ کل پایه (تومان)</label>
-      <input class="input" name="total_amount" type="number" step="0.01" min="0" required>
-    </div>
-
-    <div class="card soft">
-      <label class="muted">تعداد اقساط</label>
-      <input class="input" name="installments_count" type="number" min="1" value="3" required>
-    </div>
-
-    <div class="card soft">
-      <label class="muted">تاریخ سررسید اولین قسط</label>
-      <input class="input" name="first_due_date" type="date" placeholder="YYYY-MM-DD">
-    </div>
-
-    <div class="card soft" style="grid-column:1 / -1;">
-      <div style="display:flex; align-items:center; gap:10px;">
-        <label class="muted">دریافت با چک؟</label>
-        <input type="checkbox" name="use_cheques" value="1" onchange="document.getElementById('chequeBox').style.display=this.checked?'block':'none'">
+    {# ---- تعداد و مبلغ هر قسط ---- #}
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px;">
+      <div>
+        <label for="installments_count">تعداد اقساط</label>
+        <input class="input" id="installments_count" name="installments_count" type="number" min="1" value="1">
       </div>
-      <div id="chequeBox" style="display:none; margin-top:10px;">
-        <label class="muted">درصد کارمزد چک روی کل مبلغ (%)</label>
-        <input class="input" name="cheque_fee_percent" type="number" step="0.01" min="0" value="0">
-        <div class="muted" style="margin-top:6px;">این درصد بین اقساط تقسیم و به عنوان «کارمزد چک» در گزارش‌ها جداگانه نمایش داده می‌شود.</div>
+      <div>
+        <label>مبلغ هر قسط (نمایشی)</label>
+        <input class="input" id="per_installment" type="text" readonly>
       </div>
     </div>
 
-    <div style="grid-column:1 / -1; display:flex; gap:8px; justify-content:flex-end;">
+    {# ---- زمان‌بندی ---- #}
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px;">
+      <div>
+        <label for="first_due_date">تاریخ اولین قسط</label>
+        <input class="input" id="first_due_date" name="first_due_date" type="date" required>
+      </div>
+      <div>
+        <label for="month_interval">فاصله بین اقساط (ماه)</label>
+        <select class="input" id="month_interval" name="month_interval">
+          {% for m in range(1,7) %}
+            <option value="{{ m }}">{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    {# ---- چک و کارمزد ---- #}
+    <div style="margin-top:8px;">
+      <label><input type="checkbox" id="use_cheques" name="use_cheques" value="1"> پرداخت با چک</label>
+    </div>
+    <div id="cheque_fields" style="display:none; margin-top:8px;">
+      <label for="cheque_fee_percent">کارمزد چک (%)</label>
+      <input class="input" id="cheque_fee_percent" name="cheque_fee_percent" type="number" step="0.1" min="0" value="0">
+    </div>
+
+    {# ---- دکمه‌ها ---- #}
+    <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:12px;">
       <a class="btn btn-ghost" href="{{ url_for('installments.index') }}">انصراف</a>
-      <button class="btn btn-primary" type="submit">ایجاد برنامه</button>
+      <button class="btn btn-primary" type="submit">ثبت برنامه اقساط</button>
     </div>
+
   </form>
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const baseEl = document.getElementById("base_amount");
+  const downEl = document.getElementById("down_payment");
+  const countEl = document.getElementById("installments_count");
+  const perEl = document.getElementById("per_installment");
+  const chequeBox = document.getElementById("use_cheques");
+  const chequeFields = document.getElementById("cheque_fields");
+
+  // کارمزد چک toggle
+  chequeBox?.addEventListener("change", e => {
+    chequeFields.style.display = chequeBox.checked ? "block" : "none";
+  });
+
+  // محاسبه لحظه‌ای مبلغ هر قسط
+  function recalc() {
+    const base = parseFloat(baseEl.value.replace(/,/g,'')) || 0;
+    const down = parseFloat(downEl.value) || 0;
+    const count = parseInt(countEl.value) || 1;
+    const each = (base - down) / count;
+    if (!isNaN(each)) perEl.value = new Intl.NumberFormat('fa-IR').format(Math.max(each,0));
+  }
+  [downEl, countEl].forEach(el => el.addEventListener("input", recalc));
+
+  recalc();
+});
+</script>
+
+<style>
+  .card { background:#fff; border:1px solid #D3D5DF; border-radius:12px; box-shadow:0 1px 3px rgba(15,23,42,0.1); padding:16px; }
+  .input { width:100%; padding:8px 10px; border:1px solid #CBD5E1; border-radius:8px; font-family:inherit; }
+  .btn { border-radius:12px; padding:8px 16px; font-weight:600; }
+  .btn-primary { background:#02AD82; color:#fff; border:none; }
+  .btn-ghost { background:#F6FAF9; color:#0F172A; border:1px solid #D3D5DF; }
+  .muted { color:#7C8A9A; font-size:13px; }
+</style>
 {% endblock %}
