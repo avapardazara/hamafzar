@@ -527,6 +527,25 @@ function wireFinanceUI(){
   [title,amount].forEach(el=> el?.addEventListener('keydown', e=>{ if(e.key==='Enter') btn.click(); }));
 }
 
+/* --- حذف پیام خالیِ برنامه‌ی قسط از پارتشیال بدون تغییر استایل/کد پارتشیال --- */
+function removeInstallmentEmptyNote(){
+  const financePanel = document.getElementById('tab-finance');
+  if (!financePanel) return;
+  const msg = 'برای این دانشجو برنامه‌ی قسطی ثبت نشده است.';
+  // هر نود متنی که دقیقاً این متن را دارد حذف می‌شود (در td/div/p/etc)
+  const candidates = financePanel.querySelectorAll('td, div, p, span, small');
+  candidates.forEach(el=>{
+    if (el.textContent && el.textContent.trim() === msg){
+      // اگر ردیف جدول باشد، کل ردیف را حذف کن؛ در غیر اینصورت همان نود را.
+      if (el.tagName === 'TD' && el.parentElement && el.parentElement.tagName === 'TR') {
+        el.parentElement.remove();
+      } else {
+        el.remove();
+      }
+    }
+  });
+}
+
 // ---------- Boot
 document.addEventListener('DOMContentLoaded', ()=>{
   if (!STUDENT_ID){ console.error('studentId missing'); return; }
@@ -543,6 +562,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
   loadFinanceSummary();
   loadPayments();
   wireFinanceUI();
+
+  // حذف پیام خالی اقساط (از پارتشیال)
+  removeInstallmentEmptyNote();
 });
 </script>
 {% endblock %}

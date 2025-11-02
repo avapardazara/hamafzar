@@ -7,7 +7,7 @@ from sqlalchemy import or_, func
 from ...extensions import db
 from ...models.core import Student
 from ...utils.files import save_student_avatar, delete_student_avatar
-
+from app.models.installment_plan import InstallmentPlan
 from app.models.skill import Skill, StudentSkill
 from app.models.course import Course
 from app.models.payment import Payment
@@ -525,6 +525,114 @@ def _finance_summary(student_id: int):
 
 @bp.get("/<int:student_id>/finance/summary")
 @login_required
-def finance_summary(student_id):
+def finance_summary(student_id: int):
+    s = Student.query.get_or_404(student_id)
+
+    # همه پلان‌های مربوط به دانشجو (مستقیم یا از طریق enrollment)
+    student_en_ids = db.session.query(Enrollment.id).filter(Enrollment.student_id == s.id).subquery()
+    plans = (
+        InstallmentPlan.query
+        .filter(or_(
+            InstallmentPlan.student_id == s.id,
+            InstallmentPlan.enrollment_id.in_(student_en_ids)
+        ))
+        .all()
+    )
+
+    per = {}
+    for p in plans:
+        # course_id ایمن
+        cid = getattr(p, "course_id", None)
+        if not cid and getattr(p, "enrollment_id", None):
+            en = Enrollment.query.get(p.enrollment_id)
+            cid = en.course_id if en else None
+
+        # عنوان دوره
+        title = "—"
+        if cid:
+            c = Course.query.get(cid)
+            if c:
+                title = c.title
+
+        # جمع‌ها از روی اقساط
+        insts = p.installments or []
+        total = sum((i.amount_total or 0) for i in insts)
+        paid  = sum((i.amount_total or 0) for i in insts if (i.status or "").upper() == "PAID")
+
+        if cid not in per:
+            per[cid] = {"course_id": cid, "course_title": title, "fee": 0, "paid": 0}
+        per[cid]["fee"]  += int(total)
+        per[cid]["paid"] += int(paid)
+
+    items, total_balance = [], 0
+    for _, v in per.items():
+        bal = max(v["fee"] - v["paid"], 0)
+        v["balance"] = int(bal)
+        items.append(v)
+        total_balance += bal
+
+    return jsonify({"items": items, "totals": {"balance": int(total_balance)}})
+@bp.get("/<int:student_id>/finance/installments")
+@login_required
+def finance_installments(student_id: int):
+    from flask import jsonify
+    from sqlalchemy import or_
+    from app.extensions import db
+    from app.models.core import Student
+    from app.models.installment_plan import InstallmentPlan
+    from app.models.installment import Installment
+    from app.models.enrollment import Enrollment
+    from app.models.course import Course
+
+    # وجود دانشجو
     Student.query.get_or_404(student_id)
-    return jsonify(_finance_summary(student_id))
+
+    # همه‌ی Enrollmentهای دانشجو
+    student_en_ids = (
+        db.session.query(Enrollment.id)
+        .filter(Enrollment.student_id == student_id)
+        .subquery()
+    )
+
+    # همه‌ی برنامه‌های قسط مربوط به دانشجو (مستقیم/غیرمستقیم)
+    plans = (
+        InstallmentPlan.query
+        .filter(or_(
+            InstallmentPlan.student_id == student_id,
+            InstallmentPlan.enrollment_id.in_(student_en_ids)
+        ))
+        .all()
+    )
+
+    items = []
+    for p in plans:
+        # course_id ایمن
+        cid = getattr(p, "course_id", None)
+        if not cid and getattr(p, "enrollment_id", None):
+            en = Enrollment.query.get(p.enrollment_id)
+            cid = en.course_id if en else None
+
+        # عنوان دوره
+        course_title = "—"
+        if cid:
+            c = Course.query.get(cid)
+            if c:
+                course_title = c.title
+
+        # اقساط
+        for inst in (p.installments or []):
+            items.append({
+                "plan_id": p.id,
+                "plan_title": p.title or "",
+                "course_title": course_title,
+                "seq": inst.seq,
+                "due_date": (inst.due_date.isoformat() if getattr(inst, "due_date", None) else None),
+                "amount_total": int(inst.amount_total or 0),
+                "amount_base": int(inst.amount_base or 0),
+                "cheque_fee_amount": int(inst.cheque_fee_amount or 0),
+                "status": (inst.status or "PENDING"),
+            })
+
+    # مرتب‌سازی: سررسید (خالی‌ها آخر) سپس شماره قسط
+    items.sort(key=lambda x: (x["due_date"] is None, x["due_date"] or "", x["seq"] or 0))
+    return jsonify({"items": items})

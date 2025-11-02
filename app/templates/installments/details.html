@@ -15,28 +15,12 @@
 
       <div>
         <div class="muted">دانشجو</div>
-        <div>
-          {% if plan.enrollment and plan.enrollment.student %}
-            {{ (plan.enrollment.student.first_name or '') ~ ' ' ~ (plan.enrollment.student.last_name or '') }}
-          {% elif plan.student %}
-            {{ (plan.student.first_name or '') ~ ' ' ~ (plan.student.last_name or '') }}
-          {% else %}
-            —
-          {% endif %}
-        </div>
+        <div>{{ student_name }}</div>  {# ← فقط این خط تغییر کرد #}
       </div>
 
       <div>
         <div class="muted">دوره</div>
-        <div>
-          {% if plan.enrollment and plan.enrollment.course %}
-            {{ plan.enrollment.course.title }}
-          {% elif plan.course %}
-            {{ plan.course.title }}
-          {% else %}
-            —
-          {% endif %}
-        </div>
+        <div>{{ course_title }}</div>  {# ← و فقط این خط تغییر کرد #}
       </div>
 
       <div>

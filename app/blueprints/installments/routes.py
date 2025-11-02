@@ -261,26 +261,72 @@ def create_submit():
 @bp.get("/<int:plan_id>")
 @login_required
 def details(plan_id: int):
+    from app.models.installment_plan import InstallmentPlan
+    from app.models.installment import Installment
+    from app.models.enrollment import Enrollment
+    from app.models.core import Student
+    from app.models.course import Course
+
     plan = InstallmentPlan.query.get_or_404(plan_id)
+
+    # --- resolve course & student names safely (بدون نیاز به رابطه‌ی تعریف‌شده)
+    course_title = "—"
+    student_name = "—"
+
+    # اولویت با enrollment اگر ست شده
+    en = None
+    if getattr(plan, "enrollment_id", None):
+        en = Enrollment.query.get(plan.enrollment_id)
+
+    # course_id از plan یا از enrollment
+    cid = getattr(plan, "course_id", None)
+    if not cid and en:
+        cid = en.course_id
+    if cid:
+        c = Course.query.get(cid)
+        if c:
+            course_title = c.title
+
+    # student از plan یا از enrollment
+    sid = getattr(plan, "student_id", None)
+    if not sid and en:
+        sid = en.student_id
+    if sid:
+        st = Student.query.get(sid)
+        if st:
+            # اگر full_name داری از همون استفاده می‌کنیم؛ وگرنه first/last
+            if hasattr(st, "full_name") and st.full_name:
+                student_name = st.full_name
+            else:
+                fn = (st.first_name or "").strip()
+                ln = (st.last_name or "").strip()
+                student_name = (fn + " " + ln).strip() or f"دانشجو #{st.id}"
+
+    # --- اقساط
     insts = (
         Installment.query
         .filter(Installment.plan_id == plan.id)
         .order_by(Installment.seq.asc())
         .all()
     )
+
+    # --- محاسبه جمع‌ها «فقط از روی amount_total» تا با تب مالی یکی شود
     total = sum((i.amount_total or 0) for i in insts)
-    paid = sum((i.amount_total or 0) for i in insts if (i.status or "").upper() == "PAID")
+    paid  = sum((i.amount_total or 0) for i in insts if ((i.status or "").upper() == "PAID"))
     remain = max(total - paid, 0)
 
     return render_template(
         "installments/details.html",
         plan=plan,
         installments=insts,
+        # مقادیر موردنیاز همان‌هایی که در قالب استفاده می‌کنی:
         total=int(total),
         paid=int(paid),
-        remain=int(remain)
+        remain=int(remain),
+        # نام‌های آماده برای نمایش (تا دیگه به plan.enrollment دست نزنی)
+        course_title=course_title,
+        student_name=student_name,
     )
-
 # ---------------------------------------
 # عملیات پرداخت/لغو پرداخت یک قسط
 # (حداقل تغییر: فقط وضعیت را جابه‌جا می‌کنیم.
