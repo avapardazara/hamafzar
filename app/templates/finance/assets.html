@@ -1,67 +1,131 @@
-<!-- این قطعه نیز مستقیم داخل تب inject می‌شود -->
-<div class="card" style="border:none; box-shadow:none; padding:0;">
-  <h3 style="margin:0 0 10px;">دارایی‌ها</h3>
+{% extends "base.html" %}
+{% block title %}دارایی‌ها | هم‌افزار{% endblock %}
+{% block page_title %}دارایی‌ها{% endblock %}
 
-  <!-- فرم افزودن -->
-  <form method="post" action="{{ url_for('finance.assets_new') }}" class="card" style="margin-bottom:12px;">
-    <div style="display:grid; grid-template-columns: 1.4fr 140px 140px 140px 1fr; gap:8px;">
-      <input class="input" name="title" placeholder="عنوان دارایی" required>
-      <input class="input" type="number" name="purchase_price" step="1000" min="0" placeholder="قیمت خرید">
-      <input class="input" type="date" name="purchase_date" placeholder="تاریخ خرید">
-      <input class="input" type="date" name="in_service_date" placeholder="تاریخ بهره‌برداری">
-      <select class="input" name="course_id">
-        <option value="">— نسبت‌دادن به دوره (اختیاری) —</option>
-        {% for c in courses %}
-          <option value="{{ c.id }}">{{ c.title }}</option>
-        {% endfor %}
-      </select>
+{% block content %}
+<div class="card" style="direction:rtl; max-width:1100px; margin:auto;">
+
+  <!-- تب‌های مالی (حداقلی و هم‌استایل) -->
+  <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
+    <a class="btn btn-ghost" href="{{ url_for('finance.assets_index') }}">دارایی</a>
+    {# اگر تب هزینه آدرس مشخصی دارد، این لینک را به روت درست تغییر بده #}
+    <a class="btn btn-ghost" href="{{ url_for('finance.index') }}">هزینه</a>
+  </div>
+
+  <!-- جست‌وجو -->
+  <form method="get" action="{{ url_for('finance.assets_index') }}" style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
+    <input class="input" name="q" placeholder="جست‌وجو در نام/دسته/کد/محل/وضعیت" value="{{ q or '' }}" style="flex:1; min-width:280px;">
+    <button class="btn btn-primary" type="submit">جست‌وجو</button>
+  </form>
+
+  <!-- فرم افزودن سریع -->
+  <form method="post" action="{{ url_for('finance.assets_index') }}" style="display:grid; grid-template-columns: repeat(4, minmax(160px,1fr)); gap:12px; align-items:end; margin-bottom:16px;">
+    <div>
+      <label class="label">نام دارایی *</label>
+      <input class="input" name="name" required>
     </div>
-
-    <div style="display:grid; grid-template-columns: 160px 180px 1fr; gap:8px; margin-top:8px;">
-      <input class="input" type="number" name="useful_life_months" min="1" placeholder="عمر مفید (ماه)">
-      <select class="input" name="depreciation_method">
-        <option value="STRAIGHT_LINE">استهلاک خط مستقیم</option>
-      </select>
-      <input class="input" type="number" name="residual_value" step="1000" min="0" placeholder="ارزش اسقاط (اختیاری)">
+    <div>
+      <label class="label">دسته‌بندی</label>
+      <input class="input" name="category" placeholder="مثلاً: شبکه، مبلمان">
     </div>
-
-    <div style="margin-top:10px; display:flex; gap:8px;">
-      <button class="btn btn-primary" type="submit">افزودن دارایی</button>
+    <div>
+      <label class="label">کد/سریال</label>
+      <input class="input" name="code" placeholder="کد اموال/سریال">
+    </div>
+    <div>
+      <label class="label">تعداد</label>
+      <input class="input" name="quantity" type="number" min="1" value="1">
+    </div>
+    <div>
+      <label class="label">واحد</label>
+      <input class="input" name="unit" placeholder="عدد/دستگاه/...">
+    </div>
+    <div>
+      <label class="label">محل نگهداری</label>
+      <input class="input" name="location" placeholder="انبار/اتاق سرور/...">
+    </div>
+    <div>
+      <label class="label">وضعیت</label>
+      <input class="input" name="status" placeholder="سالم/خراب/...">
+    </div>
+    <div>
+      <label class="label">تاریخ خرید</label>
+      <input class="input" name="purchase_date" type="date">
+    </div>
+    <div>
+      <label class="label">مبلغ خرید</label>
+      <input class="input" name="purchase_price" placeholder="مثلاً 12000000">
+    </div>
+    <div style="grid-column: 1 / -1;">
+      <label class="label">یادداشت</label>
+      <textarea class="input" name="notes" rows="2" placeholder="اختیاری"></textarea>
+    </div>
+    <div>
+      <button class="btn btn-primary" type="submit" style="background:#02AD82; border-color:#02AD82;">افزودن</button>
     </div>
   </form>
 
-  <!-- جدول -->
+  <!-- جدول دارایی‌ها -->
   <div class="table-responsive">
-    <table class="data-table">
+    <table class="table">
       <thead>
         <tr>
-          <th>#</th>
-          <th>عنوان</th>
-          <th>قیمت خرید</th>
+          <th>نام</th>
+          <th>دسته</th>
+          <th>کد</th>
+          <th>تعداد</th>
+          <th>محل</th>
+          <th>وضعیت</th>
           <th>تاریخ خرید</th>
-          <th>تاریخ بهره‌برداری</th>
-          <th>عمر (ماه)</th>
-          <th>روش</th>
-          <th>دوره</th>
+          <th>مبلغ خرید</th>
+          <th>عملیات</th>
         </tr>
       </thead>
       <tbody>
-        {% for a in items %}
-          <tr>
-            <td>{{ loop.index }}</td>
-            <td>{{ getattr(a,'title','—') }}</td>
-            <td>{{ "{:,.0f}".format(getattr(a,'purchase_price',0) or 0) }}</td>
-            <td>{{ a.purchase_date.isoformat() if getattr(a,'purchase_date',None) else '—' }}</td>
-            <td>{{ a.in_service_date.isoformat() if getattr(a,'in_service_date',None) else '—' }}</td>
-            <td>{{ getattr(a,'useful_life_months','—') }}</td>
-            <td>{{ getattr(a,'depreciation_method','—') }}</td>
-            <td>{{ a.course.title if a.course else '—' }}</td>
-          </tr>
-        {% endfor %}
-        {% if not items %}
-          <tr><td colspan="8" class="muted">هنوز دارایی‌ای ثبت نشده است.</td></tr>
-        {% endif %}
+      {% for it in items %}
+        <tr>
+          <td title="{{ it.notes or '' }}">{{ it.name }}</td>
+          <td>{{ it.category or '—' }}</td>
+          <td>{{ it.code or '—' }}</td>
+          <td>{{ it.quantity }}</td>
+          <td>{{ it.location or '—' }}</td>
+          <td>{{ it.status or '—' }}</td>
+          <td>{{ it.purchase_date or '—' }}</td>
+          <td>
+            {% if it.purchase_price is not none %}
+              {{ "{:,.0f}".format(it.purchase_price|float) }}
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('finance.assets_delete', asset_id=it.id) }}" onsubmit="return confirm('حذف شود؟')" style="display:inline;">
+              <button class="btn btn-ghost" type="submit">حذف</button>
+            </form>
+            <details style="display:inline-block;">
+              <summary class="btn btn-ghost">ویرایش</summary>
+              <form method="post" action="{{ url_for('finance.assets_edit', asset_id=it.id) }}" style="display:grid; grid-template-columns: repeat(3, minmax(120px,1fr)); gap:8px; margin-top:8px;">
+                <input class="input" name="name" value="{{ it.name }}" placeholder="نام *" required>
+                <input class="input" name="category" value="{{ it.category or '' }}" placeholder="دسته">
+                <input class="input" name="code" value="{{ it.code or '' }}" placeholder="کد">
+                <input class="input" name="quantity" type="number" min="1" value="{{ it.quantity }}">
+                <input class="input" name="unit" value="{{ it.unit or '' }}" placeholder="واحد">
+                <input class="input" name="location" value="{{ it.location or '' }}" placeholder="محل">
+                <input class="input" name="status" value="{{ it.status or '' }}" placeholder="وضعیت">
+                <input class="input" name="purchase_date" type="date" value="{{ it.purchase_date }}">
+                <input class="input" name="purchase_price" value="{{ it.purchase_price if it.purchase_price is not none else '' }}" placeholder="مبلغ">
+                <textarea class="input" name="notes" rows="2" placeholder="یادداشت">{{ it.notes or '' }}</textarea>
+                <div>
+                  <button class="btn btn-primary" type="submit" style="background:#02AD82; border-color:#02AD82;">ثبت</button>
+                </div>
+              </form>
+            </details>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="9" class="text-muted">موردی ثبت نشده است.</td></tr>
+      {% endfor %}
       </tbody>
     </table>
   </div>
+
 </div>
+{% endblock %}

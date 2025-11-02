@@ -9,19 +9,21 @@
   <div class="kpi-grid">
     <div class="kpi">
       <div class="kpi-label">شهریه اسمی کل</div>
-      <div class="kpi-val">{{ "{:,}".format(kpis.total_face) }}</div>
+      <div class="kpi-val">{{ "{:,}".format(((kpis.total_face or 0)|int)) }}</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">مجموع دریافتی</div>
-      <div class="kpi-val">{{ "{:,}".format(kpis.total_received) }}</div>
+      <div class="kpi-val">{{ "{:,}".format(((kpis.total_received or 0)|int)) }}</div>
     </div>
     <div class="kpi">
-      <div class="kpi-label">مطالبات باز</div>
-      <div class="kpi-val text-danger">{{ "{:,}".format(kpis.total_receivables) }}</div>
-    </div>
+  <div class="kpi-label">مطالبات باز</div>
+  <div id="kpiReceivables" class="kpi-val text-danger">
+    {{ "{:,}".format((kpis.total_receivables or 0)|int) }}
+  </div>
+</div>
     <div class="kpi">
       <div class="kpi-label">اقساط سررسیدگذشته</div>
-      <div class="kpi-val">{{ kpis.overdue_count }}</div>
+      <div class="kpi-val">{{ (kpis.overdue_count or 0)|int }}</div>
     </div>
   </div>
 
@@ -39,7 +41,7 @@
   <!-- پنل: نمای کلی -->
   <section id="tab-overview" class="tab-panel" style="display:block;">
 
-    <!-- درآمد ماهانه (همان استایل قبلی) -->
+    <!-- درآمد ماهانه -->
     <div class="card soft">
       <h3 style="margin:0 0 8px;">درآمد ماهانه</h3>
       <div class="muted" style="margin-bottom:6px;">(Paid tuition per month)</div>
@@ -51,7 +53,7 @@
               <div class="row-bar">
                 <div class="bar"></div>
               </div>
-              <div class="row-val">{{ "{:,}".format(r.amount|int) }}</div>
+              <div class="row-val">{{ "{:,}".format(((r.amount or 0)|int)) }}</div>
             </div>
           {% endfor %}
         {% else %}
@@ -60,25 +62,20 @@
       </div>
     </div>
 
-    <!-- A/R Aging (معوقات به تفکیک روز) -->
+    <!-- A/R Aging -->
     <div class="card soft">
       <h3 style="margin:0 0 8px;">A/R Aging (معوقات به تفکیک روز)</h3>
       <div class="table-responsive">
         <table class="data-table">
           <thead>
-            <tr>
-              <th>0–30</th>
-              <th>31–60</th>
-              <th>61–90</th>
-              <th>90+</th>
-            </tr>
+            <tr><th>0–30</th><th>31–60</th><th>61–90</th><th>90+</th></tr>
           </thead>
           <tbody>
             <tr>
-              <td>{{ "{:,}".format(kpis.aging["0-30"] if kpis and kpis.aging else 0) }}</td>
-              <td>{{ "{:,}".format(kpis.aging["31-60"] if kpis and kpis.aging else 0) }}</td>
-              <td>{{ "{:,}".format(kpis.aging["61-90"] if kpis and kpis.aging else 0) }}</td>
-              <td>{{ "{:,}".format(kpis.aging["90+"] if kpis and kpis.aging else 0) }}</td>
+              <td>{{ "{:,}".format(((kpis.aging["0-30"] if kpis and kpis.aging and "0-30" in kpis.aging else 0)|int)) }}</td>
+              <td>{{ "{:,}".format(((kpis.aging["31-60"] if kpis and kpis.aging and "31-60" in kpis.aging else 0)|int)) }}</td>
+              <td>{{ "{:,}".format(((kpis.aging["61-90"] if kpis and kpis.aging and "61-90" in kpis.aging else 0)|int)) }}</td>
+              <td>{{ "{:,}".format(((kpis.aging["90+"]  if kpis and kpis.aging and "90+"  in kpis.aging else 0)|int)) }}</td>
             </tr>
           </tbody>
         </table>
@@ -91,22 +88,19 @@
       <div class="table-responsive">
         <table class="data-table">
           <thead>
-            <tr>
-              <th>دانشجو/شرح</th>
-              <th>تاریخ سررسید</th>
-              <th>مبلغ</th>
-            </tr>
+            <tr><th>دانشجو/شرح</th><th>تاریخ سررسید</th><th>مبلغ</th></tr>
           </thead>
           <tbody>
             {% if upcoming_7 %}
               {% for p in upcoming_7 %}
+                {% set amt = (p.amount if p is mapping else getattr(p, 'amount', None)) or getattr(p, 'amount_total', None) or 0 %}
                 <tr>
                   <td>
-                    {% set st = getattr(p, 'student', None) %}
-                    {{ getattr(st, 'full_name', None) or getattr(st, 'name', None) or (p.note or "—") }}
+                    {% set st = p.student if p is mapping else getattr(p, 'student', None) %}
+                    {% if st %}{{ st.full_name or st.name or '—' }}{% else %}{{ (p.note if p is mapping else getattr(p,'note',None)) or "—" }}{% endif %}
                   </td>
-                  <td>{{ p.due_date or "—" }}</td>
-                  <td>{{ "{:,}".format(p.amount or 0) }}</td>
+                  <td>{{ (p.due if p is mapping else getattr(p,'due_date',None)) or "—" }}</td>
+                  <td>{{ "{:,}".format((amt|int)) }}</td>
                 </tr>
               {% endfor %}
             {% else %}
@@ -123,19 +117,15 @@
       <div class="table-responsive">
         <table class="data-table">
           <thead>
-            <tr>
-              <th>عنوان دوره</th>
-              <th>تعداد تراکنش</th>
-              <th>دریافتی (MTD)</th>
-            </tr>
+            <tr><th>عنوان دوره</th><th>تعداد تراکنش</th><th>دریافتی (MTD)</th></tr>
           </thead>
           <tbody>
             {% if top_courses_mtd %}
               {% for c in top_courses_mtd %}
                 <tr>
                   <td>{{ c.title }}</td>
-                  <td>{{ c.count }}</td>
-                  <td>{{ "{:,}".format(c.amount or 0) }}</td>
+                  <td>{{ (c.count or 0)|int }}</td>
+                  <td>{{ "{:,}".format(((c.amount or 0)|int)) }}</td>
                 </tr>
               {% endfor %}
             {% else %}
@@ -146,24 +136,16 @@
       </div>
     </div>
 
-    <!-- هزینه‌های ماه جاری (به تفکیک دسته) -->
+    <!-- هزینه‌های ماه جاری -->
     <div class="card soft">
       <h3 style="margin:0 0 8px;">هزینه‌های ماه جاری (به تفکیک دسته)</h3>
       <div class="table-responsive">
         <table class="data-table">
-          <thead>
-            <tr>
-              <th>دسته</th>
-              <th>جمع</th>
-            </tr>
-          </thead>
+          <thead><tr><th>دسته</th><th>جمع</th></tr></thead>
           <tbody>
             {% if expense_mtd_by_cat %}
               {% for cat, val in expense_mtd_by_cat.items() %}
-                <tr>
-                  <td>{{ cat }}</td>
-                  <td>{{ "{:,}".format(val or 0) }}</td>
-                </tr>
+                <tr><td>{{ cat }}</td><td>{{ "{:,}".format(((val or 0)|int)) }}</td></tr>
               {% endfor %}
             {% else %}
               <tr><td colspan="2" class="muted">موردی ثبت نشده</td></tr>
@@ -175,31 +157,44 @@
 
   </section>
 
-  <!-- پنل: مطالبات -->
+  <!-- پنل: مطالبات (همراستا با تب مالی دانشجو) -->
   <section id="tab-receivables" class="tab-panel">
     <div class="table-responsive">
       <table class="data-table">
         <thead>
           <tr>
-            <th>#</th><th>دانشجو</th><th>دوره</th><th>شهریه</th><th>دریافتی</th><th>مانده</th>
+            <th>#</th><th>دانشجو</th><th>دوره</th><th>شهریه</th><th>دریافتی</th><th>بدهی/مانده</th>
           </tr>
         </thead>
-        <tbody>
-          {% if receivables and receivables|length %}
-            {% for it in receivables %}
-              <tr>
-                <td>{{ loop.index }}</td>
-                <td>{{ it.student_name }}</td>
-                <td>{{ it.course_title }}</td>
-                <td>{{ "{:,}".format(it.fee) }}</td>
-                <td>{{ "{:,}".format(it.received) }}</td>
-                <td class="{{ 'text-danger' if it.remain>0 else 'text-success' }}">{{ "{:,}".format(it.remain) }}</td>
-              </tr>
-            {% endfor %}
-          {% else %}
-            <tr><td colspan="6" class="muted">موردی یافت نشد.</td></tr>
-          {% endif %}
-        </tbody>
+<tbody>
+  {% if receivables and receivables|length %}
+    {% for it in receivables %}
+      {% set fee = (it.get('fee', it.get('face', 0)) | int) %}
+      {% set rcv = (it.get('received', it.get('paid', 0)) | int) %}
+
+      {# اگر balance/remain وجود داشت و >0 بود، از همان استفاده کن؛ وگرنه از fee-rcv #}
+      {% set bal_key = it.get('balance') %}
+      {% set rem_key = it.get('remain') %}
+      {% set bal = (
+          bal_key if (bal_key is not none and (bal_key|int) > 0)
+          else (rem_key if (rem_key is not none and (rem_key|int) > 0)
+          else (fee - rcv))
+        ) | int %}
+
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ it.student_name }}</td>
+        <td>{{ it.course_title }}</td>
+        <td>{{ "{:,}".format(fee) }}</td>
+        <td>{{ "{:,}".format(rcv) }}</td>
+        <td class="{{ 'text-danger' if bal>0 else 'text-success' }}">{{ "{:,}".format(bal) }}</td>
+      </tr>
+    {% endfor %}
+  {% else %}
+    <tr><td colspan="6" class="muted">موردی یافت نشد.</td></tr>
+  {% endif %}
+</tbody>
+
       </table>
     </div>
   </section>
@@ -216,16 +211,22 @@
         <tbody>
           {% if courses and courses|length %}
             {% for r in courses %}
+              {% set face = (r.face or r.fee or 0)|int %}
+              {% set received = (r.received or r.paid or 0)|int %}
+              {% set remain = (r.remain if r.remain is not none else (face - received))|int %}
+              {% set mshare = (r.mentor_share or 0)|int %}
+              {% set mpaid  = (r.mentor_paid  or 0)|int %}
+              {% set mdue   = (r.mentor_due   if r.mentor_due is not none else (mshare - mpaid))|int %}
               <tr>
                 <td>{{ loop.index }}</td>
                 <td>{{ r.course.title }}</td>
                 <td>{{ r.students }}</td>
-                <td>{{ "{:,}".format(r.face) }}</td>
-                <td>{{ "{:,}".format(r.received) }}</td>
-                <td class="{{ 'text-danger' if r.remain>0 else '' }}">{{ "{:,}".format(r.remain) }}</td>
-                <td>{{ "{:,}".format(r.mentor_share) }}</td>
-                <td>{{ "{:,}".format(r.mentor_paid) }}</td>
-                <td class="{{ 'text-danger' if r.mentor_due>0 else 'text-success' }}">{{ "{:,}".format(r.mentor_due) }}</td>
+                <td>{{ "{:,}".format(face) }}</td>
+                <td>{{ "{:,}".format(received) }}</td>
+                <td class="{{ 'text-danger' if remain>0 else '' }}">{{ "{:,}".format(remain) }}</td>
+                <td>{{ "{:,}".format(mshare) }}</td>
+                <td>{{ "{:,}".format(mpaid) }}</td>
+                <td class="{{ 'text-danger' if mdue>0 else 'text-success' }}">{{ "{:,}".format(mdue) }}</td>
               </tr>
             {% endfor %}
           {% else %}
@@ -248,14 +249,18 @@
         <tbody>
           {% if mentors and mentors|length %}
             {% for r in mentors %}
+              {% set recv = (r.received or 0)|int %}
+              {% set share = (r.share or 0)|int %}
+              {% set paid  = (r.paid  or 0)|int %}
+              {% set due   = (r.due   if r.due is not none else (share - paid))|int %}
               <tr>
                 <td>{{ loop.index }}</td>
-                <td>{{ r.mentor.full_name or r.mentor.first_name ~ ' ' ~ (r.mentor.last_name or '') }}</td>
-                <td>{{ r.courses }}</td>
-                <td>{{ "{:,}".format(r.received) }}</td>
-                <td>{{ "{:,}".format(r.share) }}</td>
-                <td>{{ "{:,}".format(r.paid) }}</td>
-                <td class="{{ 'text-danger' if r.due>0 else 'text-success' }}">{{ "{:,}".format(r.due) }}</td>
+                <td>{{ r.mentor.full_name or ((r.mentor.first_name or '') ~ ' ' ~ (r.mentor.last_name or '')) }}</td>
+                <td>{{ (r.courses or 0)|int }}</td>
+                <td>{{ "{:,}".format(recv) }}</td>
+                <td>{{ "{:,}".format(share) }}</td>
+                <td>{{ "{:,}".format(paid) }}</td>
+                <td class="{{ 'text-danger' if due>0 else 'text-success' }}">{{ "{:,}".format(due) }}</td>
               </tr>
             {% endfor %}
           {% else %}
@@ -271,19 +276,18 @@
     <div class="table-responsive">
       <table class="data-table">
         <thead>
-          <tr>
-            <th>#</th><th>عنوان</th><th>دوره</th><th>سررسید</th><th>مبلغ</th><th>وضعیت</th>
-          </tr>
+          <tr><th>#</th><th>عنوان</th><th>دوره</th><th>سررسید</th><th>مبلغ</th><th>وضعیت</th></tr>
         </thead>
         <tbody>
           {% if installments and installments|length %}
             {% for p in installments %}
+              {% set amt = (p.amount or p.amount_total or 0)|int %}
               <tr>
                 <td>{{ loop.index }}</td>
                 <td>{{ p.title }}</td>
                 <td>{{ p.course.title if p.course else '—' }}</td>
-                <td>{{ p.due }}</td>
-                <td>{{ "{:,}".format(p.amount) }}</td>
+                <td>{{ p.due or p.due_date or '—' }}</td>
+                <td>{{ "{:,}".format(amt) }}</td>
                 <td class="{{ 'text-danger' if p.overdue else 'text-success' }}">{{ 'معوق' if p.overdue else 'باز' }}</td>
               </tr>
             {% endfor %}
@@ -296,61 +300,66 @@
   </section>
 
   <!-- پنل: دارایی‌ها -->
-  <section id="tab-assets" class="tab-panel">
-    {% if AssetModelPresent %}
-      <div class="card soft">
-        <strong>مجموع ارزش فعلی:</strong> {{ "{:,}".format(assets_total) }} تومان
-      </div>
-      <div class="table-responsive">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>#</th><th>نام</th><th>دسته‌بندی</th><th>تاریخ خرید</th><th>هزینه اولیه</th><th>ارزش فعلی</th><th>وضعیت</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% if assets and assets|length %}
-              {% for a in assets %}
-                <tr>
-                  <td>{{ loop.index }}</td>
-                  <td>{{ a.name }}</td>
-                  <td>{{ a.category or '—' }}</td>
-                  <td>{{ a.purchase_date }}</td>
-                  <td>{{ "{:,}".format((a.cost or 0)|int) }}</td>
-                  <td>
-                    {% if a.current_value %}
-                      {{ "{:,}".format(a.current_value()|int) }}
-                    {% else %}
-                      {{ "{:,}".format((a.cost or 0)|int) }}
-                    {% endif %}
-                  </td>
-                  <td>{{ a.status or 'ACTIVE' }}</td>
-                </tr>
-              {% endfor %}
-            {% else %}
-              <tr><td colspan="7" class="muted">دارایی‌ای ثبت نشده.</td></tr>
-            {% endif %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div class="muted">مدل دارایی‌ها (Asset) هنوز در سیستم تعریف نشده است.</div>
-    {% endif %}
-  </section>
+ <section id="tab-assets" class="tab-panel">
+  {% if AssetModelPresent %}
+    <div class="card soft" style="margin-bottom:12px;">
+      <strong>مجموع ارزش فعلی:</strong>
+      {{ "{:,}".format(((assets_total or 0)|int)) }} تومان
+    </div>
+
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>نام</th>
+            <th>دسته‌بندی</th>
+            <th>تاریخ خرید</th>
+            <th>مبلغ خرید</th>
+            <th>ارزش فعلی</th>
+            <th>وضعیت</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if assets and assets|length %}
+            {% for a in assets %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td title="{{ a.notes or '' }}">{{ a.name }}</td>
+                <td>{{ a.category or '—' }}</td>
+                <td>{{ a.purchase_date or '—' }}</td>
+                <td>
+                  {% if a.purchase_price is not none %}
+                    {{ "{:,}".format(((a.purchase_price or 0)|float)|int) }}
+                  {% else %}—{% endif %}
+                </td>
+                <td>
+                  {% if a.purchase_price is not none %}
+                    {{ "{:,}".format(((a.purchase_price or 0)|float)|int) }}
+                  {% else %}—{% endif %}
+                </td>
+                <td>{{ a.status or '—' }}</td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="7" class="muted">دارایی‌ای ثبت نشده.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="muted">مدل دارایی‌ها (Asset) هنوز در سیستم تعریف نشده است.</div>
+  {% endif %}
+</section>
+
 
   <!-- پنل: هزینه‌ها -->
   <section id="tab-expenses" class="tab-panel">
     {% if ExpenseModelPresent %}
-      <div class="card soft">
-        <strong>مجموع هزینه‌ها:</strong> {{ "{:,}".format(expenses_total) }} تومان
-      </div>
+      <div class="card soft"><strong>مجموع هزینه‌ها:</strong> {{ "{:,}".format(((expenses_total or 0)|int)) }} تومان</div>
       <div class="table-responsive">
         <table class="data-table">
-          <thead>
-            <tr>
-              <th>#</th><th>عنوان</th><th>دسته‌بندی</th><th>مبلغ</th><th>تاریخ</th><th>دوره مرتبط</th>
-            </tr>
-          </thead>
+          <thead><tr><th>#</th><th>عنوان</th><th>دسته‌بندی</th><th>مبلغ</th><th>تاریخ</th><th>دوره مرتبط</th></tr></thead>
           <tbody>
             {% if expenses and expenses|length %}
               {% for e in expenses %}
@@ -358,7 +367,7 @@
                   <td>{{ loop.index }}</td>
                   <td>{{ e.title }}</td>
                   <td>{{ e.category or '—' }}</td>
-                  <td>{{ "{:,}".format((e.amount or 0)|int) }}</td>
+                  <td>{{ "{:,}".format(((e.amount or 0)|int)) }}</td>
                   <td>{{ e.paid_at or '—' }}</td>
                   <td>{{ e.course.title if e.course else '—' }}</td>
                 </tr>
@@ -383,19 +392,16 @@
   .kpi-val{font-size:20px;font-weight:800;color:#0F172A}
   .text-danger{color:#EF4444}
   .text-success{color:#059669}
-
   .tabs{display:flex;gap:6px;flex-wrap:wrap}
   .tab{background:#F3F4F6;border:none;border-radius:8px;padding:8px 14px;cursor:pointer}
   .tab.active{background:#02AD82;color:#fff}
   .tab-panel{display:none;margin-top:12px}
-
   .card.soft{border:1px solid #E5E7EB;border-radius:12px;padding:12px;margin-bottom:10px;background:#fff}
   .chart-rows .row{display:grid;grid-template-columns:90px 1fr 110px;gap:8px;align-items:center;margin:6px 0}
   .chart-rows .row-label{font-size:12px;color:#6B7280}
   .chart-rows .row-bar{background:#F3F4F6;border-radius:8px;overflow:hidden;height:10px}
   .chart-rows .bar{height:100%;background:#02AD82;width:0}
   .chart-rows .row-val{text-align:left;color:#0F172A;font-weight:700}
-
   .table-responsive{overflow-x:auto}
   .data-table{width:100%;border-collapse:collapse;direction:rtl}
   .data-table th,.data-table td{padding:10px 12px;border-bottom:1px solid #F1F5F9;white-space:nowrap;text-align:right}
@@ -407,7 +413,6 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function(){
-  // Tabs
   const tabs = document.querySelectorAll('.tabs .tab');
   const panels = document.querySelectorAll('.tab-panel');
   function show(key){
@@ -421,7 +426,6 @@ document.addEventListener('DOMContentLoaded', function(){
   tabs.forEach(t=> t.addEventListener('click', ()=> show(t.dataset.tab)));
   show('overview');
 
-  // Monthly bars width
   const holder = document.getElementById('monthlyChart');
   if (holder){
     try{
@@ -429,12 +433,10 @@ document.addEventListener('DOMContentLoaded', function(){
       const max = Math.max(1, ...data.map(d => Math.max(0, +d.amount || 0)));
       const bars = holder.querySelectorAll('.bar');
       const vals = data.map(d => Math.max(0, +d.amount || 0));
-      bars.forEach((b,i)=>{
-        const w = Math.round((vals[i] / max) * 100);
-        b.style.width = w + '%';
-      });
+      bars.forEach((b,i)=>{ b.style.width = Math.round((vals[i] / max) * 100) + '%'; });
     }catch(e){}
   }
+  
 });
 </script>
 {% endblock %}

@@ -1,99 +1,78 @@
-{# === Student Finance / Installments (safe, no model changes) === #}
-{# ورودی مورد انتظار: student (از profile ست شده)، یا s #}
-{% set student = student if student is defined else s %}
-{% set plans = (student.installment_plans or []) if student else [] %}
-
+{# app/templates/installments/_student_finance.html #}
 <div class="card" style="margin-bottom:12px;">
-  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-    <div>
-      <div style="font-weight:700; color:#0F172A;">اقساط دانشجو</div>
-      <div class="muted" style="font-size:13px">نمایش و وضعیت اقساط برنامه‌ریزی‌شده برای این دانشجو</div>
-    </div>
-    <div>
-      <a class="btn btn-primary" href="{{ url_for('installments.index') }}">مدیریت همه برنامه‌ها</a>
-    </div>
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+    <div style="font-weight:700; color:#0F172A;">اقساط دانشجو</div>
+    <a class="btn btn-ghost" href="{{ url_for('installments.index') }}">مدیریت اقساط</a>
+  </div>
+
+  <div class="table-responsive">
+    <table class="data-table" id="studentInstallmentsTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>عنوان برنامه</th>
+          <th>دوره</th>
+          <th>قسط</th>
+          <th>سررسید</th>
+          <th>اصل</th>
+          <th>کارمزد چک</th>
+          <th>جمع</th>
+          <th>وضعیت</th>
+          <th>اکشن</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- با JS پر می‌شود -->
+      </tbody>
+    </table>
   </div>
 </div>
 
-{% if not plans %}
-  <div class="card muted">برای این دانشجو برنامه‌ی قسطی ثبت نشده است.</div>
-{% else %}
-  {% for plan in plans %}
-    {# دسترسی ایمن به رابطه‌ها؛ اگر وجود نداشت از همان متغیرهای موجود استفاده می‌کنیم #}
-    {% set _en  = plan.__dict__.get('enrollment') %}
-    {% set _crs = plan.__dict__.get('course') or (_en.course if _en is defined and _en and _en.__dict__.get('course') else None) %}
-    {% set _stu = student or plan.__dict__.get('student') or (_en.student if _en is defined and _en and _en.__dict__.get('student') else None) %}
+<script>
+(async function loadStudentInstallments(){
+  try{
+    // student_id را از #profile بخوان (از خود صفحه پروفایل)
+    const hostEl = document.getElementById('profile');
+    const studentId = Number(hostEl?.dataset.studentId || 0);
+    if(!studentId){ return; }
 
-    {% set _title = plan.title or '—' %}
-    {% set _course_title = (_crs.title if _crs else '—') %}
-    {% set _student_name = (_stu.full_name if _stu and _stu.__dict__.get('full_name') else (_stu.first_name ~ ' ' ~ (_stu.last_name or '')) if _stu else '—') %}
+    // ساخت آدرس API به‌صورت امن: /installments/student/0.json  →  /installments/student/<id>.json
+    const baseUrl = "{{ url_for('installments.api_student_installments', student_id=0) }}";
+    const apiUrl  = baseUrl.replace('/0.json', `/${studentId}.json`);
 
-    {# محاسبه جمع/پرداخت/مانده #}
-    {% set _total = 0 %}
-    {% set _paid  = 0 %}
-    {% for i in (plan.installments or []) %}
-      {% set _total = _total + (i.amount_total or 0) %}
-      {% if (i.status or '').upper() == 'PAID' %}
-        {% set _paid = _paid + (i.amount_total or 0) %}
-      {% endif %}
-    {% endfor %}
-    {% set _remain = (_total - _paid) if _total > _paid else 0 %}
+    const res = await fetch(apiUrl);
+    if(!res.ok){ return; }
+    const data = await res.json();
 
-    <div class="card" style="margin-bottom:12px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
-        <div>
-          <div style="font-weight:700; color:#0F172A;">{{ _title }}</div>
-          <div class="muted" style="font-size:13px;">
-            دوره: {{ _course_title }} &nbsp; | &nbsp; کارآموز: {{ _student_name }}
-          </div>
-        </div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-          <div class="chip">جمع: {{ "{:,.0f}".format(_total|float) }}</div>
-          <div class="chip">پرداخت‌شده: {{ "{:,.0f}".format(_paid|float) }}</div>
-          <div class="chip" style="background:#FEF2F2; border-color:#FEE2E2; color:#B91C1C;">
-            مانده: {{ "{:,.0f}".format(_remain|float) }}
-          </div>
-          <a class="btn btn-ghost" href="{{ url_for('installments.details', plan_id=plan.id) }}">جزئیات</a>
-        </div>
-      </div>
+    const tbody = document.querySelector('#studentInstallmentsTable tbody');
+    tbody.innerHTML = '';
 
-      <div class="table-responsive">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>سررسید</th>
-              <th>اصل قسط</th>
-              <th>کارمزد چک</th>
-              <th>جمع قسط</th>
-              <th>وضعیت</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% if plan.installments %}
-              {% for i in plan.installments %}
-                <tr>
-                  <td>{{ i.seq }}</td>
-                  <td>{{ i.due_date or '—' }}</td>
-                  <td>{{ "{:,.0f}".format((i.amount_base or 0)|float) }}</td>
-                  <td>{{ "{:,.0f}".format((i.cheque_fee_amount or 0)|float) }}</td>
-                  <td><strong>{{ "{:,.0f}".format((i.amount_total or 0)|float) }}</strong></td>
-                  {% set st = (i.status or '')|upper %}
-                  <td class="{{ 'text-success' if st=='PAID' else ('text-danger' if st=='PENDING' else '') }}">{{ i.status or '—' }}</td>
-                </tr>
-              {% endfor %}
-            {% else %}
-              <tr><td colspan="6" class="muted">قسطی تعریف نشده.</td></tr>
-            {% endif %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  {% endfor %}
-{% endif %}
+    const rows = data.items || [];
+    if(!rows.length){
+      // طبق خواسته‌ات پیام «برنامه‌ی قسطی…» را نمایش نمی‌دهیم
+      return;
+    }
 
-<style>
-  .chip{ background:#F3F4F6; border:1px solid #E5E7EB; padding:4px 8px; border-radius:999px; display:inline-block; }
-  .text-success{ color:#059669; }
-  .text-danger{ color:#DC2626; }
-</style>
+    rows.forEach((r, idx) => {
+      const tr = document.createElement('tr');
+      const paidCls = (r.status||'').toUpperCase()==='PAID' ? 'text-success' : 'text-danger';
+      tr.innerHTML = `
+        <td>${idx+1}</td>
+        <td>${r.plan_title || '—'}</td>
+        <td>${r.course_title || '—'}</td>
+        <td>#${r.seq}</td>
+        <td>${r.due_date || '—'}</td>
+        <td>${(r.amount_base||0).toLocaleString('fa-IR')}</td>
+        <td>${(r.cheque_fee_amount||0).toLocaleString('fa-IR')}</td>
+        <td><strong>${(r.amount_total||0).toLocaleString('fa-IR')}</strong></td>
+        <td class="${paidCls}">${r.status || 'PENDING'}</td>
+        <td><a class="btn btn-primary btn-sm" href="${r.details_url}">جزئیات</a></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }catch(e){
+    // silent fail
+    console.error(e);
+  }
+})();
+</script>

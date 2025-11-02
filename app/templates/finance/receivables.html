@@ -42,13 +42,22 @@
     </thead>
     <tbody>
       {% for it in items %}
+      {# محاسبه مطمئن: ابتدا از balance، بعد remain، در نهایت fee-rcv #}
+      {% set fee = (it.get('fee', it.get('face', 0)) | int) %}
+      {% set rcv = (it.get('received', it.get('paid', 0)) | int) %}
+      {% set _bal_raw = it.get('balance') if it is mapping else None %}
+      {% set _rem_raw = it.get('remain')  if it is mapping else None %}
+      {% set bal = (
+          _bal_raw if (_bal_raw is not none and (_bal_raw|int) >= 0)
+          else (_rem_raw if (_rem_raw is not none and (_rem_raw|int) >= 0)
+          else (fee - rcv))
+        ) | int %}
       <tr>
-        <td><a href="{{ url_for('students.view', student_id=it.student_id) }}">{{ it.student_name }}</a></td>
+        <td><a href="{{ url_for('students.profile', student_id=it.student_id) }}">{{ it.student_name }}</a></td>
         <td><a href="{{ url_for('courses.edit_form', course_id=it.course_id) }}">{{ it.course_title }}</a></td>
-        <td>{{ '{:,}'.format(it.fee) }}</td>
-        <td style="color:#02AD82;">{{ '{:,}'.format(it.received) }}</td>
-        {% set color = 'red' if it.remain>0 else '#02AD82' %}
-        <td >{{ '{:,}'.format(it.remain) }}</td>
+        <td>{{ '{:,}'.format(fee) }}</td>
+        <td style="color:#02AD82;">{{ '{:,}'.format(rcv) }}</td>
+        <td class="{{ 'text-danger' if bal>0 else 'text-success' }}">{{ '{:,}'.format(bal) }}</td>
       </tr>
       {% else %}
       <tr><td colspan="5" class="muted">نتیجه‌ای ندارد.</td></tr>

@@ -1,12 +1,9 @@
-# app/blueprints/finance/routes.py
 from __future__ import annotations
 from collections import defaultdict
 from datetime import date, datetime, timedelta
-
-from flask import Blueprint, render_template, request, redirect, url_for
+from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required
 from sqlalchemy import func, or_
-
 from app.extensions import db
 from app.models.course import Course
 from app.models.enrollment import Enrollment
@@ -14,14 +11,14 @@ from app.models.core import Student
 from app.models.mentor import Mentor
 from app.models.payment import Payment  # kind: tuition/mentor_share , status: paid/pending/unpaid
 from app.models.mentor_payment import MentorPayment  # پرداختی‌های منتورها
+from app.models.installment_plan import InstallmentPlan
+from app.models.installment import Installment
+from app.models.asset import Asset
+
 
 bp = Blueprint("finance", __name__, url_prefix="/finance")
 
-# مدل‌های اختیاری
-try:
-    from app.models.asset import Asset  # type: ignore
-except Exception:  # noqa
-    Asset = None  # type: ignore
+# --------- مدل‌های اختیاری ---------
 try:
     from app.models.expense import Expense  # type: ignore
 except Exception:  # noqa
@@ -29,6 +26,30 @@ except Exception:  # noqa
 
 
 # ---------------- Helpers ----------------
+def _inst_total(i):
+    return int(
+        (getattr(i, "amount_total", None)
+         or (getattr(i, "amount_base", 0) or 0) + (getattr(i, "cheque_fee_amount", 0) or 0)) or 0
+    )
+
+def _is_installment_closed(i):
+    return _inst_paid_amount(i) >= _inst_total(i)
+
+def _inst_paid_amount(i):
+    total = _inst_total(i)
+    # اگر یکی از فیلدهای پرداخت پر باشد
+    for attr in ("amount_paid", "paid_amount", "amount_received"):
+        val = getattr(i, attr, None)
+        if val is not None:
+            try:
+                v = int(val)
+                return min(max(v, 0), total)
+            except Exception:
+                pass
+    # اگر وضعیت قسط پرداخت‌شده باشد
+    if (getattr(i, "status", "") or "").upper() in {"PAID", "SETTLED"}:
+        return total
+    return 0
 def _mentor_pct(course: Course) -> float:
     raw = None
     for nm in ("mentor_share_percent", "mentor_percent", "mentor_share", "mentor_ratio"):
@@ -44,7 +65,6 @@ def _mentor_pct(course: Course) -> float:
         return 0.0
     return v / 100.0 if v > 1.0 else v
 
-
 def _safe_num(val, default=0.0) -> float:
     try:
         if val is None:
@@ -53,31 +73,41 @@ def _safe_num(val, default=0.0) -> float:
     except Exception:
         return default
 
+def _is_paid(p: Payment) -> bool:
+    return (getattr(p, "status", "") or "").lower() in {"paid", "settled"}
 
-def _is_inflow(p: Payment) -> bool:
-    status = (getattr(p, "status", "") or "paid").lower()
-    kind = (getattr(p, "kind", "") or "tuition").lower()
-    if status in {"cancelled", "canceled", "void"}:
-        return False
-    if kind in {"mentor_share", "expense", "refund"}:
-        return False
-    return True
-
+def _is_inflow_kind(kind_val: str) -> bool:
+    k = (kind_val or "").lower()
+    return k not in {"mentor_share", "expense", "refund"}
 
 def _sum_paid_tuition(
     course_id: int | None = None,
     student_id: int | None = None,
     enrollment_id: int | None = None,
 ) -> float:
+    """
+    جمع دریافتی‌های شهریه که «واقعاً پرداخت شده‌اند» (status in paid/settled)
+    و از جنس inflow هستند. NULL در kind به عنوان inflow محسوب می‌شود.
+    """
     amount_col = getattr(Payment, "amount")
-    status_ok = func.coalesce(func.lower(getattr(Payment, "status")), "paid") == "paid"
-    kind_col = func.lower(getattr(Payment, "kind"))
-    not_excluded_kind = ~kind_col.in_(("mentor_share", "expense", "refund"))
 
-    q = db.session.query(func.coalesce(func.sum(amount_col), 0.0)).filter(
-        amount_col > 0, status_ok, not_excluded_kind
+    # NULL وضعیت را 'paid' فرض نمی‌کنیم؛ فقط paid/settled را می‌گیریم
+    status_ok = func.coalesce(func.lower(getattr(Payment, "status")), "pending").in_(("paid", "settled"))
+
+    # اگر kind تهی باشد، آن را inflow حساب کن؛ فقط سه نوع زیر را حذف کن
+    kind_col = func.lower(getattr(Payment, "kind"))
+    inflow_condition = or_(
+        kind_col.is_(None),  # NULL -> inflow
+        ~kind_col.in_(("mentor_share", "expense", "refund")),
     )
 
+    q = db.session.query(func.coalesce(func.sum(amount_col), 0.0)).filter(
+        amount_col > 0,
+        status_ok,
+        inflow_condition,
+    )
+
+    # اگر enrollment_id هست و ستونش وجود دارد، دقیقاً همان را فیلتر کن
     if enrollment_id is not None and hasattr(Payment, "enrollment_id"):
         q = q.filter(Payment.enrollment_id == enrollment_id)
         return float(q.scalar() or 0.0)
@@ -86,16 +116,16 @@ def _sum_paid_tuition(
         q = q.filter(Payment.student_id == student_id)
 
     if course_id is not None and hasattr(Payment, "course_id"):
-        q = q.filter((Payment.course_id == course_id) | (Payment.course_id.is_(None)))
+        # بعضی رکوردها course_id ندارند؛ حذفشان نکنیم
+        q = q.filter(or_(Payment.course_id == course_id, Payment.course_id.is_(None)))
 
     return float(q.scalar() or 0.0)
-
 
 def _sum_paid_mentor(course_id: int | None = None, mentor_id: int | None = None) -> float:
     """
     جمع پرداخت‌های انجام‌شده به منتور:
     - منبع اصلی: MentorPayment(kind='EXPENSE')  [+ فیلتر course_id اگر ستونش وجود داشت]
-    - fallback: Payment(kind='mentor_share' & status='paid')
+    - fallback: Payment(kind='mentor_share' & status in paid/settled)
     """
     total = 0.0
     try:
@@ -110,11 +140,10 @@ def _sum_paid_mentor(course_id: int | None = None, mentor_id: int | None = None)
     except Exception:
         total = 0.0
 
-    # اگر صفر بود و مدل MentorPayment به هر دلیلی جواب نداد → fallback
     if total <= 0.0:
         q2 = db.session.query(func.coalesce(func.sum(Payment.amount), 0.0)).filter(
             func.lower(Payment.kind) == "mentor_share",
-            func.coalesce(func.lower(Payment.status), "paid") == "paid",
+            func.coalesce(func.lower(Payment.status), "paid").in_(("paid", "settled")),
         )
         if mentor_id is not None and hasattr(Payment, "mentor_id"):
             q2 = q2.filter(Payment.mentor_id == mentor_id)
@@ -124,7 +153,6 @@ def _sum_paid_mentor(course_id: int | None = None, mentor_id: int | None = None)
 
     return total
 
-
 def _active_students_count(course_id: int) -> int:
     return int(
         db.session.query(func.count(Enrollment.id))
@@ -133,11 +161,9 @@ def _active_students_count(course_id: int) -> int:
         or 0
     )
 
-
 def _course_face_fee(course: Course) -> float:
     per = float(getattr(course, "tuition_per_student", 0) or 0)
     return per * _active_students_count(course.id)
-
 
 def _norm_text(x):
     try:
@@ -145,24 +171,17 @@ def _norm_text(x):
     except Exception:
         return ""
 
-
 def _course_belongs_to_mentor(c: Course, m: Mentor) -> bool:
-    """
-    تشخیص وابستگی دوره به منتور با چندین راه:
-    1) course.mentor_id == mentor.id  (با تحمل int/str)
-    2) course.mentor.id == mentor.id
-    3) course.mentor_name ≈ mentor.full_name/first+last (اگر چنین فیلدی باشد)
-    """
+    # 1) ارتباط آی‌دی
     mid1 = getattr(c, "mentor_id", None)
     if mid1 is not None:
         try:
             if int(mid1) == int(m.id):
                 return True
         except Exception:
-            # str-compare fallback
             if str(mid1) == str(m.id):
                 return True
-
+    # 2) رابطه شیء
     mid2 = getattr(getattr(c, "mentor", None), "id", None)
     if mid2 is not None:
         try:
@@ -171,17 +190,70 @@ def _course_belongs_to_mentor(c: Course, m: Mentor) -> bool:
         except Exception:
             if str(mid2) == str(m.id):
                 return True
-
-    # نام منتور (اختیاری)
+    # 3) نام منتور
     c_name = _norm_text(getattr(c, "mentor_name", None))
     if c_name:
         m_full = _norm_text(getattr(m, "full_name", None))
         m_pair = _norm_text(f"{getattr(m,'first_name', '')} {getattr(m,'last_name','')}")
         if c_name and (c_name == m_full or c_name == m_pair):
             return True
-
     return False
 
+def _plan_links(p):
+    sid = getattr(p, "student_id", None)
+    cid = getattr(p, "course_id", None)
+    en_id = getattr(p, "enrollment_id", None)
+    if (sid is None or cid is None) and en_id:
+        en = Enrollment.query.get(en_id)
+        if en:
+            if sid is None:
+                sid = getattr(en, "student_id", None)
+            if cid is None:
+                cid = getattr(en, "course_id", None)
+    return sid, cid
+def _sum_received_from_installments(
+    course_id: int | None = None,
+    student_id: int | None = None,
+    enrollment_id: int | None = None,
+) -> int:
+    """
+    جمع «دریافتی شهریه» صرفاً از روی اقساط پرداخت‌شده (Installment).
+    فیلترها اختیاری‌اند و با تحمل لینک از Enrollment کار می‌کنند.
+    """
+    total = 0
+    plans = InstallmentPlan.query.all()
+    for p in plans:
+        sid, cid, en_id = _plan_links(p)
+
+        # فیلترهای ورودی
+        if enrollment_id is not None and (en_id != enrollment_id):
+            continue
+        if student_id is not None and (sid != student_id):
+            continue
+        if course_id is not None and (cid != course_id):
+            continue
+
+        for inst in (getattr(p, "installments", []) or []):
+            total += _inst_paid_amount(inst)
+    return int(total)
+
+def _student_course_installment_totals():
+    acc = {}
+    for p in InstallmentPlan.query.all():
+        sid, cid = _plan_links(p)
+        if not sid or not cid:
+            continue
+        key = (int(sid), int(cid))
+        fee  = 0
+        paid = 0
+        for inst in (getattr(p, "installments", []) or []):
+            fee  += _inst_total(inst)
+            paid += _inst_paid_amount(inst)
+        cur = acc.get(key, {"fee": 0, "paid": 0})
+        cur["fee"]  += fee
+        cur["paid"] += paid
+        acc[key] = cur
+    return acc
 
 # =========================
 # داشبورد تب‌محور (یک صفحه)
@@ -193,29 +265,34 @@ def dashboard():
     start_month = date(today.year, today.month, 1)
     next_month = (start_month.replace(day=28) + timedelta(days=4)).replace(day=1)
 
-    enrollments = Enrollment.query.all()
     payments = Payment.query.all()
+    per_inst = _student_course_installment_totals()
 
-    # --- KPI: شهریه اسمی کل ---
-    total_face = 0.0
-    for c in Course.query.all():
-        total_face += _course_face_fee(c)
-
-    # --- دریافتی‌ها + MTD + سری 12 ماه ---
-    total_received = 0.0
+    # --- KPI: شهریه اسمی/دریافتی/مطالبات بر اساس اقساط
+    total_face = float(sum(v.get("fee", 0) for v in per_inst.values()))
+    total_paid = float(sum(v.get("paid", 0) for v in per_inst.values()))
+    total_receivables = max(total_face - total_paid, 0.0)
     mtd_received = 0.0
+    
     receipts_12m: dict[tuple[int, int], float] = defaultdict(float)
 
+    print(f"دریافتی{total_receivables}")
     for p in payments:
         amt = _safe_num(getattr(p, "amount", None), 0.0)
-        if not _is_inflow(p) or amt <= 0:
+        if amt <= 0:
             continue
+        if not _is_paid(p):
+            continue
+        if not _is_inflow_kind(getattr(p, "kind", "")):
+            continue
+
         paid_at = getattr(p, "paid_at", None) or getattr(p, "created_at", None)
         if isinstance(paid_at, date) and not isinstance(paid_at, datetime):
             paid_dt = datetime.combine(paid_at, datetime.min.time())
         else:
             paid_dt = paid_at or datetime.combine(today, datetime.min.time())
-        total_received += amt
+
+        total_receivables += amt
         if start_month <= paid_dt.date() < next_month:
             mtd_received += amt
         receipts_12m[(paid_dt.year, paid_dt.month)] += amt
@@ -252,13 +329,14 @@ def dashboard():
                 mtd_expense += ex_amt
                 expense_mtd_by_cat[cat] += ex_amt
 
-    # --- معوقات/اقساط باز و آینده ---
-    total_receivables = max(total_face - total_received, 0.0)
+    # --- معوقات از روی اقساط ---
+    # total_receivables = max(total_face - total_receivables, 0.0)
+
+    # --- سررسید گذشته/۷ روز آینده (روی Payment‌های unpaid) ---
     overdue_count = 0
     overdue_amount = 0.0
     upcoming_7: list[Payment] = []
     aging_buckets = {"0-30": 0.0, "31-60": 0.0, "61-90": 0.0, "90+": 0.0}
-
     for p in payments:
         amt = _safe_num(getattr(p, "amount", None), 0.0)
         if amt <= 0:
@@ -286,14 +364,14 @@ def dashboard():
             if 0 <= ahead <= 7:
                 upcoming_7.append(p)
 
-    # --- دوره‌های پرفروش ماه جاری ---
+    # --- دوره‌های پرفروش ماه جاری (paid only) ---
     top_courses_mtd: dict[str, dict] = defaultdict(lambda: {"title": "—", "count": 0, "amount": 0.0})
     for p in payments:
         amt = _safe_num(getattr(p, "amount", None), 0.0)
-        if amt <= 0:
+        if amt <= 0 or not _is_paid(p) or not _is_inflow_kind(getattr(p, "kind", "")):
             continue
         paid_at = getattr(p, "paid_at", None) or getattr(p, "created_at", None)
-        paid_date = paid_at.date() if isinstance(ped_at := paid_at, datetime) else paid_at
+        paid_date = paid_at.date() if isinstance(paid_at, datetime) else paid_at
         if not (paid_date and (start_month <= paid_date < next_month)):
             continue
         title = getattr(getattr(p, "course", None), "title", None)
@@ -308,31 +386,30 @@ def dashboard():
     top_courses_mtd_list = sorted(top_courses_mtd.values(), key=lambda x: x["amount"], reverse=True)[:10]
 
     # --- دارایی‌ها (اختیاری) ---
-    assets = []
-    assets_total = 0
-    if Asset:
-        q = Asset.query
-        if hasattr(Asset, "in_service_date"):
-            q = q.order_by(Asset.in_service_date.desc().nullslast(), Asset.id.desc())
-        elif hasattr(Asset, "purchase_date"):
-            q = q.order_by(Asset.purchase_date.desc().nullslast(), Asset.id.desc())
-        else:
-            q = q.order_by(Asset.id.desc())
-        assets = q.all()
-        try:
-            assets_total = int(
-                sum(
-                    int(getattr(a, "current_value")() if callable(getattr(a, "current_value", None)) else (getattr(a, "cost", 0) or 0))
-                    for a in assets
-                )
-            )
-        except Exception:
-            assets_total = int(sum(int(getattr(a, "cost", 0) or 0) for a in assets))
+    try:
+        AssetModelPresent = True
+        assets = Asset.query.order_by(Asset.id.desc()).all()
+        assets_total = (
+            db.session.query(func.coalesce(func.sum(Asset.purchase_price), 0))
+            .scalar()
+        )
+    except Exception:
+        # اگر مدل لود نشد
+        AssetModelPresent = False
+        assets = []
+        assets_total = 0
+
+    ctx = {
+        # ... بقیهٔ کانتکست‌های قبلی ...
+        "AssetModelPresent": AssetModelPresent,
+        "assets": assets,
+        "assets_total": assets_total,
+    }
 
     # --- میانگین تأخیر وصول ---
     delays = []
     for p in payments:
-        if (getattr(p, "status", "") or "").lower() in {"paid", "settled"}:
+        if _is_paid(p):
             continue
         due_date = getattr(p, "due_date", None)
         if not due_date:
@@ -357,20 +434,29 @@ def dashboard():
         amounts.append(val)
         monthly.append({"ym": ym_str, "amount": int(val)})
 
-    # === تب «مطالبات دانشجو» ===
+    # === تب «مطالبات دانشجو» (از اقساط) ===
     rec_items = []
-    base = (
+    rows_base = (
         db.session.query(Enrollment, Course, Student)
         .join(Course, Course.id == Enrollment.course_id)
         .join(Student, Student.id == Enrollment.student_id)
-        .filter(Enrollment.status == "ACTIVE")
+        .filter(Enrollment.status.in_(("ACTIVE", "ONGOING")))
         .order_by(Course.id.desc())
         .all()
-    )
-    for en, co, st in base:
-        face = float(getattr(co, "tuition_per_student", 0) or 0.0)
-        received = _sum_paid_tuition(enrollment_id=en.id, course_id=co.id, student_id=st.id)
-        remain = max(face - received, 0.0)
+        )
+
+    for en, co, st in rows_base:
+        key = (int(st.id), int(co.id))
+        fee = int(per_inst.get(key, {}).get("fee", 0))
+        paid = int(per_inst.get(key, {}).get("paid", 0))
+        remain = max(fee - paid, 0)
+
+    # ✅ نمایش در کنسول
+        print(
+            f"[Student {st.id} - {st.first_name or ''} {st.last_name or ''}] "
+            f"Course: {co.title} | Fee: {fee:,} | Paid: {paid:,} | Remain: {remain:,}"
+            )
+
         rec_items.append(
             dict(
                 en_id=en.id,
@@ -378,15 +464,16 @@ def dashboard():
                 student_id=st.id,
                 course_title=co.title,
                 course_id=co.id,
-                fee=int(face),
-                received=int(received),
-                remain=int(remain),
+                fee=fee,
+                received=paid,
+                remain=remain,
             )
         )
 
+    rec_items.sort(key=lambda x: (-x["remain"], x["student_name"]))
+
     # === تب «دوره‌ها» ===
     course_rows = []
-    # پیش‌محاسبه‌ی مجموع سهم/پرداخت منتور برای «پخش» روی دوره‌ها (اگر لازم بود)
     mentor_share_totals: dict[int, float] = {}
     mentor_paid_totals: dict[int, float] = {}
     for m in Mentor.query.all():
@@ -398,17 +485,17 @@ def dashboard():
         mentor_paid_totals[m.id] = _sum_paid_mentor(mentor_id=m.id)
 
     for c in Course.query.order_by(Course.id.desc()).all():
-        face_total   = _course_face_fee(c)
-        received     = _sum_paid_tuition(course_id=c.id)
-        remain       = max(face_total - received, 0.0)
-        pct          = _mentor_pct(c)
-        mentor_share = face_total * pct  # مبنا: کل هزینه دوره
+        face_total = _course_face_fee(c)
+        received = _sum_paid_tuition(course_id=c.id)
+        remain = max(face_total - received, 0.0)
+        pct = _mentor_pct(c)
+        mentor_share = face_total * pct
         m_ref = getattr(c, "mentor_id", None)
         if m_ref is None:
             m_ref = getattr(getattr(c, "mentor", None), "id", None)
         m_id = int(m_ref) if m_ref is not None else 0
 
-        mentor_paid_total  = mentor_paid_totals.get(m_id, 0.0)
+        mentor_paid_total = mentor_paid_totals.get(m_id, 0.0)
         mentor_share_total = mentor_share_totals.get(m_id, 0.0) or 0.0
         mentor_paid_for_course = mentor_paid_total * (mentor_share / mentor_share_total) if mentor_share_total > 0 else 0.0
         mentor_due = max(mentor_share - mentor_paid_for_course, 0.0)
@@ -429,20 +516,16 @@ def dashboard():
     all_courses = Course.query.all()
     for m in Mentor.query.order_by(Mentor.id.desc()).all():
         mentor_courses = [c for c in all_courses if _course_belongs_to_mentor(c, m)]
-
         total_face_m = 0.0
         total_share_m = 0.0
         total_received_m = 0.0
-
         for c in mentor_courses:
             face_total = _course_face_fee(c)
             total_face_m += face_total
             total_share_m += face_total * _mentor_pct(c)
             total_received_m += _sum_paid_tuition(course_id=c.id)
-
         paid = _sum_paid_mentor(mentor_id=m.id)
-        due  = max(total_share_m - paid, 0.0)
-
+        due = max(total_share_m - paid, 0.0)
         mentor_rows.append(dict(
             mentor=m,
             courses=len(mentor_courses),
@@ -452,59 +535,68 @@ def dashboard():
             due=int(due),
         ))
 
-    # === تب «اقساط» ===
+    # === تب «اقساط» (فقط اقساط باز) ===
     inst_rows = []
-    inst_base = Payment.query.filter(
-        func.lower(Payment.kind) == "tuition",
-        func.lower(Payment.status) != "paid",
-        Payment.due_date.isnot(None),
-    ).order_by(Payment.due_date.asc(), Payment.created_at.asc()).all()
-    for p in inst_base:
-        inst_rows.append(
-            dict(
-                course=p.course,
-                title=p.title or f"قسط #{p.id}",
-                due=p.due_date.isoformat() if p.due_date else "-",
-                amount=int(p.amount or 0),
-                overdue=(p.due_date is not None) and (p.due_date < today),
+    plans = InstallmentPlan.query.all()
+    for plan in plans:
+        # course_id ایمن
+        cid = getattr(plan, "course_id", None)
+        if not cid and getattr(plan, "enrollment_id", None):
+            en = Enrollment.query.get(plan.enrollment_id)
+            cid = en.course_id if en else None
+
+        # عنوان دوره
+        course_title = "—"
+        if cid:
+            c = Course.query.get(cid)
+            if c:
+                course_title = c.title
+
+        # فقط اقساط باز/تسویه‌نشده را نمایش بده
+        for inst in (plan.installments or []):
+            if _is_installment_closed(inst):
+                continue
+            inst_rows.append(
+                dict(
+                    course_title=course_title,
+                    title=plan.title or f"قسط #{inst.seq}",
+                    due=inst.due_date.isoformat() if getattr(inst, "due_date", None) else "-",
+                    amount=int(_inst_total(inst)),
+                    overdue=(getattr(inst, "due_date", None) and inst.due_date < today),
+                    status=(getattr(inst, "status", "PENDING") or "PENDING").upper(),
+                )
             )
-        )
 
-    # --- KPI های بالا ---
-    kpis = dict(
-        total_face=int(total_face),
-        total_received=int(total_received),
-        total_receivables=int(total_receivables),
-        overdue_count=int(overdue_count),
-        overdue_amount=int(overdue_amount),
-        mtd_received=int(mtd_received),
-        mtd_expense=int(mtd_expense),
-        assets_value=int(assets_total),
-        avg_delay_days=avg_delay_days,
-        aging=aging_buckets,
-    )
+    # مرتب‌سازی اقساط باز
+    inst_rows.sort(key=lambda x: (x["due"] is None, x["due"] or "", x["title"]))
 
+    # ---- نمایش داشبورد
     return render_template(
-        "finance/dashboard.html",
-        kpis=kpis,
+        "finance/dashboard.html", **ctx,
+        # KPI
+        kpis=dict(
+            total_face=int(total_face),
+            total_received=int(total_paid),
+            mtd_received=int(mtd_received),
+            total_receivables=int(total_receivables),
+            mtd_expense=int(mtd_expense),
+            assets_total=int(assets_total),
+            avg_delay_days=avg_delay_days,
+            overdue_count=int(overdue_count),
+            overdue_amount=int(overdue_amount),
+        ),
+        # سری و جداول
         monthly=monthly,
+        top_courses_mtd=top_courses_mtd_list,
+        expense_mtd_by_cat=expense_mtd_by_cat,
+        expenses=expenses,
+        aging_buckets=aging_buckets,
+        upcoming_7=upcoming_7,
+        # تب‌ها
         receivables=rec_items,
         courses=course_rows,
         mentors=mentor_rows,
         installments=inst_rows,
-        AssetModelPresent=bool(Asset),
-        assets=assets,
-        assets_total=int(assets_total),
-        ExpenseModelPresent=bool(Expense),
-        expenses=expenses,
-        expenses_total=int(expenses_total),
-        months=months,
-        amounts=amounts,
-        start_month=start_month,
-        today=today,
-        top_courses_mtd=top_courses_mtd_list,
-        expense_mtd_by_cat=dict(expense_mtd_by_cat),
-        upcoming_7=upcoming_7[:10],
     )
 
 
@@ -531,11 +623,16 @@ def receivables():
         base = base.filter(or_(Student.first_name.ilike(like), Student.last_name.ilike(like), Student.phone.ilike(like)))
 
     rows = base.order_by(Course.id.desc()).all()
+
+    # خواندن از اقساط تا با داشبورد/پروفایل یکسان باشد
+    per_inst = _student_course_installment_totals()
+
     items = []
     for en, co, st in rows:
-        face = float(getattr(co, "tuition_per_student", 0) or 0.0)
-        received = _sum_paid_tuition(enrollment_id=en.id, course_id=co.id, student_id=st.id)
-        remain = max(face - received, 0.0)
+        key = (int(st.id), int(co.id))
+        fee = int(per_inst.get(key, {}).get("fee", 0))
+        paid = int(per_inst.get(key, {}).get("paid", 0))
+        remain = max(fee - paid, 0)
         items.append(
             dict(
                 en_id=en.id,
@@ -543,9 +640,10 @@ def receivables():
                 student_id=st.id,
                 course_title=co.title,
                 course_id=co.id,
-                fee=int(face),
-                received=int(received),
-                remain=int(remain),
+                fee=fee,
+                received=paid,
+                remain=remain,
+                balance=remain,
             )
         )
 
@@ -573,7 +671,6 @@ def courses_report():
         remain = max(face_total - received, 0.0)
 
         mentor_share = int(_course_face_fee(c) * _mentor_pct(c))  # مبنا: کل هزینه دوره
-        # جمع پرداخت به منتور برای این دوره (اگر در MentorPayment ستون course_id باشد؛ وگرنه نسبتاً توزیع می‌شود)
         m_ref = getattr(c, "mentor_id", None)
         if m_ref is None:
             m_ref = getattr(getattr(c, "mentor", None), "id", None)
@@ -617,7 +714,7 @@ def mentors_report():
             total_received += _sum_paid_tuition(course_id=c.id)
 
         paid = _sum_paid_mentor(mentor_id=m.id)
-        due  = max(total_share - paid, 0.0)
+        due = max(total_share - paid, 0.0)
 
         rows.append({
             "mentor": m,
@@ -634,6 +731,7 @@ def mentors_report():
 @bp.get("/installments")
 @login_required
 def installments():
+    """صفحه تفکیکی اقساط (بر مبنای Payment‌های شهریه معوق) — اگر لازم نداری، می‌توانیم با Installment هم‌راستا کنیم."""
     today = date.today()
     rows = (
         Payment.query.filter(
@@ -814,3 +912,122 @@ def assets_new():
     db.session.add(a)
     db.session.commit()
     return redirect(url_for("finance.assets_page"))
+    try:
+            from hamafzar import db
+            from hamafzar.app.models.asset import Asset
+    except Exception:
+    # fallback اگر ساختار ایمپورت کمی فرق داشت
+        from app import db  # noqa: F401
+        from app.models.asset import Asset  # noqa: F401
+
+
+def _to_int(v, default=1):
+    try:
+        return int(v)
+    except Exception:
+        return default
+
+
+def _to_decimal(v):
+    if v in (None, "",):
+        return None
+    try:
+        return float(str(v).replace(",", ""))
+    except Exception:
+        return None
+
+
+def _to_date(v):
+    # انتظار: YYYY-MM-DD
+    if not v:
+        return None
+    from datetime import datetime
+    try:
+        return datetime.strptime(v, "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+@bp.route("/assets", methods=["GET", "POST"])
+def assets_index():
+    """
+    لیست + ثبت سریع دارایی
+    """
+    if request.method == "POST":
+        name = (request.form.get("name") or "").strip()
+        if not name:
+            flash("نام دارایی الزامی است.", "danger")
+            return redirect(url_for("finance.assets_index"))
+
+        a = Asset(
+            name=name,
+            category=(request.form.get("category") or "").strip() or None,
+            code=(request.form.get("code") or "").strip() or None,
+            quantity=_to_int(request.form.get("quantity"), 1),
+            unit=(request.form.get("unit") or "").strip() or None,
+            location=(request.form.get("location") or "").strip() or None,
+            status=(request.form.get("status") or "").strip() or None,
+            purchase_date=_to_date(request.form.get("purchase_date")),
+            purchase_price=_to_decimal(request.form.get("purchase_price")),
+            notes=(request.form.get("notes") or "").strip() or None,
+        )
+        try:
+            db.session.add(a)
+            db.session.commit()
+            flash("دارایی با موفقیت ثبت شد.", "success")
+        except Exception as e:
+            db.session.rollback()
+            # نکته: اگر code یونیک باشد، درجِ تکراری خطا می‌دهد
+            flash(f"خطا در ثبت دارایی: {e}", "danger")
+        return redirect(url_for("finance.assets_index"))
+
+    q = (request.args.get("q") or "").strip()
+    qs = Asset.query.order_by(Asset.id.desc())
+    if q:
+        like = f"%{q}%"
+        qs = qs.filter(
+            or_(
+                Asset.name.ilike(like),
+                Asset.category.ilike(like),
+                Asset.code.ilike(like),
+                Asset.location.ilike(like),
+                Asset.status.ilike(like),
+            )
+        )
+    items = qs.all()
+    return render_template("finance/assets.html", items=items, q=q)
+
+
+@bp.route("/assets/<int:asset_id>/edit", methods=["POST"])
+def assets_edit(asset_id):
+    a = Asset.query.get_or_404(asset_id)
+    a.name = (request.form.get("name") or "").strip() or a.name
+    a.category = (request.form.get("category") or "").strip() or None
+    a.code = (request.form.get("code") or "").strip() or None
+    a.quantity = _to_int(request.form.get("quantity"), a.quantity or 1)
+    a.unit = (request.form.get("unit") or "").strip() or None
+    a.location = (request.form.get("location") or "").strip() or None
+    a.status = (request.form.get("status") or "").strip() or None
+    a.purchase_date = _to_date(request.form.get("purchase_date"))
+    a.purchase_price = _to_decimal(request.form.get("purchase_price"))
+    a.notes = (request.form.get("notes") or "").strip() or None
+    try:
+        db.session.commit()
+        flash("دارایی ویرایش شد.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"خطا در ویرایش: {e}", "danger")
+    return redirect(url_for("finance.assets_index"))
+
+
+@bp.route("/assets/<int:asset_id>/delete", methods=["POST"])
+def assets_delete(asset_id):
+    a = Asset.query.get_or_404(asset_id)
+    try:
+        db.session.delete(a)
+        db.session.commit()
+        flash("دارایی حذف شد.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"حذف با خطا مواجه شد: {e}", "danger")
+    return redirect(url_for("finance.assets_index"))
