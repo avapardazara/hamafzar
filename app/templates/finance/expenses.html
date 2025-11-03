@@ -1,124 +1,226 @@
-<!-- این قطعه مستقیم داخل تب inject می‌شود؛ پس نیازی به extends ندارد -->
-<div class="card" style="border:none; box-shadow:none; padding:0;">
-  <h3 style="margin:0 0 10px;">هزینه‌ها</h3>
+{% extends "base.html" %}
+{% block title %}هزینه‌ها | هم‌افزار{% endblock %}
+{% block page_title %}مدیریت هزینه‌ها{% endblock %}
 
-  <!-- فرم افزودن -->
-  <form method="post" action="{{ url_for('finance.expenses_new') }}" class="card" style="margin-bottom:12px;">
-    <div style="display:grid; grid-template-columns: 1.4fr 120px 100px 140px 140px 1fr; gap:8px;">
-      <input class="input" name="title" placeholder="شرح هزینه" required>
+{% block content %}
+<div class="card" style="direction:rtl; max-width:1200px; margin:auto;">
 
-      <input class="input" type="number" name="amount_net" min="0" step="1000" placeholder="مبلغ (قبل VAT)" required>
-      <input class="input" type="number" name="vat_rate" min="0" max="50" step="0.5" placeholder="VAT %">
+  <!-- فرم افزودن هزینه -->
+  <h3 style="font-weight:700; color:var(--ink, #0F172A); margin-bottom:12px;">افزودن هزینه</h3>
+  <form method="post" action="{{ url_for('finance.expenses_new') }}" style="display:grid; grid-template-columns: repeat(12, 1fr); gap:12px; align-items:end;">
+    <div style="grid-column: span 4;">
+      <label class="label">عنوان هزینه</label>
+      <input class="input" name="title" required placeholder="مثلاً اجاره فضا">
+    </div>
 
-      <select class="input" name="payment_method">
-        <option value="CASH">نقد/کارت</option>
-        <option value="TRANSFER">واریز</option>
+    <div style="grid-column: span 3;">
+      <label class="label">دسته‌بندی</label>
+      <input class="input" name="category" placeholder="مثلاً RENT / SALARY / ...">
+    </div>
+
+    <div style="grid-column: span 2;">
+      <label class="label">مبلغ خالص</label>
+      <input class="input" name="amount_net" type="number" min="0" step="0.01" value="0" required>
+    </div>
+
+    <div style="grid-column: span 1;">
+      <label class="label">%مالیات</label>
+      <input class="input" name="vat_rate" type="number" min="0" step="0.01" value="0">
+    </div>
+
+    <div style="grid-column: span 2;">
+      <label class="label">%عوارض/سرویس</label>
+      <input class="input" name="surcharge_percent" type="number" min="0" step="0.01" value="0">
+    </div>
+
+    <div style="grid-column: span 3;">
+      <label class="label">روش پرداخت</label>
+      <select class="input" name="payment_method" id="pm-select">
+        <option value="CASH">نقد</option>
+        <option value="CARD">کارت</option>
+        <option value="TRANSFER">واریز بانکی</option>
         <option value="CHEQUE">چک</option>
-      </select>
-
-      <select class="input" name="status">
-        <option value="PAID">پرداخت‌شده</option>
-        <option value="PENDING">در انتظار</option>
-        <option value="CANCELLED">لغو</option>
-      </select>
-
-      <select class="input" name="category">
-        <option value="">— دسته‌بندی —</option>
-        <option value="CLASS">هزینه کلاس</option>
-        <option value="HUMAN_RESOURCE">منابع انسانی</option>
-        <option value="CATERING">پذیرایی</option>
-        <option value="OTHER">سایر</option>
       </select>
     </div>
 
-    <div style="display:grid; grid-template-columns: 180px 140px 1fr 140px 1fr; gap:8px; margin-top:8px;">
+    <div style="grid-column: span 3;">
+      <label class="label">وضعیت</label>
+      <select class="input" name="status">
+        <option value="PAID">پرداخت‌شده</option>
+        <option value="PENDING">در انتظار</option>
+      </select>
+    </div>
+
+    <div style="grid-column: span 3;">
+      <label class="label">تاریخ پرداخت</label>
+      <input class="input" name="paid_at" type="date">
+    </div>
+
+    <div style="grid-column: span 3;">
+      <label class="label">برای دوره (اختیاری)</label>
       <select class="input" name="course_id">
-        <option value="">— نسبت‌دادن به دوره (اختیاری) —</option>
+        <option value="">—</option>
         {% for c in courses %}
           <option value="{{ c.id }}">{{ c.title }}</option>
         {% endfor %}
       </select>
-
-      <select class="input" name="is_fixed">
-        <option value="">متغیر</option>
-        <option value="1">ثابت</option>
-      </select>
-
-      <input class="input" type="number" name="surcharge_percent" step="0.5" min="0" placeholder="کارمزد چک (%)">
-      <input class="input" type="date" name="paid_at" placeholder="تاریخ پرداخت">
-      <input class="input" name="note" placeholder="یادداشت (اختیاری)">
     </div>
 
-    <!-- فیلدهای چک (اختیاری) -->
-    <details style="margin-top:8px;">
-      <summary>جزئیات چک (اختیاری)</summary>
-      <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; margin-top:8px;">
-        <input class="input" name="cheque_number" placeholder="شماره چک">
-        <input class="input" name="bank_name" placeholder="بانک">
-        <input class="input" name="issuer_name" placeholder="صادرکننده">
-        <input class="input" type="date" name="issue_date" placeholder="تاریخ صدور">
-        <input class="input" type="date" name="due_date" placeholder="تاریخ سررسید">
-        <select class="input" name="cheque_status">
-          <option value="">— وضعیت چک —</option>
-          <option value="PENDING">در انتظار</option>
-          <option value="CLEARED">پاس‌شده</option>
-          <option value="BOUNCED">برگشتی</option>
-        </select>
+    <div style="grid-column: span 12; display:none;" id="cheque-fields">
+      <div style="display:grid; grid-template-columns: repeat(12,1fr); gap:12px;">
+        <div style="grid-column: span 3;">
+          <label class="label">شماره چک</label>
+          <input class="input" name="cheque_number">
+        </div>
+        <div style="grid-column: span 3;">
+          <label class="label">بانک</label>
+          <input class="input" name="bank_name">
+        </div>
+        <div style="grid-column: span 3;">
+          <label class="label">صادرکننده</label>
+          <input class="input" name="issuer_name">
+        </div>
+        <div style="grid-column: span 1;">
+          <label class="label">تاریخ صدور</label>
+          <input class="input" name="issue_date" type="date">
+        </div>
+        <div style="grid-column: span 1;">
+          <label class="label">سررسید</label>
+          <input class="input" name="due_date" type="date">
+        </div>
+        <div style="grid-column: span 1;">
+          <label class="label">وضعیت چک</label>
+          <input class="input" name="cheque_status" placeholder="CLEARED / RETURNED">
+        </div>
       </div>
-    </details>
+    </div>
 
-    <div style="margin-top:10px; display:flex; gap:8px;">
+    <div style="grid-column: span 12;">
+      <label class="label">توضیحات</label>
+      <textarea class="input" name="note" rows="2" placeholder="یادداشت اختیاری"></textarea>
+    </div>
+
+    <div style="grid-column: span 6; display:flex; gap:12px; align-items:center;">
+      <label class="checkbox">
+        <input type="checkbox" name="is_fixed" value="1">
+        <span>هزینه ثابت (Recurring)</span>
+      </label>
+      <div id="amount-total-chip" class="badge" style="background:#F6FAF9; color:#0F172A; padding:6px 10px; border-radius:12px;">
+        مبلغ کل: ۰
+      </div>
+    </div>
+
+    <div style="grid-column: span 6; text-align:left;">
       <button class="btn btn-primary" type="submit">افزودن هزینه</button>
     </div>
   </form>
 
-  <!-- جدول -->
+  <hr style="margin:20px 0; border:none; border-top:1px solid #e5e7eb;">
+
+  <!-- لیست هزینه‌ها -->
+  <h3 style="font-weight:700; color:var(--ink, #0F172A); margin-bottom:12px;">آخرین هزینه‌ها</h3>
   <div class="table-responsive">
-    <table class="data-table">
+    <table class="table" style="width:100%; border-collapse:collapse;">
       <thead>
         <tr>
-          <th>#</th>
-          <th>شرح</th>
-          <th>مبلغ پایه</th>
-          <th>VAT%</th>
-          <th>VAT</th>
-          <th>کارمزد چک</th>
-          <th>جمع کل</th>
+          <th>عنوان</th>
+          <th>دسته</th>
           <th>روش</th>
           <th>وضعیت</th>
-          <th>دسته</th>
+          <th>تاریخ</th>
+          <th style="text-align:left;">مبلغ خالص</th>
+          <th style="text-align:left;">%مالیات</th>
+          <th style="text-align:left;">%عوارض</th>
+          <th style="text-align:left;">مبلغ کل</th>
           <th>دوره</th>
-          <th>تاریخ پرداخت</th>
+          <th style="width:150px;">اقدام</th>
         </tr>
       </thead>
       <tbody>
-        {% for e in items %}
-          <tr>
-            <td>{{ loop.index }}</td>
-            <td>{{ getattr(e,'title','—') }}</td>
-            <td>{{ "{:,.0f}".format(getattr(e,'amount_net',0) or 0) }}</td>
-            <td>{{ "{:.1f}".format(getattr(e,'vat_rate',0) or 0) }}</td>
-            <td>{{ "{:,.0f}".format(getattr(e,'vat_amount',0) or 0) }}</td>
-            <td>
-              {% set s = (getattr(e,'surcharge_amount',0) or 0) %}
-              {% set sp = (getattr(e,'surcharge_percent',0) or 0) %}
-              {{ "{:,.0f}".format(s) }}{% if sp %} ({{ sp }}٪){% endif %}
-            </td>
-            <td>{{ "{:,.0f}".format(getattr(e,'amount_total', (getattr(e,'amount_net',0) or 0) + (getattr(e,'vat_amount',0) or 0) + (getattr(e,'surcharge_amount',0) or 0))) }}</td>
-            <td>{{ getattr(e,'payment_method','—') }}</td>
-            <td>{{ getattr(e,'status','—') }}</td>
-            <td>{{ getattr(e,'category','—') }}</td>
-            <td>{{ e.course.title if e.course else '—' }}</td>
-            <td>
-              {% set p = getattr(e,'paid_at', None) %}
-              {{ p.isoformat() if p else '—' }}
-            </td>
-          </tr>
+        {% for ex in items %}
+        <tr>
+          <td>{{ ex.title }}</td>
+          <td>{{ ex.category or '—' }}</td>
+          <td>{{ ex.payment_method or '—' }}</td>
+          <td>
+            {% if (ex.status or '').upper() == 'PAID' %}
+              <span class="badge" style="background:#E6FFFA; color:#047857;">پرداخت‌شده</span>
+            {% else %}
+              <span class="badge" style="background:#FFF7ED; color:#B45309;">در انتظار</span>
+            {% endif %}
+          </td>
+          <td>
+            {% set _dt = ex.paid_at or ex.created_at %}
+            {{ _dt.strftime("%Y-%m-%d") if _dt else "—" }}
+          </td>
+          <td style="text-align:left;">{{ "{:,.0f}".format(ex.amount_net or 0) }}</td>
+          <td style="text-align:left;">{{ ex.vat_rate or 0 }}</td>
+          <td style="text-align:left;">{{ ex.surcharge_percent or 0 }}</td>
+          <td style="text-align:left; font-weight:700;">{{ "{:,.0f}".format(ex.amount_total or 0) }}</td>
+          <td>{{ ex.course.title if ex.course else '—' }}</td>
+          <td>
+            <details>
+              <summary class="btn btn-ghost" style="display:inline-block;">ویرایش</summary>
+              <form method="post" action="{{ url_for('finance.expenses_edit', expense_id=ex.id) }}" style="margin-top:8px; display:grid; grid-template-columns: repeat(12,1fr); gap:8px;">
+                <input class="input" name="title" value="{{ ex.title }}" style="grid-column: span 4;">
+                <input class="input" name="category" value="{{ ex.category or '' }}" style="grid-column: span 3;">
+                <input class="input" name="amount_net" type="number" step="0.01" value="{{ ex.amount_net or 0 }}" style="grid-column: span 2;">
+                <input class="input" name="vat_rate" type="number" step="0.01" value="{{ ex.vat_rate or 0 }}" style="grid-column: span 1;">
+                <input class="input" name="surcharge_percent" type="number" step="0.01" value="{{ ex.surcharge_percent or 0 }}" style="grid-column: span 2;">
+                <select class="input" name="payment_method" style="grid-column: span 3;">
+                  {% for key in ['CASH','CARD','TRANSFER','CHEQUE'] %}
+                  <option value="{{ key }}" {% if (ex.payment_method or '').upper()==key %}selected{% endif %}>{{ key }}</option>
+                  {% endfor %}
+                </select>
+                <select class="input" name="status" style="grid-column: span 2;">
+                  {% for key in ['PAID','PENDING'] %}
+                  <option value="{{ key }}" {% if (ex.status or '').upper()==key %}selected{% endif %}>{{ 'پرداخت‌شده' if key=='PAID' else 'در انتظار' }}</option>
+                  {% endfor %}
+                </select>
+                <input class="input" name="paid_at" type="date" value="{{ ex.paid_at.strftime('%Y-%m-%d') if ex.paid_at else '' }}">
+                <input class="input" name="note" value="{{ ex.note or '' }}" placeholder="توضیح" style="grid-column: span 4;">
+                <button class="btn btn-primary" type="submit" style="grid-column: span 2;">ثبت ویرایش</button>
+              </form>
+            </details>
+            <form method="post" action="{{ url_for('finance.expenses_delete', expense_id=ex.id) }}" onsubmit="return confirm('حذف این هزینه قطعی است؟');" style="display:inline;">
+              <button class="btn btn-danger" type="submit">حذف</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="11" style="text-align:center; color:#6b7280;">هیچ هزینه‌ای ثبت نشده است.</td></tr>
         {% endfor %}
-        {% if not items %}
-          <tr><td colspan="12" class="muted">هنوز هزینه‌ای ثبت نشده است.</td></tr>
-        {% endif %}
       </tbody>
     </table>
   </div>
 </div>
+
+<script>
+  // live calc مبلغ کل و نمایش فیلدهای چک
+  (function(){
+    const net = document.querySelector('input[name="amount_net"]');
+    const vat = document.querySelector('input[name="vat_rate"]');
+    const fee = document.querySelector('input[name="surcharge_percent"]');
+    const chip = document.getElementById('amount-total-chip');
+    const pm   = document.getElementById('pm-select');
+    const chequeBox = document.getElementById('cheque-fields');
+
+    function fmt(n){ try { return new Intl.NumberFormat('fa-IR').format(n||0); } catch(e){ return n; } }
+    function calc(){
+      const n = parseFloat(net.value||0);
+      const v = parseFloat(vat.value||0);
+      const s = parseFloat(fee.value||0);
+      const total = n + (n*v/100) + (n*s/100);
+      chip.textContent = 'مبلغ کل: ' + fmt(Math.round(total));
+    }
+    function toggleCheque(){
+      chequeBox.style.display = (pm.value === 'CHEQUE') ? 'block':'none';
+    }
+    ['input','change'].forEach(ev=>{
+      net.addEventListener(ev, calc); vat.addEventListener(ev, calc); fee.addEventListener(ev, calc);
+      pm.addEventListener(ev, toggleCheque);
+    });
+    calc(); toggleCheque();
+  })();
+</script>
+{% endblock %}

@@ -300,11 +300,18 @@
   </section>
 
   <!-- پنل: دارایی‌ها -->
- <section id="tab-assets" class="tab-panel">
+<section id="tab-assets" class="tab-panel">
   {% if AssetModelPresent %}
-    <div class="card soft" style="margin-bottom:12px;">
-      <strong>مجموع ارزش فعلی:</strong>
-      {{ "{:,}".format(((assets_total or 0)|int)) }} تومان
+    <div class="card soft" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px;">
+      <div>
+        <strong>مجموع ارزش فعلی:</strong>
+        {{ "{:,}".format(((assets_total or 0)|int)) }} تومان
+      </div>
+      <div>
+        <a class="btn btn-primary" href="{{ url_for('finance.assets_page') }}" style="background:#02AD82; border-color:#02AD82;">
+          افزودن دارایی
+        </a>
+      </div>
     </div>
 
     <div class="table-responsive">
@@ -316,8 +323,9 @@
             <th>دسته‌بندی</th>
             <th>تاریخ خرید</th>
             <th>مبلغ خرید</th>
-            <th>ارزش فعلی</th>
+            <th>تعداد</th>
             <th>وضعیت</th>
+            <th>ارزش کل</th>
           </tr>
         </thead>
         <tbody>
@@ -330,19 +338,21 @@
                 <td>{{ a.purchase_date or '—' }}</td>
                 <td>
                   {% if a.purchase_price is not none %}
-                    {{ "{:,}".format(((a.purchase_price or 0)|float)|int) }}
+                    {{ "{:,.0f}".format((a.purchase_price|float)) }}
                   {% else %}—{% endif %}
                 </td>
-                <td>
-                  {% if a.purchase_price is not none %}
-                    {{ "{:,}".format(((a.purchase_price or 0)|float)|int) }}
-                  {% else %}—{% endif %}
-                </td>
+                <td>{{ a.quantity  or '—' }}</td>
                 <td>{{ a.status or '—' }}</td>
+                        <td>
+  {% if (a.purchase_price is defined and a.purchase_price is not none) and (a.quantity is defined and a.quantity) %}
+    {% set total_val = (a.purchase_price|float) * (a.quantity|int) %}
+    {{ "{:,.0f}".format(total_val) }}
+  {% else %}—{% endif %}
+</td>
               </tr>
             {% endfor %}
           {% else %}
-            <tr><td colspan="7" class="muted">دارایی‌ای ثبت نشده.</td></tr>
+            <tr><td colspan="6" class="muted">دارایی‌ای ثبت نشده.</td></tr>
           {% endif %}
         </tbody>
       </table>
@@ -354,34 +364,82 @@
 
 
   <!-- پنل: هزینه‌ها -->
-  <section id="tab-expenses" class="tab-panel">
-    {% if ExpenseModelPresent %}
-      <div class="card soft"><strong>مجموع هزینه‌ها:</strong> {{ "{:,}".format(((expenses_total or 0)|int)) }} تومان</div>
-      <div class="table-responsive">
-        <table class="data-table">
-          <thead><tr><th>#</th><th>عنوان</th><th>دسته‌بندی</th><th>مبلغ</th><th>تاریخ</th><th>دوره مرتبط</th></tr></thead>
-          <tbody>
-            {% if expenses and expenses|length %}
-              {% for e in expenses %}
-                <tr>
-                  <td>{{ loop.index }}</td>
-                  <td>{{ e.title }}</td>
-                  <td>{{ e.category or '—' }}</td>
-                  <td>{{ "{:,}".format(((e.amount or 0)|int)) }}</td>
-                  <td>{{ e.paid_at or '—' }}</td>
-                  <td>{{ e.course.title if e.course else '—' }}</td>
-                </tr>
-              {% endfor %}
-            {% else %}
-              <tr><td colspan="6" class="muted">هزینه‌ای ثبت نشده.</td></tr>
-            {% endif %}
-          </tbody>
-        </table>
+<section id="tab-expenses" class="tab-panel">
+  <div class="card soft" style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+    <div>
+      <strong>هزینه ماه جاری:</strong>
+      {{ "{:,}".format(((kpis.mtd_expense or 0)|int)) }} تومان
+      &nbsp;&nbsp;|&nbsp;&nbsp;
+      <strong>مجموع کل هزینه‌ها:</strong>
+      {{ "{:,}".format(((kpis.total_expense or kpis.get('expenses_total', 0) or 0)|int)) }} تومان
+    </div>
+
+    <a class="btn btn-primary" href="{{ url_for('finance.expenses_page') }}">
+      افزودن هزینه
+    </a>
+  </div>
+
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>عنوان</th>
+          <th>دسته</th>
+          <th>روش پرداخت</th>
+          <th>وضعیت</th>
+          <th>تاریخ پرداخت/ثبت</th>
+          <th style="text-align:left;">مبلغ کل (تومان)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if expenses and expenses|length %}
+          {% for ex in expenses %}
+            <tr>
+              <td>{{ loop.index }}</td>
+              <td>{{ ex.title or "—" }}</td>
+              <td>{{ ex.category or "سایر" }}</td>
+              <td>{{ ex.payment_method or "—" }}</td>
+              <td>{{ ex.status or "—" }}</td>
+              <td>
+                {# اگر paid_at بود همان، وگرنه created_at #}
+                {% set _dt = ex.paid_at or ex.created_at %}
+                {{ _dt.strftime("%Y-%m-%d") if _dt else "—" }}
+              </td>
+              <td style="text-align:left;">
+                {# اگر amount_total نبود، از محاسبهٔ امن استفاده می‌کنیم #}
+                {% set net = (ex.amount_net or 0) | float %}
+                {% set vat = (ex.vat_rate or 0) | float %}
+                {% set sur = (ex.surcharge_percent or 0) | float %}
+                {% set calc = net + (net * vat / 100.0) + (net * sur / 100.0) %}
+                {% set amt = ex.amount_total if ex.amount_total is not none else calc %}
+                {{ "{:,}".format(((amt or 0)|int)) }}
+              </td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="7" class="muted">هنوز هزینه‌ای ثبت نشده است.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  {# نمایش تفکیک هزینه ماه جاری بر اساس دسته‌بندی (اختیاری) #}
+  {% if expense_mtd_by_cat and expense_mtd_by_cat|length %}
+    <div class="card soft" style="margin-top:var(--sp-4);">
+      <div style="font-weight:600; margin-bottom:8px;">تفکیک هزینه‌های ماه جاری به تفکیک دسته:</div>
+      <div class="chips" style="display:flex; gap:8px; flex-wrap:wrap;">
+        {% for cat, val in expense_mtd_by_cat.items() %}
+          <span class="chip">
+            {{ cat }}:
+            {{ "{:,}".format(((val or 0)|int)) }}
+          </span>
+        {% endfor %}
       </div>
-    {% else %}
-      <div class="muted">مدل هزینه‌ها (Expense) هنوز در سیستم تعریف نشده است.</div>
-    {% endif %}
-  </section>
+    </div>
+  {% endif %}
+</section>
+
 
 </div>
 

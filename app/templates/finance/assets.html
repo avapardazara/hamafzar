@@ -5,32 +5,26 @@
 {% block content %}
 <div class="card" style="direction:rtl; max-width:1100px; margin:auto;">
 
-  <!-- تب‌های مالی (حداقلی و هم‌استایل) -->
   <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
-    <a class="btn btn-ghost" href="{{ url_for('finance.assets_index') }}">دارایی</a>
-    {# اگر تب هزینه آدرس مشخصی دارد، این لینک را به روت درست تغییر بده #}
-    <a class="btn btn-ghost" href="{{ url_for('finance.index') }}">هزینه</a>
+    <a class="btn btn-ghost" href="{{ url_for('finance.dashboard') }}">داشبورد مالی</a>
+    <a class="btn btn-ghost" href="{{ url_for('finance.assets_page') }}">دارایی</a>
+    <a class="btn btn-ghost" href="{{ url_for('finance.expenses_page') }}">هزینه</a>
   </div>
 
-  <!-- جست‌وجو -->
-  <form method="get" action="{{ url_for('finance.assets_index') }}" style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
-    <input class="input" name="q" placeholder="جست‌وجو در نام/دسته/کد/محل/وضعیت" value="{{ q or '' }}" style="flex:1; min-width:280px;">
-    <button class="btn btn-primary" type="submit">جست‌وجو</button>
-  </form>
-
-  <!-- فرم افزودن سریع -->
-  <form method="post" action="{{ url_for('finance.assets_index') }}" style="display:grid; grid-template-columns: repeat(4, minmax(160px,1fr)); gap:12px; align-items:end; margin-bottom:16px;">
+  <!-- فرم افزودن -->
+  <form method="post" action="{{ url_for('finance.assets_new') }}"
+        style="display:grid; grid-template-columns: repeat(4, minmax(160px,1fr)); gap:12px; align-items:end; margin-bottom:16px;">
     <div>
       <label class="label">نام دارایی *</label>
-      <input class="input" name="name" required>
+      <input class="input" name="name" required placeholder="مثلاً: سوئیچ 24 پورتی">
     </div>
     <div>
       <label class="label">دسته‌بندی</label>
-      <input class="input" name="category" placeholder="مثلاً: شبکه، مبلمان">
+      <input class="input" name="category" placeholder="شبکه / مبلمان / ابزار">
     </div>
     <div>
-      <label class="label">کد/سریال</label>
-      <input class="input" name="code" placeholder="کد اموال/سریال">
+      <label class="label">کد/سریال (یونیک)</label>
+      <input class="input" name="code" placeholder="AS-2024-001">
     </div>
     <div>
       <label class="label">تعداد</label>
@@ -38,91 +32,108 @@
     </div>
     <div>
       <label class="label">واحد</label>
-      <input class="input" name="unit" placeholder="عدد/دستگاه/...">
+      <input class="input" name="unit" placeholder="عدد / دستگاه / ...">
     </div>
     <div>
       <label class="label">محل نگهداری</label>
-      <input class="input" name="location" placeholder="انبار/اتاق سرور/...">
+      <input class="input" name="location" placeholder="انبار / اتاق سرور / ...">
     </div>
     <div>
       <label class="label">وضعیت</label>
-      <input class="input" name="status" placeholder="سالم/خراب/...">
+      <input class="input" name="status" placeholder="سالم / خراب / ...">
     </div>
     <div>
       <label class="label">تاریخ خرید</label>
-      <input class="input" name="purchase_date" type="date">
+      <input class="input" type="date" name="purchase_date">
     </div>
     <div>
-      <label class="label">مبلغ خرید</label>
-      <input class="input" name="purchase_price" placeholder="مثلاً 12000000">
+      <label class="label">مبلغ خرید (تومان)</label>
+      <input class="input" name="purchase_price" inputmode="numeric" placeholder="12,000,000">
     </div>
     <div style="grid-column: 1 / -1;">
       <label class="label">یادداشت</label>
-      <textarea class="input" name="notes" rows="2" placeholder="اختیاری"></textarea>
+      <textarea class="input" rows="2" name="notes" placeholder="اختیاری"></textarea>
     </div>
     <div>
-      <button class="btn btn-primary" type="submit" style="background:#02AD82; border-color:#02AD82;">افزودن</button>
+      <button class="btn btn-primary" type="submit" style="background:#02AD82; border-color:#02AD82;">افزودن دارایی</button>
     </div>
   </form>
 
-  <!-- جدول دارایی‌ها -->
+  <!-- جدول + عملیات -->
   <div class="table-responsive">
     <table class="table">
       <thead>
         <tr>
+          <th>#</th>
           <th>نام</th>
           <th>دسته</th>
           <th>کد</th>
           <th>تعداد</th>
+          <th>واحد</th>
           <th>محل</th>
           <th>وضعیت</th>
           <th>تاریخ خرید</th>
           <th>مبلغ خرید</th>
+          <th>ارزش کل</th>
           <th>عملیات</th>
         </tr>
       </thead>
       <tbody>
-      {% for it in items %}
-        <tr>
-          <td title="{{ it.notes or '' }}">{{ it.name }}</td>
-          <td>{{ it.category or '—' }}</td>
-          <td>{{ it.code or '—' }}</td>
-          <td>{{ it.quantity }}</td>
-          <td>{{ it.location or '—' }}</td>
-          <td>{{ it.status or '—' }}</td>
-          <td>{{ it.purchase_date or '—' }}</td>
-          <td>
-            {% if it.purchase_price is not none %}
-              {{ "{:,.0f}".format(it.purchase_price|float) }}
-            {% else %}—{% endif %}
+        {% if items and items|length %}
+          {% for a in items %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td title="{{ a.notes or '' }}">{{ a.name }}</td>
+            <td>{{ a.category or '—' }}</td>
+            <td>{{ a.code or '—' }}</td>
+            <td>{{ a.quantity or 0 }}</td>
+            <td>{{ a.unit or '—' }}</td>
+            <td>{{ a.location or '—' }}</td>
+            <td>{{ a.status or '—' }}</td>
+            <td>{{ a.purchase_date or '—' }}</td>
+            <td>
+              {% if a.purchase_price is not none %}
+                {{ "{:,.0f}".format(a.purchase_price|float) }}
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              {% if a.purchase_price is not none %}
+                {{ "{:,.0f}".format(total_val) }}
+              {% else %}—{% endif %}
           </td>
-          <td>
-            <form method="post" action="{{ url_for('finance.assets_delete', asset_id=it.id) }}" onsubmit="return confirm('حذف شود؟')" style="display:inline;">
-              <button class="btn btn-ghost" type="submit">حذف</button>
-            </form>
-            <details style="display:inline-block;">
-              <summary class="btn btn-ghost">ویرایش</summary>
-              <form method="post" action="{{ url_for('finance.assets_edit', asset_id=it.id) }}" style="display:grid; grid-template-columns: repeat(3, minmax(120px,1fr)); gap:8px; margin-top:8px;">
-                <input class="input" name="name" value="{{ it.name }}" placeholder="نام *" required>
-                <input class="input" name="category" value="{{ it.category or '' }}" placeholder="دسته">
-                <input class="input" name="code" value="{{ it.code or '' }}" placeholder="کد">
-                <input class="input" name="quantity" type="number" min="1" value="{{ it.quantity }}">
-                <input class="input" name="unit" value="{{ it.unit or '' }}" placeholder="واحد">
-                <input class="input" name="location" value="{{ it.location or '' }}" placeholder="محل">
-                <input class="input" name="status" value="{{ it.status or '' }}" placeholder="وضعیت">
-                <input class="input" name="purchase_date" type="date" value="{{ it.purchase_date }}">
-                <input class="input" name="purchase_price" value="{{ it.purchase_price if it.purchase_price is not none else '' }}" placeholder="مبلغ">
-                <textarea class="input" name="notes" rows="2" placeholder="یادداشت">{{ it.notes or '' }}</textarea>
-                <div>
-                  <button class="btn btn-primary" type="submit" style="background:#02AD82; border-color:#02AD82;">ثبت</button>
-                </div>
+            <td>
+              <details>
+                <summary class="btn btn-ghost" style="cursor:pointer;">ویرایش</summary>
+                <form method="post" action="{{ url_for('finance.assets_edit', asset_id=a.id) }}"
+                      style="margin-top:8px; display:grid; grid-template-columns: repeat(4, minmax(120px,1fr)); gap:8px;">
+                  <input class="input" name="name" value="{{ a.name }}" placeholder="نام *" required>
+                  <input class="input" name="category" value="{{ a.category or '' }}" placeholder="دسته‌بندی">
+                  <input class="input" name="code" value="{{ a.code or '' }}" placeholder="کد/سریال">
+                  <input class="input" name="quantity" type="number" min="1" value="{{ a.quantity or 1 }}" placeholder="تعداد">
+                  <input class="input" name="unit" value="{{ a.unit or '' }}" placeholder="واحد">
+                  <input class="input" name="location" value="{{ a.location or '' }}" placeholder="محل">
+                  <input class="input" name="status" value="{{ a.status or '' }}" placeholder="وضعیت">
+                  <input class="input" type="date" name="purchase_date" value="{{ a.purchase_date }}">
+                  <input class="input" name="purchase_price" value="{{ a.purchase_price or '' }}" placeholder="مبلغ خرید">
+                  <textarea class="input" rows="1" name="notes" placeholder="یادداشت">{{ a.notes or '' }}</textarea>
+                  <div style="grid-column: 1 / -1; display:flex; gap:8px;">
+                    <button class="btn btn-primary" type="submit" style="background:#02AD82; border-color:#02AD82;">ذخیره</button>
+                    <form method="post" action="{{ url_for('finance.assets_delete', asset_id=a.id) }}" onsubmit="return confirm('حذف این دارایی قطعی است؟');">
+                      <button class="btn btn-ghost" type="submit">حذف</button>
+                    </form>
+                  </div>
+                </form>
+              </details>
+              <form method="post" action="{{ url_for('finance.assets_delete', asset_id=a.id) }}"
+                    onsubmit="return confirm('حذف این دارایی قطعی است؟');" style="display:inline-block; margin-top:6px;">
+                <button class="btn btn-ghost" type="submit">حذف سریع</button>
               </form>
-            </details>
-          </td>
-        </tr>
-      {% else %}
-        <tr><td colspan="9" class="text-muted">موردی ثبت نشده است.</td></tr>
-      {% endfor %}
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="11" class="text-muted">موردی ثبت نشده است.</td></tr>
+        {% endif %}
       </tbody>
     </table>
   </div>

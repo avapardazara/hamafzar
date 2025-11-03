@@ -63,3 +63,7 @@ try:
     from .installment_plan import InstallmentPlan
 except Exception:
     InstallmentPlan = None
+try:
+    from .installment_cheque import InstallmentCheque
+except Exception:
+    InstallmentCheque = None

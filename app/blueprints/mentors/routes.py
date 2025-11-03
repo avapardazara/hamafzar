@@ -9,13 +9,115 @@ from ...models.course import Course
 from ...models.enrollment import Enrollment
 from ...models.mentor_payment import MentorPayment
 from ...utils.files import save_mentor_avatar  # همان util موجود
-
+from ...models.payment import Payment
+from ...models.installment_plan import InstallmentPlan
+from ...models.installment import Installment
+from sqlalchemy import or_
 bp = Blueprint("mentors", __name__, url_prefix="/mentors")
 
 
 # -------------------------------
 # Helpers
 # -------------------------------
+def _safe_num(val, default=0.0) -> float:
+    try:
+        if val is None:
+            return default
+        return float(val)
+    except Exception:
+        return default
+
+def _inst_total(i):
+    return int(
+        (getattr(i, "amount_total", None)
+         or (getattr(i, "amount_base", 0) or 0) + (getattr(i, "cheque_fee_amount", 0) or 0)) or 0
+    )
+
+def _inst_paid_amount(i):
+    total = _inst_total(i)
+    for attr in ("amount_paid", "paid_amount", "amount_received"):
+        val = getattr(i, attr, None)
+        if val is not None:
+            try:
+                v = int(val)
+                return min(max(v, 0), total)
+            except Exception:
+                pass
+    if (getattr(i, "status", "") or "").upper() in {"PAID", "SETTLED"}:
+        return total
+    return 0
+
+def _mentor_share_percent(course) -> float:
+    raw = None
+    for nm in ("mentor_share_percent", "mentor_percent", "mentor_share", "mentor_ratio"):
+        if hasattr(course, nm):
+            raw = getattr(course, nm)
+            if raw is not None:
+                break
+    try:
+        v = float(raw)
+    except Exception:
+        return 0.0
+    if v < 0:
+        return 0.0
+    return v / 100.0 if v > 1.0 else v
+
+def _has_installments_for_enrollment(enrollment_id: int) -> bool:
+    if hasattr(InstallmentPlan, "enrollment_id"):
+        return bool(
+            db.session.query(InstallmentPlan.id)
+            .filter(InstallmentPlan.enrollment_id == enrollment_id)
+            .first()
+        )
+    # اگر ساختار متفاوت باشد، اینجا می‌توان لینک دیگری را بررسی کرد
+    return False
+
+def _sum_paid_tuition_for(enrollment_id: int | None, student_id: int | None, course_id: int | None) -> float:
+    """جمع پرداخت‌های شهریه (inflow, paid/settled). تحمل ستون enrollment_id و فیلترهای جایگزین."""
+    amount_col = getattr(Payment, "amount")
+    status_ok = func.coalesce(func.lower(getattr(Payment, "status")), "pending").in_(("paid", "settled"))
+    kind_col = func.lower(getattr(Payment, "kind"))
+    inflow = or_(kind_col.is_(None), ~kind_col.in_(("mentor_share", "expense", "refund")))
+
+    q = db.session.query(func.coalesce(func.sum(amount_col), 0.0)).filter(amount_col > 0, status_ok, inflow)
+
+    if enrollment_id is not None and hasattr(Payment, "enrollment_id"):
+        q = q.filter(Payment.enrollment_id == enrollment_id)
+        return float(q.scalar() or 0.0)
+
+    if student_id is not None and hasattr(Payment, "student_id"):
+        q = q.filter(Payment.student_id == student_id)
+
+    if course_id is not None and hasattr(Payment, "course_id"):
+        q = q.filter(or_(Payment.course_id == course_id, Payment.course_id.is_(None)))
+
+    return float(q.scalar() or 0.0)
+
+def _enrollment_financials(en, course) -> tuple[int, int]:
+    """
+    خروجی: (fee, paid) برای یک ثبت‌نام.
+    - اگر قسط دارد: fee/paid از اقساط
+    - اگر ندارد: fee = tuition_per_student دوره، paid از Payment
+    """
+    if _has_installments_for_enrollment(en.id):
+        fee = 0
+        paid = 0
+        plans = (
+            InstallmentPlan.query.filter(InstallmentPlan.enrollment_id == en.id).all()
+            if hasattr(InstallmentPlan, "enrollment_id")
+            else []
+        )
+        for p in plans:
+            for inst in (getattr(p, "installments", []) or []):
+                fee += _inst_total(inst)
+                paid += _inst_paid_amount(inst)
+        return int(fee), int(paid)
+    # بدون قسط
+    per = _safe_num(getattr(course, "tuition_per_student", 0.0), 0.0)
+    paid = _sum_paid_tuition_for(en.id if hasattr(Payment, "enrollment_id") else None,
+                                 getattr(en, "student_id", None),
+                                 getattr(en, "course_id", None))
+    return int(per), int(paid)
 def _sa_col_or_literal(model, attr_name: str, default_value=0):
     """اگر attr ستونی از نوع SQLAlchemy نبود، literal(default) بده."""
     attr = getattr(model, attr_name, None)
@@ -36,62 +138,76 @@ def _first_existing_column(model, candidates, default_value=0):
 def _mentor_finance_summary(mentor_id: int):
     """
     items: [
-      {course_id, course_title, students, fee_per_student, share_percent, income_total, mentor_share}
+      {course_id, course_title, students, fee_per_student, share_percent, income_total, mentor_share,
+       paid_to_mentor, mentor_due}
     ]
     totals: { income_total, share_total, paid_total, balance }
     """
-    # ستون واقعی شهریه هر دانشجو
-    fee_col   = _first_existing_column(Course, ["tuition_per_student"], 0)
-    share_col = _sa_col_or_literal(Course, "mentor_share_percent", 0)
-
-    # فقط ثبت‌نام‌های ACTIVE شمرده شوند
-    rows = (
-        db.session.query(
-            Course.id.label("course_id"),
-            Course.title.label("course_title"),
-            func.coalesce(fee_col, 0).label("fee_per_student"),
-            func.coalesce(share_col, 0).label("share_percent"),
-            func.count(Enrollment.id).label("students_count"),
-        )
-        .outerjoin(Enrollment, (Enrollment.course_id == Course.id) & (Enrollment.status == "ACTIVE"))
-        .filter(Course.mentor_id == mentor_id)
-        .group_by(Course.id)
-        .all()
-    )
+    # دوره‌های منتور
+    courses = Course.query.filter(Course.mentor_id == mentor_id).all()
 
     items = []
     income_total = 0
     share_total  = 0
 
-    for r in rows:
-        students = int(r.students_count or 0)       # تعداد دانشجوی ACTIVE
-        fee      = int(r.fee_per_student or 0)      # شهریه هر دانشجو
-        share_pr = float(r.share_percent or 0)      # درصد سهم منتور
+    for c in courses:
+        # ثبت‌نام‌های ACTIVE همان دوره
+        enr_q = (
+            Enrollment.query
+            .filter(Enrollment.course_id == c.id, Enrollment.status == "ACTIVE")
+            .all()
+        )
 
-        income = students * fee                     # درآمد کل
-        share  = int(round(income * (share_pr / 100.0)))  # سهم منتور
+        fee_sum  = 0  # جمع مبلغ اسمی (ترکیبی per-enrollment)
+        paid_sum = 0  # جمع دریافتی واقعی (اختیاری برای گزارش‌های آینده)
+
+        for en in enr_q:
+            fee_i, paid_i = _enrollment_financials(en, c)
+            fee_sum  += fee_i
+            paid_sum += paid_i
+
+        pct   = _mentor_share_percent(c)
+        share = int(round(fee_sum * pct))
+
+        # پرداختی‌های منتور (روی این دوره، اگر ستون course_id در MentorPayment باشد)
+        paid_to_mentor = 0.0
+        try:
+            q = db.session.query(func.coalesce(func.sum(MentorPayment.amount), 0.0)).filter(MentorPayment.mentor_id == mentor_id)
+            if hasattr(MentorPayment, "course_id"):
+                q = q.filter(MentorPayment.course_id == c.id)
+            paid_to_mentor = float(q.scalar() or 0.0)
+        except Exception:
+            paid_to_mentor = 0.0
+
+        due = max(share - int(paid_to_mentor), 0)
 
         items.append({
-            "course_id": r.course_id,
-            "course_title": r.course_title,
-            "students": students,
-            "fee_per_student": fee,
-            "share_percent": share_pr,
-            "income_total": income,
-            "mentor_share": share,
+            "course_id": c.id,
+            "course_title": getattr(c, "title", f"دوره #{c.id}"),
+            "students": len(enr_q),
+            # برای هم‌خوانی با UI قبلی:
+            "fee_per_student": int(_safe_num(getattr(c, "tuition_per_student", 0), 0)),
+            "share_percent": int(round(pct * 100)),
+            "income_total": int(fee_sum),           # ← جمع اسمی ترکیبی
+            "mentor_share": int(share),
+            "paid_to_mentor": int(paid_to_mentor),
+            "mentor_due": int(due),
         })
 
-        income_total += income
+        income_total += fee_sum
         share_total  += share
 
-    # مجموع پرداخت‌های واقعی ثبت‌شده برای منتور (فقط EXPENSE = پرداخت به منتور)
-    paid_total = (
-        db.session.query(func.coalesce(func.sum(MentorPayment.amount), 0))
-        .filter(MentorPayment.mentor_id == mentor_id, MentorPayment.kind == "EXPENSE")
-        .scalar()
-    ) or 0
+    # مجموع پرداختی به منتور (بدون تفکیک دوره)
+    try:
+        paid_total = float(
+            db.session.query(func.coalesce(func.sum(MentorPayment.amount), 0.0))
+            .filter(MentorPayment.mentor_id == mentor_id)
+            .scalar() or 0.0
+        )
+    except Exception:
+        paid_total = 0.0
 
-    balance = int(share_total) - int(paid_total)
+    balance = max(int(share_total) - int(paid_total), 0)
 
     return {
         "items": items,
@@ -102,7 +218,6 @@ def _mentor_finance_summary(mentor_id: int):
             "balance":      int(balance),
         },
     }
-
 
 @bp.get("/<int:mentor_id>/finance/summary")
 @login_required

@@ -1,49 +1,125 @@
 {% extends "base.html" %}
 {% block title %}اقساط | هم‌افزار{% endblock %}
-{% block page_title %}اقساط (گزارش خواندنی){% endblock %}
+{% block page_title %}اقساط باز و مدیریت چک‌ها{% endblock %}
+
 {% block content %}
-<div class="card" style="direction:rtl;">
+<div class="card" style="direction:rtl; max-width:1200px; margin:auto;">
 
-  <form method="get" class="card" style="display:grid; grid-template-columns:1fr 1fr 120px; gap:8px; border:none; box-shadow:none; padding:0;">
-    <input class="input" name="q" value="{{ request.args.get('q','') }}" placeholder="جست‌وجوی عنوان قسط...">
-    <select class="input" name="course_id">
-      <option value="">همهٔ دوره‌ها</option>
-      {% for c in courses %}
-        <option value="{{ c.id }}" {% if request.args.get('course_id',type=int)==c.id %}selected{% endif %}>{{ c.title }}</option>
-      {% endfor %}
-    </select>
-    <button class="btn">فیلتر</button>
-  </form>
+  <div class="table-responsive">
+    <table class="table" style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>دوره</th>
+          <th>عنوان/پلن</th>
+          <th>سررسید</th>
+          <th style="text-align:left;">مبلغ (تومان)</th>
+          <th>وضعیت</th>
+          <th style="width: 320px;">چک‌ها</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if items and items|length %}
+          {% for it in items %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ it.course_title }}</td>
+            <td>{{ it.title }}</td>
+            <td>
+              {% if it.overdue %}
+                <span class="badge" style="background:#FFF5F5; color:#B91C1C;">{{ it.due }}</span>
+              {% else %}
+                {{ it.due }}
+              {% endif %}
+            </td>
+            <td style="text-align:left; font-weight:700;">{{ "{:,}".format((it.amount or 0)|int) }}</td>
+            <td>{{ it.status }}</td>
+            <td>
+              <details>
+                <summary class="btn btn-ghost" style="display:inline-block;">نمایش / افزودن چک</summary>
 
-  <table class="table-rtl" style="width:100%; margin-top:10px;">
-    <thead>
-      <tr>
-        <th>دوره</th>
-        <th>عنوان</th>
-        <th>سررسید</th>
-        <th>مبلغ</th>
-        <th>وضعیت</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for it in items %}
-      <tr>
-        <td><a href="{{ url_for('courses.edit_form', course_id=it.course.id) }}">{{ it.course.title }}</a></td>
-        <td>{{ it.title }}</td>
-        <td>{{ it.due }}</td>
-        <td>{{ '{:,}'.format(it.amount) }}</td>
-        <td>
-          {% if it.overdue %}
-            <span class="chip" style="background:#FEE2E2; border-color:#FCA5A5;">سررسیدگذشته</span>
-          {% else %}
-            <span class="chip" style="background:#DCFCE7; border-color:#86EFAC;">باز</span>
-          {% endif %}
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="5" class="muted">موردی یافت نشد.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+                <!-- لیست چک‌های مرتبط -->
+                <div class="table-responsive" style="margin-top:8px;">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>شماره چک</th>
+                        <th>بانک</th>
+                        <th>مبلغ</th>
+                        <th>صدور</th>
+                        <th>سررسید</th>
+                        <th>وضعیت</th>
+                        <th style="width:150px;">اقدام</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% set cheques = (cheques_by_inst.get(it.inst_id) if cheques_by_inst else []) %}
+                      {% if cheques and cheques|length %}
+                        {% for ch in cheques %}
+                        <tr>
+                          <td>{{ ch.cheque_number }}</td>
+                          <td>{{ ch.bank_name or '—' }}</td>
+                          <td style="text-align:left;">{{ "{:,.0f}".format(ch.amount or 0) }}</td>
+                          <td>{{ ch.issue_date or '—' }}</td>
+                          <td>{{ ch.due_date or '—' }}</td>
+                          <td>{{ ch.status or '—' }}</td>
+                          <td>
+                            <details>
+                              <summary class="btn btn-ghost" style="display:inline-block;">ویرایش</summary>
+                              <form method="post" action="{{ url_for('finance.installment_cheque_edit', cheque_id=ch.id) }}" style="margin-top:8px; display:grid; grid-template-columns:repeat(12,1fr); gap:8px;">
+                                <input class="input" name="cheque_number" value="{{ ch.cheque_number }}" placeholder="شماره چک" style="grid-column: span 3;">
+                                <input class="input" name="bank_name" value="{{ ch.bank_name or '' }}" placeholder="بانک" style="grid-column: span 2;">
+                                <input class="input" name="amount" type="number" step="0.01" value="{{ ch.amount or '' }}" placeholder="مبلغ" style="grid-column: span 2; text-align:left;">
+                                <input class="input" name="issue_date" type="date" value="{{ ch.issue_date|date('%Y-%m-%d') if ch.issue_date }}" style="grid-column: span 2;">
+                                <input class="input" name="due_date" type="date" value="{{ ch.due_date|date('%Y-%m-%d') if ch.due_date }}" style="grid-column: span 2;">
+                                <input class="input" name="status" value="{{ ch.status or '' }}" placeholder="ISSUED/CLEARED/RETURNED" style="grid-column: span 3;">
+                                <input class="input" name="note" value="{{ ch.note or '' }}" placeholder="توضیح" style="grid-column: span 6;">
+                                <button class="btn btn-primary" type="submit" style="grid-column: span 2;">ثبت ویرایش</button>
+                              </form>
+                            </details>
+
+                            <form method="post" action="{{ url_for('finance.installment_cheque_delete', cheque_id=ch.id) }}" onsubmit="return confirm('حذف این چک قطعی است؟');" style="display:inline;">
+                              <button class="btn btn-danger" type="submit">حذف</button>
+                            </form>
+                          </td>
+                        </tr>
+                        {% endfor %}
+                      {% else %}
+                        <tr><td colspan="7" class="muted">هیچ چکی ثبت نشده است.</td></tr>
+                      {% endif %}
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- فرم افزودن چک جدید -->
+                <form method="post" action="{{ url_for('finance.installment_cheque_new', inst_id=it.inst_id) }}" style="margin-top:10px; display:grid; grid-template-columns: repeat(12, 1fr); gap:12px; align-items:end;">
+                  <input class="input" name="cheque_number" placeholder="شماره چک" required style="grid-column: span 3;">
+                  <input class="input" name="bank_name" placeholder="بانک" style="grid-column: span 2;">
+                  <input class="input" name="amount" type="number" step="0.01" placeholder="مبلغ" style="grid-column: span 2;">
+                  <div style="grid-column: span 2;">
+                    <label class="label" style="margin-bottom:4px;">تاریخ صدور</label>
+                    <input class="input" name="issue_date" type="date">
+                  </div>
+                  <div style="grid-column: span 2;">
+                    <label class="label" style="margin-bottom:4px;">سررسید</label>
+                    <input class="input" name="due_date" type="date">
+                  </div>
+                  <input class="input" name="status" placeholder="ISSUED/CLEARED/RETURNED" style="grid-column: span 3;">
+                  <input class="input" name="note" placeholder="توضیح" style="grid-column: span 6;">
+                  <div style="grid-column: span 6; text-align:left;">
+                    <button class="btn btn-primary" type="submit">افزودن چک</button>
+                  </div>
+                </form>
+
+              </details>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="7" style="text-align:center; color:#6b7280;">قسطی برای نمایش موجود نیست.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}

@@ -11,6 +11,7 @@ from app.models.installment import Installment
 from app.models.course import Course
 from app.models.core import Student
 from app.models.enrollment import Enrollment
+from app.models.installment_cheque import InstallmentCheque
 
 def _safe_float(x, default=0.0):
     try:
@@ -19,7 +20,22 @@ def _safe_float(x, default=0.0):
         return float(x)
     except Exception:
         return default
+def _to_date(s):
+    s = (s or "").strip()
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except Exception:
+        return None
 
+def _to_money(v):
+    if v in (None, ""):
+        return None
+    try:
+        return float(str(v).replace(",", ""))
+    except Exception:
+        return None
 # ---------------------------
 # لیست برنامه‌های اقساط
 # ---------------------------
@@ -53,8 +69,27 @@ def create_form():
     courses = Course.query.order_by(Course.title.asc()).all()
     students = Student.query.order_by(Student.id.desc()).all()
     enrollments = Enrollment.query.order_by(Enrollment.id.desc()).all()
+    installments = (
+        Installment.query
+        .order_by(Installment.due_date.asc().nullslast(), Installment.id.desc())
+        .all()
+    )
+
+    cheques = []
+    if InstallmentCheque:
+            cheques = (
+            InstallmentCheque.query
+            .order_by(
+                getattr(InstallmentCheque, "created_at", None).desc().nullslast()
+                if hasattr(InstallmentCheque, "created_at") else
+                getattr(InstallmentCheque, "id").desc()
+            )
+            .limit(100)
+            .all()
+        )
     return render_template("installments/create.html",
-                           courses=courses, students=students, enrollments=enrollments)
+                           courses=courses, students=students, enrollments=enrollments,installments=installments,
+        cheques=cheques,)
 
 # ---------------------------
 # ثبت برنامه اقساط
@@ -236,3 +271,178 @@ def api_student_installments(student_id: int):
     # مرتب‌سازی: نزدیک‌ترین سررسید اول
     items.sort(key=lambda r: (r.get("due_date") or "9999-12-31", r.get("seq") or 0))
     return jsonify({"items": items})
+# ========= CRUD چکِ قسط =========
+@bp.post("/cheques/new")
+@login_required
+def cheque_new():
+    if not InstallmentCheque:
+        flash("مدل چک در سیستم فعال نیست.", "danger")
+        return redirect(url_for("installments.create"))
+
+    inst_id = request.form.get("installment_id", type=int)
+    if not inst_id:
+        flash("انتخاب قسط الزامی است.", "danger")
+        return redirect(url_for("installments.create"))
+
+    chq = InstallmentCheque()
+    chq.installment_id = inst_id
+    chq.cheque_number = (request.form.get("cheque_number") or "").strip()
+    chq.bank_name = (request.form.get("bank_name") or "").strip() or None
+    chq.amount = _to_money(request.form.get("amount"))
+    chq.issue_date = _to_date(request.form.get("issue_date"))
+    chq.due_date = _to_date(request.form.get("due_date"))
+    chq.status = (request.form.get("status") or "").strip() or None
+    chq.note = (request.form.get("note") or "").strip() or None
+
+    try:
+        db.session.add(chq)
+        db.session.commit()
+        flash("چک با موفقیت ثبت شد.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"خطا در ثبت چک: {e}", "danger")
+
+    return redirect(url_for("installments.create"))
+
+
+@bp.post("/cheques/<int:cheque_id>/edit")
+@login_required
+def cheque_edit(cheque_id):
+    if not InstallmentCheque:
+        flash("مدل چک در سیستم فعال نیست.", "danger")
+        return redirect(url_for("installments.create"))
+
+    ch = InstallmentCheque.query.get_or_404(cheque_id)
+
+    # امکان تغییر قسط مقصد (اختیاری)
+    inst_id = request.form.get("installment_id", type=int)
+    if inst_id:
+        ch.installment_id = inst_id
+
+    ch.cheque_number = (request.form.get("cheque_number") or ch.cheque_number or "").strip()
+    ch.bank_name = (request.form.get("bank_name") or "").strip() or None
+    amt = _to_money(request.form.get("amount"))
+    if amt is not None:
+        ch.amount = amt
+    idt = _to_date(request.form.get("issue_date"))
+    if idt:
+        ch.issue_date = idt
+    ddt = _to_date(request.form.get("due_date"))
+    if ddt:
+        ch.due_date = ddt
+    ch.status = (request.form.get("status") or "").strip() or ch.status
+    ch.note = (request.form.get("note") or "").strip() or ch.note
+
+    try:
+        db.session.commit()
+        flash("چک ویرایش شد.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"خطا در ویرایش: {e}", "danger")
+
+    return redirect(url_for("installments.create"))
+
+
+@bp.post("/cheques/<int:cheque_id>/delete")
+@login_required
+def cheque_delete(cheque_id):
+    if not InstallmentCheque:
+        flash("مدل چک در سیستم فعال نیست.", "danger")
+        return redirect(url_for("installments.create"))
+
+    ch = InstallmentCheque.query.get_or_404(cheque_id)
+    try:
+        db.session.delete(ch)
+        db.session.commit()
+        flash("چک حذف شد.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"حذف چک با خطا مواجه شد: {e}", "danger")
+
+    return redirect(url_for("installments.create"))
+@bp.post("/<int:inst_id>/edit")
+@login_required
+def installment_edit(inst_id):
+    inst = Installment.query.get_or_404(inst_id)
+
+    # تغییر فیلدها فقط اگر در مدل موجود باشند
+    title = (request.form.get("title") or "").strip()
+    if title and hasattr(inst, "title"):
+        inst.title = title
+
+    if hasattr(inst, "seq"):
+        seq = request.form.get("seq", type=int)
+        if seq is not None:
+            inst.seq = seq
+
+    # مبالغ
+    ab = _to_money(request.form.get("amount_base"))
+    if (ab is not None) and hasattr(inst, "amount_base"):
+        inst.amount_base = ab
+
+    cf = _to_money(request.form.get("cheque_fee_amount"))
+    if (cf is not None) and hasattr(inst, "cheque_fee_amount"):
+        inst.cheque_fee_amount = cf
+
+    at = _to_money(request.form.get("amount_total"))
+    if (at is not None) and hasattr(inst, "amount_total"):
+        inst.amount_total = at
+    else:
+        # اگر amount_total داده نشد و فیلدها بودند، جمع بزن
+        if hasattr(inst, "amount_total") and hasattr(inst, "amount_base") and hasattr(inst, "cheque_fee_amount"):
+            try:
+                inst.amount_total = (inst.amount_base or 0) + (inst.cheque_fee_amount or 0)
+            except Exception:
+                pass
+
+    # تاریخ سررسید
+    dd = _to_date(request.form.get("due_date"))
+    if dd and hasattr(inst, "due_date"):
+        inst.due_date = dd
+
+    # وضعیت و توضیح
+    status = (request.form.get("status") or "").strip()
+    if status and hasattr(inst, "status"):
+        inst.status = status.upper()
+
+    note = (request.form.get("note") or "").strip()
+    if hasattr(inst, "note"):
+        inst.note = note or None
+
+    # امکان تغییر لینک به پلن (اختیاری)
+    plan_id = request.form.get("plan_id", type=int)
+    if plan_id and hasattr(inst, "plan_id"):
+        inst.plan_id = plan_id
+    if plan_id and hasattr(inst, "installment_plan_id"):
+        inst.installment_plan_id = plan_id
+
+    try:
+        db.session.commit()
+        flash("قسط ویرایش شد.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"خطا در ویرایش قسط: {e}", "danger")
+    return redirect(url_for("installments.create"))
+
+
+@bp.post("/<int:inst_id>/delete")
+@login_required
+def installment_delete(inst_id):
+    inst = Installment.query.get_or_404(inst_id)
+
+    # 🚫 اگر پرداخت شده، اجازه حذف نده
+    status = (getattr(inst, "status", "") or "").upper()
+    if status in {"PAID", "SETTLED"}:
+        flash("قسط پرداخت‌شده قابل حذف نیست.", "warning")
+        return redirect(url_for("installments.details", inst_id=inst.id))
+
+    try:
+        db.session.delete(inst)
+        db.session.commit()
+        flash("قسط با موفقیت حذف شد.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"خطا در حذف قسط: {e}", "danger")
+
+    # برگشت به لیست
+    return redirect(url_for("installments.create"))
