@@ -49,27 +49,51 @@
 
       <!-- BASIC -->
       <section class="tab-panel" data-panel="basic" style="display:block;">
-        <form action="{{ url_for('mentors.update_basic', mentor_id=m.id) }}" method="post" class="grid2">
-          <div class="form-group">
-            <label>نام</label>
-            <input name="first_name" class="input" value="{{ m.first_name or '' }}" required>
-          </div>
-          <div class="form-group">
-            <label>نام خانوادگی</label>
-            <input name="last_name" class="input" value="{{ m.last_name or '' }}" required>
-          </div>
-          <div class="form-group">
-            <label>ایمیل</label>
-            <input name="email" type="email" class="input" value="{{ m.email or '' }}">
-          </div>
-          <div class="form-group">
-            <label>شماره تماس</label>
-            <input name="phone" class="input" value="{{ m.phone or '' }}">
-          </div>
-          <div class="form-actions">
-            <button class="btn btn-primary" type="submit">ذخیره</button>
-          </div>
-        </form>
+<form action="{{ url_for('mentors.update_basic', mentor_id=m.id) }}" method="post" class="grid2">
+  <div class="form-group">
+    <label>نام</label>
+    <input name="first_name" class="input" value="{{ m.first_name or '' }}" required>
+  </div>
+  <div class="form-group">
+    <label>نام خانوادگی</label>
+    <input name="last_name" class="input" value="{{ m.last_name or '' }}" required>
+  </div>
+  <div class="form-group">
+    <label>ایمیل</label>
+    <input name="email" type="email" class="input" value="{{ m.email or '' }}">
+  </div>
+  <div class="form-group">
+    <label>شماره تماس</label>
+    <input name="phone" class="input" value="{{ m.phone or '' }}">
+  </div>
+
+  {# --- فیلدهای حساب کاربری (بدون تغییر استایل/کلاس) --- #}
+  <div class="form-group">
+    <label>نام کاربری</label>
+    <input name="acc_username" class="input" placeholder="username">
+  </div>
+  <div class="form-group">
+    <label>رمز عبور جدید</label>
+    <input name="acc_password" type="password" class="input" minlength="6">
+  </div>
+  <div class="form-group">
+    <label>تکرار رمز</label>
+    <input name="acc_password2" type="password" class="input" minlength="6">
+  </div>
+
+  <div class="form-actions">
+    <!-- ذخیره اطلاعات پایه -->
+    <button class="btn btn-primary" type="submit">ذخیره</button>
+
+    <!-- ثبت تغییرات حساب کاربری (ارسال همین فرم به روت اکانت) -->
+    <button class="btn btn-ghost" type="submit"
+            formaction="{{ url_for('mentors.update_account', mentor_id=m.id) }}"
+            formmethod="post">
+      ثبت تغییرات حساب
+    </button>
+  </div>
+</form>
+
       </section>
 
       <!-- COURSES -->

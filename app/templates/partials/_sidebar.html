@@ -1,13 +1,47 @@
 <div class="nav-card">
   <div class="title">هم‌افزار</div>
   <nav class="nav">
+    <!-- داشبورد برای همه نقش‌ها -->
     <a href="{{ url_for('dashboard.index') }}" class="{{ 'active' if request.endpoint=='dashboard.index' else '' }}">🏠 داشبورد</a>
-    <a href="{{ url_for('courses.index') }}" class="{{ 'active' if request.blueprint=='courses' else '' }}">📚 دوره‌ها</a>
-    <a href="{{ url_for('mentors.list') }}" class="{{ 'active' if request.blueprint=='mentors' else '' }}">👨‍🏫 منتورها</a>
-    <a href="{{ url_for('students.list') }}" class="{{ 'active' if request.blueprint=='students' else '' }}">👨‍🎓 کارآموزها</a>
+
+    {% if current_user.role == 'admin' %}
+      <!-- فقط برای Admin -->
+       <a href="{{ url_for('courses.index') }}" class="{{ 'active' if request.blueprint=='courses' else '' }}">📚 دوره‌ها</a> 
+   <a href="{{ url_for('mentors.list') }}" class="{{ 'active' if request.blueprint=='mentors' else '' }}">👨‍🏫 منتورها</a>
+   <a href="{{ url_for('students.list') }}" class="{{ 'active' if request.blueprint=='students' else '' }}">👨‍🎓 کارآموزها</a>
     <a href="{{ url_for('attendance.index') }}" class="{{ 'active' if request.blueprint=='attendance' else '' }}">🗓️ حضور و غیاب</a>
-    <a href="{{ url_for('finance.dashboard') }}" class="{{ 'active' if request.blueprint=='finance' else '' }}">💳 مالی</a>
-    <a href="{{ url_for('admin.users_index') }}" class="{{ 'active' if request.blueprint=='admin' else '' }}">👥 کاربران</a>
+      <a href="{{ url_for('finance.dashboard') }}" class="{{ 'active' if request.blueprint=='finance' else '' }}">💳 مالی</a>
+      <a href="{{ url_for('admin.users_index') }}" class="{{ 'active' if request.blueprint=='admin' else '' }}">👥 کاربران</a>
+      {% endif %}
+
+    {% if current_user.role == 'MENTOR' %}
+      <!-- فقط برای Mentor -->
+      <a href="{{ url_for('mentors.profile') }}" class="{{ 'active' if request.blueprint=='mentors' else '' }}">👨‍🏫 پروفایل من</a>
+      <a href="{{ url_for('courses.my') }}" class="{{ 'active' if request.blueprint=='courses' else '' }}">📚 دوره‌های من</a>
+      <a href="{{ url_for('mentors.attendance') }}" class="{{ 'active' if request.blueprint=='attendance' else '' }}">🗓️ حضور و غیاب</a>
+    {% endif %}
+
+    {% if current_user.role == 'STUDENT' %}
+      <!-- فقط برای Student -->
+{% if (current_user.role or '').upper() == 'STUDENT' %}
+  <a href="{{ url_for('students.me') }}" class="{{ 'active' if request.endpoint=='students.profile' and request.view_args and request.view_args.get('student_id') else '' }}">
+    👨‍🎓 پروفایل من
+  </a>
+{% endif %}     
+ <a href="{{ url_for('courses.my') }}" class="{{ 'active' if request.blueprint=='courses' else '' }}">📚 دوره‌های من</a>
+    {% endif %}
+
+    <!-- لینک‌های عمومی برای همه کاربران -->
     <a href="{{ url_for('auth.logout') }}">🚪 خروج</a>
   </nav>
 </div>
+
+
+
+<!-- 
+<div class="nav-card"> <div class="title">هم‌افزار</div> <nav class="nav"> 
+  <a href="{{ url_for('dashboard.index') }}" class="{{ 'active' if request.endpoint=='dashboard.index' else '' }}">🏠 داشبورد</a>
+   
+     <a href="{{ url_for('finance.dashboard') }}" class="{{ 'active' if request.blueprint=='finance' else '' }}">💳 مالی</a> 
+     <a href="{{ url_for('admin.users_index') }}" class="{{ 'active' if request.blueprint=='admin' else '' }}">👥 کاربران</a> 
+     <a href="{{ url_for('auth.logout') }}">🚪 خروج</a> </nav> -->

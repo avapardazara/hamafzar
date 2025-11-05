@@ -13,12 +13,43 @@ from ...models.payment import Payment
 from ...models.installment_plan import InstallmentPlan
 from ...models.installment import Installment
 from sqlalchemy import or_
+from flask_login import current_user
+from app.models.user import User
+from werkzeug.security import generate_password_hash
 bp = Blueprint("mentors", __name__, url_prefix="/mentors")
 
 
 # -------------------------------
 # Helpers
 # -------------------------------
+def _attach_account_if_requested(form, person_obj, role_name="MENTOR"):
+    create_flag = (form.get("acc_create") or "") == "1"
+    if not create_flag:
+        return True, None
+
+    username = (form.get("acc_username") or "").strip()
+    email    = (form.get("acc_email") or (getattr(person_obj, "email", "") or "")).strip()
+    pw1      = form.get("acc_password") or ""
+    pw2      = form.get("acc_password2") or ""
+
+    if not username or not email:
+        return False, "نام کاربری و ایمیل برای ساخت حساب الزامی است."
+    if pw1 != pw2:
+        return False, "رمزهای عبور یکسان نیستند."
+    if len(pw1) < 6:
+        return False, "طول رمز باید حداقل ۶ کاراکتر باشد."
+    if User.query.filter_by(username=username).first():
+        return False, "این نام کاربری قبلاً ثبت شده است."
+    if User.query.filter_by(email=email).first():
+        return False, "این ایمیل قبلاً ثبت شده است."
+
+    u = User(username=username, email=email, role="MENTOR")
+    u.password_hash = generate_password_hash(pw1)
+    db.session.add(u)
+    db.session.flush()
+    if hasattr(person_obj, "user_id"):
+        person_obj.user_id = u.id
+    return True, None
 def _safe_num(val, default=0.0) -> float:
     try:
         if val is None:
@@ -242,6 +273,8 @@ def list():
             (Mentor.email.ilike(like)) |
             (Mentor.phone.ilike(like))
         )
+    print(f"User Role: {current_user.role}")
+
     mentors = query.order_by(Mentor.created_at.desc()).all()
     return render_template("mentors/index.html", mentors=mentors, q=q)
 
@@ -263,10 +296,21 @@ def create_form():
             flash("نام و نام خانوادگی الزامی است.", "error")
             return redirect(url_for("mentors.create_form"))
 
+        # ایجاد منتور
         m = Mentor(first_name=first, last_name=last, email=email, phone=phone)
         db.session.add(m)
+        db.session.flush()  # id بگیریم
+
+        # تلاش برای ساخت حساب کاربری در صورت تیک "acc_create"
+        ok, err = _attach_account_if_requested(f, m, role_name="MENTOR")
+        if not ok:
+            db.session.rollback()
+            flash(err or "ایجاد حساب کاربری ناموفق بود.", "error")
+            return redirect(url_for("mentors.create_form"))
+
         db.session.commit()
 
+        # آپلود آواتار (اختیاری)
         file = request.files.get("avatar")
         if file and file.filename:
             rel = save_mentor_avatar(file, m.id)
@@ -278,7 +322,6 @@ def create_form():
         return redirect(url_for("mentors.edit_form", mentor_id=m.id))
 
     return render_template("mentors/form.html", m=None)
-
 
 # -------------------------------
 # Edit (profile) – edit.html
@@ -433,3 +476,109 @@ def payments_delete(mentor_id, pay_id):
     db.session.commit()
     flash("پرداخت حذف شد.", "info")
     return jsonify(ok=True)
+@bp.post("/<int:mentor_id>/account")
+@login_required
+def update_account(mentor_id):
+    m = Mentor.query.get_or_404(mentor_id)
+    payload = request.get_json(silent=True) or request.form
+
+    acc_username = (payload.get("acc_username") or "").strip()
+    acc_email    = (payload.get("acc_email") or (m.email or "")).strip()
+    acc_pass1    = payload.get("acc_password") or ""
+    acc_pass2    = payload.get("acc_password2") or ""
+
+    # اگر چیزی برای تغییر نیومده، قبول ولی کاری نکن
+    if not (acc_username or acc_email or acc_pass1 or acc_pass2):
+        if request.is_json:
+            return jsonify(ok=True)
+        flash("تغییری برای حساب کاربری ارسال نشد.", "info")
+        return redirect(url_for("mentors.edit_form", mentor_id=m.id))
+
+    if acc_pass1 and (len(acc_pass1) < 6 or acc_pass1 != acc_pass2):
+        msg = "رمز عبور نامعتبر است یا تکرار آن یکسان نیست."
+        return (jsonify(ok=False, error=msg), 400) if request.is_json else \
+               (flash(msg, "error"), redirect(url_for("mentors.edit_form", mentor_id=m.id)))
+
+    # پیدا کردن/ساخت کاربر
+    u = None
+    # اگر mentor.user_id داری، اولویت با آن
+    if hasattr(m, "user_id") and m.user_id:
+        u = User.query.get(m.user_id)
+
+    if not u and acc_email:
+        u = User.query.filter_by(email=acc_email).first()
+    if not u and acc_username:
+        u = User.query.filter_by(username=acc_username).first()
+
+    if not u:
+        # ساخت کاربر جدید
+        if not acc_username or not acc_email or not acc_pass1:
+            msg = "برای ساخت حساب جدید، نام‌کاربری/ایمیل/رمز الزامی است."
+            return (jsonify(ok=False, error=msg), 400) if request.is_json else \
+                   (flash(msg, "error"), redirect(url_for("mentors.edit_form", mentor_id=m.id)))
+
+        if User.query.filter_by(username=acc_username).first():
+            msg = "نام‌کاربری تکراری است."
+            return (jsonify(ok=False, error=msg), 409) if request.is_json else \
+                   (flash(msg, "error"), redirect(url_for("mentors.edit_form", mentor_id=m.id)))
+        if User.query.filter_by(email=acc_email).first():
+            msg = "ایمیل تکراری است."
+            return (jsonify(ok=False, error=msg), 409) if request.is_json else \
+                   (flash(msg, "error"), redirect(url_for("mentors.edit_form", mentor_id=m.id)))
+
+        u = User(username=acc_username, email=acc_email, role="MENTOR",
+                 password_hash=generate_password_hash(acc_pass1))
+        db.session.add(u)
+        db.session.flush()
+    else:
+        # یکتا بودن در صورت تغییر
+        if acc_username and u.username != acc_username:
+            if User.query.filter(User.id != u.id, User.username == acc_username).first():
+                msg = "نام‌کاربری تکراری است."
+                return (jsonify(ok=False, error=msg), 409) if request.is_json else \
+                       (flash(msg, "error"), redirect(url_for("mentors.edit_form", mentor_id=m.id)))
+            u.username = acc_username
+        if acc_email and u.email != acc_email:
+            if User.query.filter(User.id != u.id, User.email == acc_email).first():
+                msg = "ایمیل تکراری است."
+                return (jsonify(ok=False, error=msg), 409) if request.is_json else \
+                       (flash(msg, "error"), redirect(url_for("mentors.edit_form", mentor_id=m.id)))
+            u.email = acc_email
+        if acc_pass1:
+            u.password_hash = generate_password_hash(acc_pass1)
+
+        u.role = "MENTOR"
+
+    # لینک user به mentor (در صورت وجود ستون)
+    if hasattr(m, "user_id"):
+        m.user_id = u.id
+
+    db.session.commit()
+
+    if request.is_json:
+        return jsonify(ok=True)
+
+    flash("حساب کاربری منتور به‌روزرسانی شد.", "success")
+    return redirect(url_for("mentors.edit_form", mentor_id=m.id))
+@bp.post("/<int:mentor_id>/delete")
+@login_required
+def delete(mentor_id):
+    m = Mentor.query.get_or_404(mentor_id)
+
+    # قطع اتصال دوره‌ها از این منتور
+    try:
+        affected = Course.query.filter(Course.mentor_id == mentor_id).all()
+        for c in affected:
+            c.mentor_id = None
+    except Exception:
+        pass
+
+    # Soft delete در صورت وجود ستون
+    if hasattr(m, "is_deleted"):
+        m.is_deleted = True
+    else:
+        db.session.delete(m)
+
+    db.session.commit()
+    flash("منتور حذف شد.", "info")
+    return redirect(url_for("mentors.list"))

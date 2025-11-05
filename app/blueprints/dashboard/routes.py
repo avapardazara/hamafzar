@@ -1,7 +1,7 @@
 # app/blueprints/dashboard/routes.py
 from datetime import date
 from flask import Blueprint, render_template
-from flask_login import login_required
+from flask_login import login_required,current_user
 from sqlalchemy import func
 from app.extensions import db
 from app.models.payment import Payment
@@ -11,6 +11,7 @@ bp = Blueprint("dashboard", __name__, url_prefix="/")
 @bp.get("/")
 @login_required
 def index():
+    print(f"User Role: {current_user.role}")
     # --- محاسبات KPI (نمونه؛ جایگزین با منطق خودتان اگر قبلاً نوشته‌اید)
     total_face = 0
     total_received = db.session.query(

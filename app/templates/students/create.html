@@ -6,59 +6,94 @@
 <div class="card" style="max-width: 900px;">
   <form method="post" action="{{ url_for('students.create') }}" enctype="multipart/form-data">
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+
+      <!-- آواتار -->
       <div style="grid-column:1 / -1; text-align:center;">
-<div class="avatar-upload" style="position:relative; display:inline-block;">
-  <label for="avatar" style="cursor:pointer;">
-    {% if s and s.avatar_path %}
-<img id="avatarPreview" 
-   src="{{ url_for('uploaded_file', filename=s.avatar_path) }}" 
-   alt="Avatar"
-   style="width:120px;height:120px;border-radius:50%;object-fit:cover;box-shadow:var(--elev-1);">
-    {% else %}
-      <div id="avatarPlaceholder" 
-           style="width:120px;height:120px;border-radius:50%;background:#F3F4F6;display:flex;align-items:center;justify-content:center;font-size:32px;color:#9CA3AF;box-shadow:var(--elev-1);">
-        👤
+        <div class="avatar-upload" style="position:relative; display:inline-block;">
+          <label for="avatar" style="cursor:pointer;">
+            {% if s and s.avatar_path %}
+              <img id="avatarPreview"
+                   src="{{ url_for('uploaded_file', filename=s.avatar_path) }}"
+                   alt="Avatar"
+                   style="width:120px;height:120px;border-radius:50%;object-fit:cover;box-shadow:var(--elev-1);">
+            {% else %}
+              <div id="avatarPlaceholder"
+                   style="width:120px;height:120px;border-radius:50%;background:#F3F4F6;display:flex;align-items:center;justify-content:center;font-size:32px;color:#9CA3AF;box-shadow:var(--elev-1);">
+                👤
+              </div>
+              <img id="avatarPreview" alt="" style="display:none;width:120px;height:120px;border-radius:50%;object-fit:cover;box-shadow:var(--elev-1);">
+            {% endif %}
+          </label>
+          <input type="file" name="avatar" id="avatar" accept="image/*" style="display:none;" onchange="previewAvatar(event)">
+          {% if s and s.avatar_path %}
+            <div style="margin-top:6px;">
+              <label style="font-size:13px;color:#EF4444;cursor:pointer;">
+                <input type="checkbox" name="delete_avatar" value="1"> حذف تصویر
+              </label>
+            </div>
+          {% endif %}
+        </div>
       </div>
-    {% endif %}
-  </label>
-  <input type="file" name="avatar" id="avatar" accept="image/*" style="display:none;" onchange="previewAvatar(event)">
-  {% if s and s.avatar_path %}
-    <div style="margin-top:6px;">
-      <label style="font-size:13px;color:#EF4444;cursor:pointer;">
-        <input type="checkbox" name="delete_avatar" value="1"> حذف تصویر
-      </label>
-    </div>
-  {% endif %}
-</div>
-</div>
+
+      <!-- فیلدهای اصلی -->
       <div>
-        <label>نام</label>
-        <input name="first_name" class="input" required />
-      </div>
-      <div>
-        <label>نام خانوادگی</label>
-        <input name="last_name" class="input" required />
-      </div>
-      <div>
-        <label>کد ملی</label>
-        <input name="national_code" class="input" />
+        <label class="label">نام</label>
+        <input name="first_name" class="input" required>
       </div>
       <div>
-        <label>موبایل</label>
-        <input name="phone" class="input" />
+        <label class="label">نام خانوادگی</label>
+        <input name="last_name" class="input" required>
       </div>
       <div>
-        <label>ایمیل</label>
-        <input name="email" type="email" class="input" />
+        <label class="label">کد ملی</label>
+        <input name="national_code" class="input">
+      </div>
+      <div>
+        <label class="label">موبایل</label>
+        <input name="phone" class="input">
+      </div>
+      <div>
+        <label class="label">ایمیل</label>
+        <input name="email" type="email" class="input">
       </div>
       <div style="grid-column:1 / -1;">
-        <label>آدرس</label>
-        <input name="address" class="input" />
+        <label class="label">آدرس</label>
+        <input name="address" class="input">
       </div>
       <div style="grid-column:1 / -1;">
-        <label>یادداشت</label>
+        <label class="label">یادداشت</label>
         <textarea name="notes" class="input" rows="3"></textarea>
       </div>
+
+      <!-- ساخت حساب کاربری (اختیاری) -->
+      <div style="grid-column:1 / -1;">
+        <div class="card" style="border:1px solid #D3D5DF; border-radius:12px; padding:12px;">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+            <input type="checkbox" id="acc_create" name="acc_create" value="1">
+            <label for="acc_create" style="font-weight:700;">ساخت حساب کاربری برای این کارآموز (اختیاری)</label>
+          </div>
+
+          <div id="acc_fields" class="grid" style="display:none; grid-template-columns: 1fr 1fr; gap:12px;">
+            <div>
+              <label class="label">نام کاربری</label>
+              <input class="input" name="acc_username" placeholder="username">
+            </div>
+            <div>
+              <label class="label">ایمیل ورود (پیش‌فرض: ایمیل همین فرم)</label>
+              <input class="input" name="acc_email" placeholder="email@example.com" value="{{ (request.form.email or '') if request.form else '' }}">
+            </div>
+            <div>
+              <label class="label">رمز عبور</label>
+              <input class="input" type="password" name="acc_password" minlength="6" placeholder="حداقل ۶ کاراکتر">
+            </div>
+            <div>
+              <label class="label">تکرار رمز</label>
+              <input class="input" type="password" name="acc_password2" minlength="6" placeholder="تکرار رمز">
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <div style="display:flex; gap:8px; margin-top:16px;">
@@ -67,7 +102,51 @@
     </div>
   </form>
 </div>
-{% block scripts %}
-  <script src="{{ url_for('static', filename='js/pages/students.js') }}"></script>
 {% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script>
+    // پیش‌نمایش آواتار (fallback اگر در فایل JS عمومی نبود)
+    function previewAvatar(e){
+      try{
+        const file = e.target.files && e.target.files[0];
+        const img  = document.getElementById('avatarPreview');
+        const ph   = document.getElementById('avatarPlaceholder');
+        if(!file || !img) return;
+        const r = new FileReader();
+        r.onload = function(){ 
+          img.src = r.result;
+          img.style.display = 'inline-block';
+          if (ph) ph.style.display = 'none';
+        };
+        r.readAsDataURL(file);
+      }catch(_){}
+    }
+
+    // نمایش/عدم نمایش فیلدهای ساخت اکانت
+    (function(){
+      const cb = document.getElementById('acc_create');
+      const fs = document.getElementById('acc_fields');
+      const emailMain = document.querySelector('input[name="email"]');
+      const emailAcc  = document.querySelector('input[name="acc_email"]');
+
+      function toggle(){
+        if (!cb || !fs) return;
+        const on = cb.checked;
+        fs.style.display = on ? 'grid' : 'none';
+        if (on && emailMain && emailAcc && !emailAcc.value){
+          emailAcc.value = emailMain.value || '';
+        }
+      }
+      cb && cb.addEventListener('change', toggle);
+      emailMain && emailMain.addEventListener('blur', ()=> {
+        // اگر کاربر تیک زده و ایمیل اکانت خالی است، ایمیل اصلی را کپی کن
+        if (cb && cb.checked && emailAcc && !emailAcc.value){
+          emailAcc.value = emailMain.value || '';
+        }
+      });
+      toggle();
+    })();
+  </script>
 {% endblock %}

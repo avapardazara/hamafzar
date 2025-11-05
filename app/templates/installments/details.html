@@ -2,156 +2,271 @@
 {% block title %}جزئیات اقساط | هم‌افزار{% endblock %}
 {% block page_title %}جزئیات برنامه اقساط{% endblock %}
 
+{# متغیرهای امن برای استفاده در قالب و JS #}
+{% set role_val = (current_user.role | default('')) %}
+{% set is_admin = (role_val | lower == 'admin') %}
+{% set plan_id  = (plan.id if plan is defined and plan and plan.id is not none else 0) %}
+
 {% block content %}
-<div class="card" style="direction:rtl; max-width:1100px; margin:auto;">
-
-  <!-- هدر اطلاعات برنامه -->
-  <div class="card soft" style="margin-bottom:12px;">
-    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px;">
-      <div><div class="muted">عنوان</div><div>{{ plan.title or '—' }}</div></div>
-      <div><div class="muted">دانشجو</div><div>{{ student_name }}</div></div>
-      <div><div class="muted">دوره</div><div>{{ course_title }}</div></div>
-      <div><div class="muted">تعداد اقساط</div><div>{{ installments|length }}</div></div>
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+    <div>
+      <div style="font-weight:700;">{{ plan.title or '—' }}</div>
+      <div class="muted">
+        {% if plan.student %}👤 {{ plan.student.full_name }}{% endif %}
+        {% if plan.course %} — 📚 {{ plan.course.title }}{% endif %}
+      </div>
     </div>
-  </div>
-
-  <!-- KPI ها -->
-  <div class="kpi-grid" style="margin-bottom:12px;">
-    <div class="kpi"><div class="kpi-label">جمع کل</div><div class="kpi-val">{{ "{:,}".format(total|int) }}</div></div>
-    <div class="kpi"><div class="kpi-label">پرداخت‌شده</div><div class="kpi-val">{{ "{:,}".format(paid|int) }}</div></div>
-    <div class="kpi"><div class="kpi-label">مانده</div><div class="kpi-val text-danger">{{ "{:,}".format(remain|int) }}</div></div>
-    <div class="kpi"><div class="kpi-label">کارمزد چک (کل)</div><div class="kpi-val">{{ "{:,}".format((plan.cheque_fee_total or 0)|int) }}</div></div>
-  </div>
-
-  <!-- جدول اقساط -->
-  <div class="table-responsive">
-    <table class="data-table" style="width:100%; border-collapse:collapse;">
-      <thead>
-        <tr>
-          <th style="text-align:right; padding:10px;">#</th>
-          <th style="text-align:right; padding:10px;">سررسید</th>
-          <th style="text-align:right; padding:10px;">اصل قسط</th>
-          <th style="text-align:right; padding:10px;">کارمزد چک</th>
-          <th style="text-align:right; padding:10px;">جمع قسط</th>
-          <th style="text-align:right; padding:10px;">وضعیت</th>
-          <th style="text-align:right; padding:10px;">عملیات</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% if installments %}
-          {% for i in installments %}
-            {% set rid = i.id or i.installment_id or loop.index %}
-            {% set is_paid = ((i.status or '')|upper) == 'PAID' %}
-            <tr style="border-bottom:1px solid #F1F5F9;">
-              <td style="padding:8px 10px;">{{ i.seq }}</td>
-              <td style="padding:8px 10px;">{{ i.due_date or '—' }}</td>
-              <td style="padding:8px 10px;">{{ "{:,}".format((i.amount_base or 0)|int) }}</td>
-              <td style="padding:8px 10px;">{{ "{:,}".format((i.cheque_fee_amount or 0)|int) }}</td>
-              <td style="padding:8px 10px;"><strong>{{ "{:,}".format((i.amount_total or 0)|int) }}</strong></td>
-              <td style="padding:8px 10px;" class="{{ 'text-success' if is_paid else 'text-danger' }}">{{ i.status or 'PENDING' }}</td>
-              <td style="padding:8px 10px; display:flex; gap:6px; flex-wrap:wrap;">
-                {% if not is_paid %}
-                  <form method="post" action="{{ url_for('installments.pay_installment', plan_id=plan.id, inst_id=i.id) }}" style="display:inline;">
-                    <button class="btn btn-primary btn-sm" type="submit">✅ پرداخت</button>
-                  </form>
-                {% else %}
-                  <form method="post" action="{{ url_for('installments.unpay_installment', plan_id=plan.id, inst_id=i.id) }}" style="display:inline;">
-                    <button class="btn btn-ghost btn-sm" type="submit">↩ لغو پرداخت</button>
-                  </form>
-                {% endif %}
-
-                <!-- ویرایش -->
-                <button class="btn btn-ghost btn-sm" onclick="openEditModal('{{ rid }}')">✏ ویرایش</button>
-
-                <!-- حذف -->
-                {% if (i.status or '')|upper in ['PAID','SETTLED'] %}
-                  <button class="btn btn-ghost btn-sm" disabled title="قسط پرداخت‌شده است">🗑 حذف</button>
-                {% else %}
-                  <form method="post"
-                        action="{{ url_for('installments.installment_delete', inst_id=i.id) }}"
-                        onsubmit="return confirm('حذف این قسط قطعی است؟');"
-                        style="display:inline;">
-                    <button class="btn btn-danger btn-sm" type="submit">🗑 حذف</button>
-                  </form>
-                {% endif %}
-              </td>
-            </tr>
-
-            <!-- Modal ویرایش -->
-            <div id="modal-{{ rid }}" class="modal hidden">
-              <div class="modal-content">
-                <h3 class="modal-title">ویرایش قسط</h3>
-                <form method="post" action="{{ url_for('installments.installment_edit', inst_id=i.id) }}"
-                      style="display:grid; grid-template-columns: repeat(12,1fr); gap:8px;">
-                  <input class="input" name="title" value="{{ i.title or '' }}" placeholder="عنوان قسط" style="grid-column: span 4;">
-                  <input class="input" name="seq" type="number" value="{{ i.seq or '' }}" placeholder="نوبت" style="grid-column: span 2;">
-                  <input class="input" name="due_date" type="date"
-                         value="{{ i.due_date.strftime('%Y-%m-%d') if i.due_date }}" style="grid-column: span 3;">
-                  <input class="input" name="amount_base" type="number" step="0.01" value="{{ i.amount_base or '' }}" placeholder="مبلغ پایه" style="grid-column: span 3;">
-                  <input class="input" name="cheque_fee_amount" type="number" step="0.01" value="{{ i.cheque_fee_amount or '' }}" placeholder="کارمزد چک" style="grid-column: span 3;">
-                  <input class="input" name="amount_total" type="number" step="0.01" value="{{ i.amount_total or '' }}" placeholder="جمع قسط" style="grid-column: span 3;">
-                  <select class="input" name="status" style="grid-column: span 3;">
-                    {% for st in ['PENDING','PAID','SETTLED','CANCELLED'] %}
-                      <option value="{{ st }}" {% if (i.status or 'PENDING')|upper == st %}selected{% endif %}>{{ st }}</option>
-                    {% endfor %}
-                  </select>
-                  <input class="input" name="note" value="{{ i.note or '' }}" placeholder="توضیح (اختیاری)" style="grid-column: span 6;">
-                  <div style="grid-column: span 12; display:flex; justify-content:flex-end; gap:8px;">
-                    <button class="btn btn-ghost" type="button" onclick="closeModal('{{ rid }}')">انصراف</button>
-                    <button class="btn btn-primary" type="submit">ذخیره تغییرات</button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          {% endfor %}
-        {% else %}
-          <tr><td colspan="7" class="muted" style="padding:10px;">قسطی تعریف نشده.</td></tr>
-        {% endif %}
-      </tbody>
-    </table>
-  </div>
-
-  <div style="margin-top:12px;">
     <a class="btn btn-ghost" href="{{ url_for('installments.index') }}">بازگشت</a>
   </div>
 </div>
 
+{# فقط ادمین: فرم افزودن قسط #}
+{% if is_admin %}
+<div id="add-installment" class="card" style="margin-top:12px;">
+  <div style="display:grid; grid-template-columns: repeat(12,1fr); gap:12px; align-items:end;">
+    <div style="grid-column: span 2;">
+      <label class="label">شماره</label>
+      <input id="seq" class="input" type="number" min="1" placeholder="1">
+    </div>
+    <div style="grid-column: span 3;">
+      <label class="label">تاریخ سررسید</label>
+      <input id="due_date" class="input" type="date">
+    </div>
+    <div style="grid-column: span 3;">
+      <label class="label">مبلغ پایه</label>
+      <input id="amount_base" class="input" type="number" min="0" placeholder="0">
+    </div>
+    <div style="grid-column: span 2;">
+      <label class="label">کارمزد چک</label>
+      <input id="cheque_fee_amount" class="input" type="number" min="0" placeholder="0">
+    </div>
+    <div style="grid-column: span 2;">
+      <button id="btnAddInst" class="btn btn-primary" type="button">+ افزودن قسط</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="table-responsive card" style="margin-top:12px;">
+  <table class="data-table" id="instTable">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>سررسید</th>
+        <th>مبلغ کل</th>
+        <th>پایه</th>
+        <th>کارمزد</th>
+        <th>وضعیت</th>
+        <th>اکشن</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for i in installments %}
+        {% set is_paid = (i.status or '').upper() == 'PAID' %}
+        <tr data-id="{{ i.id }}">
+          <td>{{ i.seq or loop.index }}</td>
+          <td>{{ i.due_date or '—' }}</td>
+          <td>{{ "{:,.0f}".format(i.amount_total or 0) }}</td>
+          <td>{{ "{:,.0f}".format(i.amount_base or 0) }}</td>
+          <td>{{ "{:,.0f}".format(i.cheque_fee_amount or 0) }}</td>
+          <td>{{ i.status or 'PENDING' }}</td>
+          <td>
+            <div class="actions" style="display:flex; gap:6px; flex-wrap:wrap;">
+              {% if is_admin %}
+                {% if not is_paid %}
+                  <button class="btn btn-primary" data-pay>پرداخت</button>
+                {% else %}
+                  <button class="btn btn-ghost" data-unpay>لغو پرداخت</button>
+                {% endif %}
+                <button class="btn btn-ghost" data-edit>ویرایش</button>
+                <button class="btn btn-danger" data-delete {% if is_paid %}disabled title="حذف قسط پرداخت‌شده مجاز نیست"{% endif %}>حذف</button>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="muted">قسطی ثبت نشده است.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{# Modal ویرایش قسط — فقط ادمین #}
+{% if is_admin %}
+<div id="instEditModal" class="ha-modal" aria-hidden="true">
+  <div class="ha-modal__backdrop"></div>
+  <div class="ha-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="ieTitle">
+    <div class="ha-modal__header">
+      <div><div id="ieTitle" class="ha-modal__title">ویرایش قسط</div></div>
+      <button type="button" class="ha-modal__close" data-close>×</button>
+    </div>
+    <form id="instEditForm">
+      <input type="hidden" name="id">
+      <div class="ha-modal__body">
+        <div class="grid" style="display:grid; grid-template-columns: repeat(12,1fr); gap:12px;">
+          <div style="grid-column: span 3;">
+            <label class="label">شماره</label>
+            <input class="input" name="seq" type="number" min="1" required>
+          </div>
+          <div style="grid-column: span 4;">
+            <label class="label">تاریخ سررسید</label>
+            <input class="input" name="due_date" type="date">
+          </div>
+          <div style="grid-column: span 5;">
+            <label class="label">مبالغ</label>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+              <input class="input" name="amount_base" type="number" min="0" placeholder="مبلغ پایه">
+              <input class="input" name="cheque_fee_amount" type="number" min="0" placeholder="کارمزد">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="ha-modal__footer">
+        <button type="button" class="btn btn-ghost" data-close>انصراف</button>
+        <button type="submit" class="btn btn-primary">ثبت تغییرات</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+<div id="inst-ctx"
+     data-is-admin="{{ '1' if (current_user.role|default('')|lower == 'admin') else '0' }}"
+     data-plan-id="{{ plan.id or 0 }}"
+     style="display:none"></div>
+{% endblock %}
+
+{% block styles_extra %}
 <style>
-  .card { background:#fff; border:1px solid #D3D5DF; border-radius:12px; box-shadow:0 1px 3px rgba(15,23,42,0.1); padding:16px; }
-  .kpi-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
-  .kpi { background:#F6FAF9; border:1px solid #D3D5DF; border-radius:12px; padding:12px; }
-  .kpi-label { color:#7C8A9A; font-size:12px; margin-bottom:6px; }
-  .kpi-val { font-weight:700; color:#0F172A; }
-  .muted { color:#7C8A9A; font-size:13px; }
-  .btn { border-radius:12px; padding:8px 12px; font-weight:600; }
-  .btn-sm { padding:6px 10px; font-size:13px; }
-  .btn-primary { background:#02AD82; color:#fff; border:none; }
-  .btn-ghost { background:#F6FAF9; color:#0F172A; border:1px solid #D3D5DF; }
-  .btn-danger { background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; }
-  .text-success { color:#16a34a; }
-  .text-danger { color:#dc2626; }
-
-  .modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4);
-           display: flex; justify-content: center; align-items: center; z-index: 2000; }
-  .modal.hidden { display: none; }
-  .modal-content { background: #F6FAF9; border-radius: 12px; padding: 24px; width: 90%; max-width: 700px;
-                   box-shadow: 0 4px 30px rgba(0,0,0,0.1); }
-  .modal-title { font-weight: 700; font-size: 18px; margin-bottom: 16px; color: #0F172A; }
+.muted{color:#94A3B8}
+.ha-modal{position:fixed; inset:0; display:none; z-index:1000; direction:rtl;}
+.ha-modal[aria-hidden="false"]{display:block;}
+.ha-modal__backdrop{position:absolute; inset:0; background:rgba(15,23,42,0.4);}
+.ha-modal__dialog{position:relative; margin:6vh auto; max-width:760px; background:#fff; border:1px solid #D3D5DF; border-radius:12px; box-shadow:0 24px 48px rgba(0,0,0,.14); overflow:hidden;}
+.ha-modal__header,.ha-modal__footer{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; background:#F6FAF9; border-bottom:1px solid #D3D5DF;}
+.ha-modal__footer{border-top:1px solid #D3D5DF; border-bottom:0;}
+.ha-modal__body{padding:16px;}
+.ha-modal__title{font-weight:700; color:#0F172A;}
+.ha-modal__close{border:1px solid #D3D5DF; background:#fff; border-radius:8px; width:36px; height:36px; cursor:pointer}
 </style>
+{% endblock %}
 
+{% block scripts %}
+{{ super() }}
 <script>
-function openEditModal(id){
-  var el = document.getElementById('modal-' + String(id));
-  if (el) el.classList.remove('hidden');
-}
-function closeModal(id){
-  var el = document.getElementById('modal-' + String(id));
-  if (el) el.classList.add('hidden');
-}
-window.addEventListener('keydown', function(e){
-  if(e.key === 'Escape'){
-    document.querySelectorAll('.modal').forEach(function(m){ m.classList.add('hidden'); });
+// ---- Safe context from data-attributes (no Jinja in JS)
+var __ctx = document.getElementById('inst-ctx');
+var IS_ADMIN = __ctx && __ctx.dataset && __ctx.dataset.isAdmin === '1';
+var PLAN_ID  = __ctx && __ctx.dataset ? parseInt(__ctx.dataset.planId || '0', 10) : 0;
+
+function openModal(el){ if (el) el.setAttribute('aria-hidden','false'); }
+function closeModal(el){ if (el) el.setAttribute('aria-hidden','true'); }
+
+if (IS_ADMIN) {
+  var btnAdd = document.getElementById('btnAddInst');
+  if (btnAdd){
+    btnAdd.addEventListener('click', async function(){
+      var seqEl  = document.getElementById('seq');
+      var dueEl  = document.getElementById('due_date');
+      var baseEl = document.getElementById('amount_base');
+      var feeEl  = document.getElementById('cheque_fee_amount');
+
+      var seq  = parseInt((seqEl && seqEl.value) || '0', 10);
+      var due  = (dueEl && dueEl.value) ? dueEl.value : null;
+      var base = parseInt((baseEl && baseEl.value) || '0', 10);
+      var fee  = parseInt((feeEl && feeEl.value) || '0', 10);
+
+      if(!seq){ alert('شماره قسط الزامی است'); return; }
+
+      const res = await fetch("{{ url_for('installments.api_add_installment', plan_id=0) }}".replace('/0','/'+PLAN_ID), {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({seq:seq, due_date:due, amount_base:base, cheque_fee_amount:fee})
+      });
+      const j = await res.json().catch(()=>({}));
+      if(!res.ok || !j.ok){ alert(j.error || 'ثبت قسط انجام نشد'); return; }
+      location.reload();
+    });
   }
-});
+
+  var tbody = document.querySelector('#instTable tbody');
+  if (tbody){
+    tbody.addEventListener('click', async function(e){
+      var tr = e.target.closest('tr[data-id]'); if(!tr) return;
+      var id = tr.getAttribute('data-id');
+
+      if(e.target.matches('[data-pay]')){
+        const res = await fetch("{{ url_for('installments.api_mark_paid', inst_id=0) }}".replace('/0','/'+id), {method:'POST'});
+        const j = await res.json().catch(()=>({}));
+        if(!res.ok || !j.ok){ alert(j.error || 'پرداخت ناموفق'); return; }
+        location.reload();
+      }
+
+      if(e.target.matches('[data-unpay]')){
+        const res = await fetch("{{ url_for('installments.api_mark_unpaid', inst_id=0) }}".replace('/0','/'+id), {method:'POST'});
+        const j = await res.json().catch(()=>({}));
+        if(!res.ok || !j.ok){ alert(j.error || 'لغو پرداخت ناموفق'); return; }
+        location.reload();
+      }
+
+      if(e.target.matches('[data-edit]')){
+        var modal = document.getElementById('instEditModal');
+        var f = document.getElementById('instEditForm');
+        if(!modal || !f) return;
+
+        f.querySelector('[name="id"]').value = id;
+
+        var tds = tr.children;
+        f.querySelector('[name="seq"]').value = (tds[0] && tds[0].textContent || '').trim();
+        var d = (tds[1] && tds[1].textContent || '').trim();
+        f.querySelector('[name="due_date"]').value = (d && d.indexOf('-')>-1) ? d : '';
+        f.querySelector('[name="amount_base"]').value = ((tds[3] && tds[3].textContent) || '0').replace(/[,٬]/g,'');
+        f.querySelector('[name="cheque_fee_amount"]').value = ((tds[4] && tds[4].textContent) || '0').replace(/[,٬]/g,'');
+
+        openModal(modal);
+      }
+
+      if(e.target.matches('[data-delete]')){
+        if(e.target.hasAttribute('disabled')) return;
+        if(!confirm('این قسط حذف شود؟')) return;
+        const res = await fetch("{{ url_for('installments.api_delete_installment', inst_id=0) }}".replace('/0','/'+id), {method:'DELETE'});
+        const j = await res.json().catch(()=>({}));
+        if(!res.ok || !j.ok){ alert(j.error || 'حذف ناموفق'); return; }
+        location.reload();
+      }
+    });
+  }
+
+  (function(){
+    var modal = document.getElementById('instEditModal');
+    var f = document.getElementById('instEditForm');
+    if (!modal || !f) return;
+
+    modal.addEventListener('click', function(e){
+      if (e.target===modal || (e.target.classList && e.target.classList.contains('ha-modal__backdrop')) || e.target.hasAttribute('data-close')){
+        closeModal(modal);
+      }
+    });
+
+    f.addEventListener('submit', async function(e){
+      e.preventDefault();
+      var fd = new FormData(f);
+      var id = fd.get('id');
+      var payload = {
+        seq: parseInt(fd.get('seq')||'0',10),
+        due_date: fd.get('due_date') || null,
+        amount_base: parseInt(fd.get('amount_base')||'0',10),
+        cheque_fee_amount: parseInt(fd.get('cheque_fee_amount')||'0',10)
+      };
+      const res = await fetch("{{ url_for('installments.api_update_installment', inst_id=0) }}".replace('/0','/'+id), {
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+      });
+      const j = await res.json().catch(()=>({}));
+      if(!res.ok || !j.ok){ alert(j.error || 'ویرایش ناموفق'); return; }
+      closeModal(modal); location.reload();
+    });
+  })();
+}
 </script>
 {% endblock %}
+

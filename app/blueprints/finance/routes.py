@@ -16,7 +16,7 @@ from app.models.installment import Installment
 from app.models.asset import Asset
 from app.models.installment_cheque import InstallmentCheque
 from sqlalchemy import and_ 
-
+from app.utils.decorators import role_required
 bp = Blueprint("finance", __name__, url_prefix="/finance")
 
 # --------- مدل‌های اختیاری ---------
@@ -27,6 +27,40 @@ except Exception:  # noqa
 
 
 # ---------------- Helpers ----------------
+def _has_col(model, name: str) -> bool:
+    try:
+        return hasattr(model, "__table__") and name in model.__table__.c
+    except Exception:
+        return hasattr(model, name)
+
+def _get_first(exp, names, default=None):
+    for n in names:
+        if _has_col(Expense, n):
+            return getattr(exp, n, default)
+    return default
+
+def _set_if_has(exp, name: str, value):
+    if _has_col(Expense, name):
+        setattr(exp, name, value)
+
+def _parse_date_local(s: str | None):
+    if not s:
+        return None
+    s = s.strip().replace("/", "-")
+    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except Exception:
+            pass
+    return None
+def _parse_date_local(s: str | None):
+    if not s:
+        return None
+    s = s.strip()
+    try:
+        return datetime.strptime(s.replace("/", "-"), "%Y-%m-%d").date()
+    except Exception:
+        return None
 def _plans_for_enrollment(en: Enrollment):
     """پیدا کردن پلن/پلن‌های قسط برای یک ثبت‌نام با تحمل لینک."""
     plans = []
@@ -440,6 +474,7 @@ def _student_course_installment_totals():
 # =========================
 @bp.get("/")
 @login_required
+@role_required(["admin"])
 def dashboard():
     today = date.today()
     start_month = date(today.year, today.month, 1)
@@ -458,7 +493,6 @@ def dashboard():
 
     mtd_received = 0.0
     receipts_12m: dict[tuple[int, int], float] = defaultdict(float)
-
     # فقط برای نمودار و MTD از payments استفاده می‌کنیم؛ دیگر به receivables دست نمی‌زنیم
     for p in payments:
         amt = _safe_num(getattr(p, "amount", None), 0.0)
@@ -618,19 +652,23 @@ def dashboard():
     per_inst = _student_course_installment_totals()
     rec_items = []
     rows_base = (
-        db.session.query(Enrollment, Course, Student)
-        .join(Course, Course.id == Enrollment.course_id)
-        .join(Student, Student.id == Enrollment.student_id)
-        .filter(Enrollment.status.in_(("ACTIVE", "ONGOING")))
-        .order_by(Course.id.desc())
-        .all()
-    )
+         db.session.query(Enrollment, Course, Student)
+         .join(Course, Course.id == Enrollment.course_id)
+         .join(Student, Student.id == Enrollment.student_id)
+         .filter(Enrollment.status.in_(("ACTIVE", "ONGOING")))
+         .order_by(Course.id.desc())
+         .all()
+     )
     for en, co, st in rows_base:
         key = (int(st.id), int(co.id))
         fee = int(per_inst.get(key, {}).get("fee", 0))
         paid = int(per_inst.get(key, {}).get("paid", 0))
         remain = max(fee - paid, 0)
         print(f"[Student {st.id} - {st.first_name or ''} {st.last_name or ''}] Course: {co.title} | Fee: {fee:,} | Paid: {paid:,} | Remain: {remain:,}")
+        fee, paid = _enrollment_financials(en)
+        fee = int(fee or 0)
+        paid = int(paid or 0)
+        remain = max(fee - paid, 0)
         rec_items.append(
             dict(
                 en_id=en.id,
@@ -756,6 +794,7 @@ def dashboard():
 # ------------------------ صفحات تفکیکی ------------------------
 @bp.get("/receivables")
 @login_required
+@role_required(["admin"])
 def receivables():
     q = (request.args.get("q") or "").strip()
     course_id = request.args.get("course_id", type=int)
@@ -806,6 +845,7 @@ def receivables():
 
 @bp.get("/courses")
 @login_required
+@role_required(["admin"])
 def courses_report():
     q = (request.args.get("q") or "").strip()
     mentor_id = request.args.get("mentor_id", type=int)
@@ -853,6 +893,7 @@ def courses_report():
 
 @bp.get("/mentors")
 @login_required
+@role_required(["admin"])
 def mentors_report():
     rows = []
     for m in Mentor.query.order_by(Mentor.id.desc()).all():
@@ -870,6 +911,7 @@ def mentors_report():
 
 @bp.get("/installments")
 @login_required
+@role_required(["admin"])
 def installments():
     """صفحه اقساط باز بر مبنای InstallmentPlan/Installment + مدیریت چک‌ها"""
     today = date.today()
@@ -939,6 +981,7 @@ def installments():
 # ------------------------ Expenses (costs) ------------------------
 @bp.get("/expenses")
 @login_required
+@role_required(["admin"])
 def expenses_page():
     if not Expense:
         return render_template("finance/expenses.html", items=[], courses=Course.query.order_by(Course.title.asc()).all())
@@ -962,6 +1005,7 @@ def expenses_page():
 
 @bp.post("/expenses/new")
 @login_required
+@role_required(["admin"])
 def expenses_new():
     from app.models.expense import Expense as _Expense  # type: ignore
 
@@ -1033,6 +1077,7 @@ def expenses_new():
 # ------------------------ Assets (fixed assets) ------------------------
 @bp.get("/assets")
 @login_required
+@role_required(["admin"])
 def assets_page():
     items = (
         Asset.query
@@ -1048,6 +1093,7 @@ def assets_page():
 
 @bp.post("/assets/new")
 @login_required
+@role_required(["admin"])
 def assets_new():
     name = (request.form.get("name") or "").strip()
     if not name:
@@ -1104,6 +1150,7 @@ def assets_new():
 
 @bp.post("/assets/<int:asset_id>/edit")
 @login_required
+@role_required(["admin"])
 def assets_edit(asset_id):
     a = Asset.query.get_or_404(asset_id)
 
@@ -1146,6 +1193,7 @@ def assets_edit(asset_id):
 
 @bp.post("/assets/<int:asset_id>/delete")
 @login_required
+@role_required(["admin"])
 def assets_delete(asset_id):
     a = Asset.query.get_or_404(asset_id)
     try:
@@ -1160,50 +1208,135 @@ def assets_delete(asset_id):
 
 @bp.post("/expenses/<int:expense_id>/edit")
 @login_required
+@role_required(["admin"])
 def expenses_edit(expense_id):
-    from app.models.expense import Expense as _Expense  # type: ignore
-    exp = _Expense.query.get_or_404(expense_id)
+    exp = Expense.query.get_or_404(expense_id)
+    f = request.form
 
-    exp.title = (request.form.get("title") or "").strip() or exp.title
-    exp.amount_net = request.form.get("amount_net", type=float) or exp.amount_net
-    exp.vat_rate = request.form.get("vat_rate", type=float) or exp.vat_rate
-    exp.surcharge_percent = request.form.get("surcharge_percent", type=float) or exp.surcharge_percent
-    exp.category = (request.form.get("category") or "").strip() or exp.category
-    exp.payment_method = (request.form.get("payment_method") or "").strip() or exp.payment_method
-    exp.status = (request.form.get("status") or "").strip() or exp.status
-    exp.note = (request.form.get("note") or "").strip() or exp.note
-
-    # محاسبه مجدد مبلغ کل
-    vat_amount = exp.amount_net * (exp.vat_rate / 100.0)
-    surcharge_amount = exp.amount_net * (exp.surcharge_percent / 100.0)
-    exp.amount_total = exp.amount_net + vat_amount + surcharge_amount
-
-    paid_at_str = (request.form.get("paid_at") or "").strip()
-    if paid_at_str:
+    # ورودی‌های متنی
+    title    = (f.get("title") or "").strip()
+    category = (f.get("category") or "").strip() or None
+    note     = (f.get("note") or "").strip() or None
+    
+    # اعداد – همیشه عدد معتبر تولید کنیم
+    def _to_num(name, default=0.0):
         try:
-            exp.paid_at = datetime.strptime(paid_at_str, "%Y-%m-%d").date()
+            v = f.get(name, "").strip()
+            return float(v) if v != "" else float(default)
         except Exception:
-            pass
+            return float(default)
 
+    amount_net         = _to_num("amount_net", _get_first(exp, ["amount_net","amount_base"], 0))
+    vat_rate           = _to_num("vat_rate", _get_first(exp, ["vat_rate","vat_percent","tax_rate","tax_percent"], 0))
+    surcharge_percent  = _to_num("surcharge_percent", _get_first(exp, ["surcharge_percent","fee_percent","service_fee_percent"], 0))
+
+    # روش پرداخت/وضعیت
+    pm = (f.get("payment_method") or _get_first(exp, ["payment_method","method"], "CASH")).upper()
+    if pm not in ("CASH", "CARD", "TRANSFER", "CHEQUE"):
+        pm = "CASH"
+
+    status = (f.get("status") or _get_first(exp, ["status"], "PAID")).upper()
+    if status not in ("PAID", "PENDING"):
+        status = "PAID"
+
+    # دوره (اختیاری)
+    course_id = None
+    raw_cid = f.get("course_id")
+    if raw_cid not in (None, "", "None"):
+        try:
+            course_id = int(raw_cid)
+            if not Course.query.get(course_id):
+                flash("دوره‌ی انتخاب‌شده معتبر نیست.", "error")
+                return redirect(request.referrer or url_for("finance.expenses_page"))
+        except Exception:
+            flash("شناسه‌ی دوره نامعتبر است.", "error")
+            return redirect(request.referrer or url_for("finance.expenses_page"))
+
+    # محاسبه مبلغ کل سمت سرور
+    amount_total = amount_net + (amount_net * vat_rate / 100.0) + (amount_net * surcharge_percent / 100.0)
     try:
-        db.session.commit()
-        flash("هزینه با موفقیت ویرایش شد.", "success")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"خطا در ویرایش: {e}", "danger")
-    return redirect(url_for("finance.expenses_page"))
+        amount_total = int(round(amount_total))
+    except Exception:
+        pass
 
+    # اعمال به مدل – فقط ستون‌های موجود را ست کن
+    if title:
+        _set_if_has(exp, "title", title)
+    _set_if_has(exp, "category", category)
+    _set_if_has(exp, "note", note)
+
+    # مبلغ‌ها (نام‌های مختلف)
+    if _has_col(Expense, "amount_net"):
+        exp.amount_net = amount_net
+    elif _has_col(Expense, "amount_base"):
+        exp.amount_base = amount_net
+    # اگر هیچ‌کدام نبود، بعداً amount/amount_total را ست می‌کنیم
+
+    # نرخ‌ها
+    for cand in ("vat_rate","vat_percent","tax_rate","tax_percent"):
+        _set_if_has(exp, cand, vat_rate)
+    for cand in ("surcharge_percent","fee_percent","service_fee_percent"):
+        _set_if_has(exp, cand, surcharge_percent)
+
+    # مبلغ کل (نام‌های مختلف)
+    if _has_col(Expense, "amount_total"):
+        exp.amount_total = amount_total
+    elif _has_col(Expense, "total_amount"):
+        exp.total_amount = amount_total
+    elif _has_col(Expense, "gross_amount"):
+        exp.gross_amount = amount_total
+    elif _has_col(Expense, "amount"):
+        exp.amount = amount_total  # مدل‌هایی که فقط یک فیلد amount دارند
+
+    # روش پرداخت/وضعیت/دوره
+    _set_if_has(exp, "payment_method", pm)
+    _set_if_has(exp, "status", status)
+    _set_if_has(exp, "course_id", course_id)
+
+    # paid_at: سازگار با وضعیت
+    if _has_col(Expense, "paid_at"):
+        if status == "PAID" and getattr(exp, "paid_at", None) is None:
+            exp.paid_at = datetime.utcnow()
+        if status == "PENDING":
+            exp.paid_at = None
+
+    # فیلدهای چک – فقط اگر در مدل وجود داشته باشد
+    cheque_number = (f.get("cheque_number") or "").strip() or None
+    bank_name     = (f.get("bank_name") or "").strip() or None
+    issuer_name   = (f.get("issuer_name") or "").strip() or None
+    issue_date    = _parse_date_local(f.get("issue_date"))
+    due_date      = _parse_date_local(f.get("due_date"))
+    cheque_status = (f.get("cheque_status") or "").strip() or None
+
+    if pm == "CHEQUE":
+        for name, val in (
+            ("cheque_number", cheque_number),
+            ("bank_name", bank_name),
+            ("issuer_name", issuer_name),
+            ("issue_date", issue_date),
+            ("due_date", due_date),
+            ("cheque_status", cheque_status),
+        ):
+            _set_if_has(exp, name, val)
+    else:
+        # پاک‌سازی فیلدهای چک در صورت تغییر روش
+        for name in ("cheque_number","bank_name","issuer_name","cheque_status"):
+            if _has_col(Expense, name):
+                setattr(exp, name, None)
+        for name in ("issue_date","due_date"):
+            if _has_col(Expense, name):
+                setattr(exp, name, None)
+
+    db.session.commit()
+    flash("ویرایش هزینه با موفقیت ذخیره شد.", "success")
+    return redirect(request.referrer or url_for("finance.expenses_page"))
 
 @bp.post("/expenses/<int:expense_id>/delete")
 @login_required
+@role_required(["admin"])
 def expenses_delete(expense_id):
-    from app.models.expense import Expense as _Expense  # type: ignore
-    exp = _Expense.query.get_or_404(expense_id)
-    try:
-        db.session.delete(exp)
-        db.session.commit()
-        flash("هزینه حذف شد.", "success")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"حذف با خطا مواجه شد: {e}", "danger")
-    return redirect(url_for("finance.expenses_page"))
+    exp = Expense.query.get_or_404(expense_id)
+    db.session.delete(exp)
+    db.session.commit()
+    flash("هزینه حذف شد.", "info")
+    return redirect(request.referrer or url_for("finance.expenses_page"))

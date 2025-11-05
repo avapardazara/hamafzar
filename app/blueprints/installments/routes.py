@@ -12,6 +12,7 @@ from app.models.course import Course
 from app.models.core import Student
 from app.models.enrollment import Enrollment
 from app.models.installment_cheque import InstallmentCheque
+from app.utils.decorators import role_required
 
 def _safe_float(x, default=0.0):
     try:
@@ -40,7 +41,7 @@ def _to_money(v):
 # لیست برنامه‌های اقساط
 # ---------------------------
 @bp.get("/")
-@login_required
+@role_required(["ADMIN","STUDENT"])
 def index():
     plans = (InstallmentPlan.query
              .order_by(InstallmentPlan.id.desc())
@@ -64,7 +65,7 @@ def index():
 # فرم ایجاد برنامه اقساط
 # ---------------------------
 @bp.get("/new")
-@login_required
+@role_required(["ADMIN","STUDENT"])
 def create_form():
     courses = Course.query.order_by(Course.title.asc()).all()
     students = Student.query.order_by(Student.id.desc()).all()
@@ -95,7 +96,7 @@ def create_form():
 # ثبت برنامه اقساط
 # ---------------------------
 @bp.post("/new")
-@login_required
+@role_required(["ADMIN"])
 def create_submit():
     title = (request.form.get("title") or "").strip()
     course_id = request.form.get("course_id", type=int)
@@ -166,7 +167,7 @@ def create_submit():
 # جزئیات یک برنامه اقساط
 # ---------------------------
 @bp.get("/<int:plan_id>")
-@login_required
+@role_required(["ADMIN"])
 def details(plan_id: int):
     plan = InstallmentPlan.query.get_or_404(plan_id)
     insts = (Installment.query
@@ -184,7 +185,7 @@ def details(plan_id: int):
 # پرداخت/لغو پرداخت یک قسط
 # ---------------------------
 @bp.post("/<int:plan_id>/pay/<int:inst_id>")
-@login_required
+@role_required(["ADMIN"])
 def pay_installment(plan_id: int, inst_id: int):
     plan = InstallmentPlan.query.get_or_404(plan_id)
     inst = Installment.query.filter_by(id=inst_id, plan_id=plan.id).first_or_404()
@@ -194,7 +195,7 @@ def pay_installment(plan_id: int, inst_id: int):
     return redirect(url_for("installments.details", plan_id=plan.id))
 
 @bp.post("/<int:plan_id>/unpay/<int:inst_id>")
-@login_required
+@role_required(["ADMIN"])
 def unpay_installment(plan_id: int, inst_id: int):
     plan = InstallmentPlan.query.get_or_404(plan_id)
     inst = Installment.query.filter_by(id=inst_id, plan_id=plan.id).first_or_404()
@@ -207,7 +208,7 @@ def unpay_installment(plan_id: int, inst_id: int):
 # API سبک برای تب مالی پروفایل دانشجو: لیست اقساط دانشجو
 # -----------------------------------------------------------
 @bp.get("/student/<int:student_id>.json")
-@login_required
+@role_required(["ADMIN"])
 def api_student_installments(student_id: int):
     """
     خروجی扭:
@@ -273,7 +274,7 @@ def api_student_installments(student_id: int):
     return jsonify({"items": items})
 # ========= CRUD چکِ قسط =========
 @bp.post("/cheques/new")
-@login_required
+@role_required(["ADMIN"])
 def cheque_new():
     if not InstallmentCheque:
         flash("مدل چک در سیستم فعال نیست.", "danger")
@@ -306,7 +307,7 @@ def cheque_new():
 
 
 @bp.post("/cheques/<int:cheque_id>/edit")
-@login_required
+@role_required(["ADMIN"])
 def cheque_edit(cheque_id):
     if not InstallmentCheque:
         flash("مدل چک در سیستم فعال نیست.", "danger")
@@ -344,7 +345,7 @@ def cheque_edit(cheque_id):
 
 
 @bp.post("/cheques/<int:cheque_id>/delete")
-@login_required
+@role_required(["ADMIN"])
 def cheque_delete(cheque_id):
     if not InstallmentCheque:
         flash("مدل چک در سیستم فعال نیست.", "danger")
@@ -361,7 +362,7 @@ def cheque_delete(cheque_id):
 
     return redirect(url_for("installments.create"))
 @bp.post("/<int:inst_id>/edit")
-@login_required
+@role_required(["ADMIN"])
 def installment_edit(inst_id):
     inst = Installment.query.get_or_404(inst_id)
 
@@ -426,7 +427,7 @@ def installment_edit(inst_id):
 
 
 @bp.post("/<int:inst_id>/delete")
-@login_required
+@role_required(["ADMIN"])
 def installment_delete(inst_id):
     inst = Installment.query.get_or_404(inst_id)
 

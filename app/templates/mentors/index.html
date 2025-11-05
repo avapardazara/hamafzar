@@ -55,11 +55,11 @@
           <td>
             <div class="actions">
               <a class="btn btn-ghost" href="{{ url_for('mentors.edit_form', mentor_id=m.id) }}">ویرایش</a>
-              {# اگر روت حذف هنوز نداری، بلاک زیر رو بعداً فعال کن
-              <form method="post" action="{{ url_for('mentors.delete', mentor_id=m.id) }}" onsubmit="return confirm('حذف شود؟');">
-                <button class="btn btn-ghost" type="submit">حذف</button>
-              </form>
-              #}
+<form method="post"
+      action="{{ url_for('mentors.delete', mentor_id=m.id) }}"
+      onsubmit="return confirm('این منتور حذف شود؟');">
+  <button type="submit" class="btn btn-danger">حذف</button>
+</form>
             </div>
           </td>
         </tr>

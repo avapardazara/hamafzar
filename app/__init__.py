@@ -4,6 +4,8 @@ from .config import Config
 from .extensions import init_app as init_extensions
 from .blueprints.files import bp as files_bp
 from .blueprints import  finance_bp 
+from app.blueprints.api import api_bp
+from app.cli import register_cli
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -13,6 +15,8 @@ def create_app(config_class=Config):
     app.config.from_object(config_class)
     app.register_blueprint(finance_bp)
     app.config.from_pyfile("config.py", silent=True)
+    app.register_blueprint(api_bp)
+    register_cli(app)
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
     # اطمینان از وجود پوشه‌ی instance
     os.makedirs(app.instance_path, exist_ok=True)

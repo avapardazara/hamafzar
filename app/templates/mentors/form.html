@@ -80,7 +80,35 @@
         <label>شماره تماس</label>
         <input type="text" name="phone" class="input" value="{{ m.phone or '' }}">
       </div>
+      <div class="card" style="grid-column:1 / -1;">
+  <div class="actions" style="justify-content:space-between;">
+    <div class="label" style="margin:0;">حساب کاربری ورود (اختیاری)</div>
+    <label style="display:flex; align-items:center; gap:6px;">
+      <input type="checkbox" name="acc_create" value="1"> ساخت حساب برای این منتور
+    </label>
+  </div>
 
+  <div class="grid two" style="gap:12px; margin-top:12px;">
+    <div>
+      <label class="label">نام کاربری</label>
+      <input class="input" name="acc_username" placeholder="username">
+    </div>
+    <div>
+      <label class="label">ایمیل ورود</label>
+      <input class="input" type="email" name="acc_email" placeholder="email@example.com">
+    </div>
+    <div>
+      <label class="label">رمز عبور</label>
+      <input class="input" type="password" name="acc_password" minlength="6" placeholder="حداقل ۶ کاراکتر">
+    </div>
+    <div>
+      <label class="label">تکرار رمز</label>
+      <input class="input" type="password" name="acc_password2" minlength="6" placeholder="تکرار رمز">
+    </div>
+  </div>
+
+  <small class="muted">اگر این بخش را خالی بگذاری یا تیک بالا را نزنی، حساب کاربری ساخته نمی‌شود.</small>
+</div>
       <div class="form-actions" style="grid-column:1 / span 2; display:flex; gap:12px; justify-content:flex-start;">
         <button type="submit" class="btn btn-primary">ثبت منتور</button>
         <a class="btn btn-ghost" href="{{ url_for('mentors.list') }}">بازگشت به لیست</a>
@@ -95,6 +123,29 @@
 </style>
 
 <script>
+    (function(){
+      const cb = document.getElementById('acc_create');
+      const fs = document.getElementById('acc_fields');
+      const emailMain = document.querySelector('input[name="email"]');
+      const emailAcc  = document.querySelector('input[name="acc_email"]');
+
+      function toggle(){
+        if (!cb || !fs) return;
+        const on = cb.checked;
+        fs.style.display = on ? 'grid' : 'none';
+        if (on && emailMain && emailAcc && !emailAcc.value){
+          emailAcc.value = emailMain.value || '';
+        }
+      }
+      cb && cb.addEventListener('change', toggle);
+      emailMain && emailMain.addEventListener('blur', ()=> {
+        // اگر کاربر تیک زده و ایمیل اکانت خالی است، ایمیل اصلی را کپی کن
+        if (cb && cb.checked && emailAcc && !emailAcc.value){
+          emailAcc.value = emailMain.value || '';
+        }
+      });
+      toggle();
+    })();
   // پیش‌نمایش زنده
   const inp = document.getElementById('avatarInput');
   const img = document.getElementById('avatarPreview');

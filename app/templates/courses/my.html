@@ -1,0 +1,64 @@
+{% extends "layouts/resource_list.html" %}
+{% set page_title = 'دوره‌های من' %}
+{# این صفحه Read-Only است؛ دکمهٔ افزودن ندارد #}
+{# اگر layout سرچ را نشان می‌دهد، placeholder را ست کنیم: #}
+{% set search_placeholder = 'جستجو در دوره‌ها...' %}
+
+{# ستون‌ها را براساس نقش بچینیم و همان table-layout صفحه دوره‌ها را حفظ کنیم #}
+{% block colgroup %}
+  {% if (role or '').upper() == 'STUDENT' %}
+    <col style="width:6%;">   {# # #}
+    <col style="width:40%;">  {# عنوان دوره #}
+    <col style="width:22%;">  {# منتور #}
+    <col style="width:16%;">  {# وضعیت ثبت‌نام #}
+    <col style="width:16%;">  {# تاریخ ثبت‌نام #}
+  {% else %}
+    <col style="width:6%;">   {# # #}
+    <col style="width:50%;">  {# عنوان دوره #}
+    <col style="width:22%;">  {# وضعیت #}
+    <col style="width:22%;">  {# تاریخ ایجاد #}
+  {% endif %}
+{% endblock %}
+
+{% block thead %}
+  {% if (role or '').upper() == 'STUDENT' %}
+    <th>#</th>
+    <th>عنوان دوره</th>
+    <th>منتور</th>
+    <th>وضعیت ثبت‌نام</th>
+    <th>تاریخ ثبت‌نام</th>
+  {% else %}
+    <th>#</th>
+    <th>عنوان دوره</th>
+    <th>وضعیت</th>
+    <th>تاریخ ایجاد</th>
+  {% endif %}
+{% endblock %}
+
+{% block tbody %}
+  {% for c in items %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td><span class="ellipsis">{{ c.title }}</span></td>
+
+      {% if (role or '').upper() == 'STUDENT' %}
+        <td><span class="ellipsis">{{ c.mentor_name or '—' }}</span></td>
+        <td>{{ c.status }}</td>
+        <td>{{ c.enrolled_at or '—' }}</td>
+      {% else %}
+        <td>{{ c.status }}</td>
+        <td>{{ c.created_at or '—' }}</td>
+      {% endif %}
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="muted">موردی برای نمایش وجود ندارد.</td></tr>
+  {% endfor %}
+{% endblock %}
+
+{% block styles_extra %}
+<style>
+/* هماهنگ با استایل لیست‌ها */
+.muted{color:#94A3B8}
+.ellipsis{max-width:520px; overflow:hidden; text-overflow:ellipsis; display:inline-block; vertical-align:bottom;}
+</style>
+{% endblock %}

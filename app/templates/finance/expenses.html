@@ -5,8 +5,15 @@
 {% block content %}
 <div class="card" style="direction:rtl; max-width:1200px; margin:auto;">
 
-  <!-- فرم افزودن هزینه -->
-  <h3 style="font-weight:700; color:var(--ink, #0F172A); margin-bottom:12px;">افزودن هزینه</h3>
+  <!-- نوار ناوبری مالی -->
+  <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
+    <a class="btn btn-ghost" href="{{ url_for('finance.dashboard') }}">داشبورد مالی</a>
+    <a class="btn btn-ghost" href="{{ url_for('finance.assets_page') }}">دارایی</a>
+    <a class="btn btn-ghost" href="{{ url_for('finance.expenses_page') }}">هزینه</a>
+  </div>
+
+  <!-- فرم افزودن هزینه (بدون تغییر منطق موجود) -->
+  <h3 style="font-weight:700; color:#0F172A; margin-bottom:12px;">افزودن هزینه</h3>
   <form method="post" action="{{ url_for('finance.expenses_new') }}" style="display:grid; grid-template-columns: repeat(12, 1fr); gap:12px; align-items:end;">
     <div style="grid-column: span 4;">
       <label class="label">عنوان هزینه</label>
@@ -29,13 +36,13 @@
     </div>
 
     <div style="grid-column: span 2;">
-      <label class="label">%عوارض/سرویس</label>
+      <label class="label">%عوارض</label>
       <input class="input" name="surcharge_percent" type="number" min="0" step="0.01" value="0">
     </div>
 
     <div style="grid-column: span 3;">
       <label class="label">روش پرداخت</label>
-      <select class="input" name="payment_method" id="pm-select">
+      <select class="input" name="payment_method" id="pm-select-new">
         <option value="CASH">نقد</option>
         <option value="CARD">کارت</option>
         <option value="TRANSFER">واریز بانکی</option>
@@ -43,7 +50,7 @@
       </select>
     </div>
 
-    <div style="grid-column: span 3;">
+    <div style="grid-column: span 2;">
       <label class="label">وضعیت</label>
       <select class="input" name="status">
         <option value="PAID">پرداخت‌شده</option>
@@ -52,12 +59,7 @@
     </div>
 
     <div style="grid-column: span 3;">
-      <label class="label">تاریخ پرداخت</label>
-      <input class="input" name="paid_at" type="date">
-    </div>
-
-    <div style="grid-column: span 3;">
-      <label class="label">برای دوره (اختیاری)</label>
+      <label class="label">نسبت به دوره (اختیاری)</label>
       <select class="input" name="course_id">
         <option value="">—</option>
         {% for c in courses %}
@@ -66,7 +68,8 @@
       </select>
     </div>
 
-    <div style="grid-column: span 12; display:none;" id="cheque-fields">
+    <!-- فیلدهای چک (افزودن) -->
+    <div style="grid-column: span 12; display:none;" id="cheque-fields-new">
       <div style="display:grid; grid-template-columns: repeat(12,1fr); gap:12px;">
         <div style="grid-column: span 3;">
           <label class="label">شماره چک</label>
@@ -101,24 +104,14 @@
     </div>
 
     <div style="grid-column: span 6; display:flex; gap:12px; align-items:center;">
-      <label class="checkbox">
-        <input type="checkbox" name="is_fixed" value="1">
-        <span>هزینه ثابت (Recurring)</span>
-      </label>
-      <div id="amount-total-chip" class="badge" style="background:#F6FAF9; color:#0F172A; padding:6px 10px; border-radius:12px;">
-        مبلغ کل: ۰
-      </div>
-    </div>
-
-    <div style="grid-column: span 6; text-align:left;">
       <button class="btn btn-primary" type="submit">افزودن هزینه</button>
+      <span class="muted" id="chip-total-new">مبلغ کل: ۰</span>
     </div>
   </form>
 
-  <hr style="margin:20px 0; border:none; border-top:1px solid #e5e7eb;">
+  <hr style="margin:18px 0; border-color:#D3D5DF;">
 
-  <!-- لیست هزینه‌ها -->
-  <h3 style="font-weight:700; color:var(--ink, #0F172A); margin-bottom:12px;">آخرین هزینه‌ها</h3>
+  <!-- جدول هزینه‌ها -->
   <div class="table-responsive">
     <table class="table" style="width:100%; border-collapse:collapse;">
       <thead>
@@ -133,7 +126,7 @@
           <th style="text-align:left;">%عوارض</th>
           <th style="text-align:left;">مبلغ کل</th>
           <th>دوره</th>
-          <th style="width:150px;">اقدام</th>
+          <th style="width:180px;">اقدام</th>
         </tr>
       </thead>
       <tbody>
@@ -142,13 +135,7 @@
           <td>{{ ex.title }}</td>
           <td>{{ ex.category or '—' }}</td>
           <td>{{ ex.payment_method or '—' }}</td>
-          <td>
-            {% if (ex.status or '').upper() == 'PAID' %}
-              <span class="badge" style="background:#E6FFFA; color:#047857;">پرداخت‌شده</span>
-            {% else %}
-              <span class="badge" style="background:#FFF7ED; color:#B45309;">در انتظار</span>
-            {% endif %}
-          </td>
+          <td>{{ ex.status or '—' }}</td>
           <td>
             {% set _dt = ex.paid_at or ex.created_at %}
             {{ _dt.strftime("%Y-%m-%d") if _dt else "—" }}
@@ -159,68 +146,286 @@
           <td style="text-align:left; font-weight:700;">{{ "{:,.0f}".format(ex.amount_total or 0) }}</td>
           <td>{{ ex.course.title if ex.course else '—' }}</td>
           <td>
-            <details>
-              <summary class="btn btn-ghost" style="display:inline-block;">ویرایش</summary>
-              <form method="post" action="{{ url_for('finance.expenses_edit', expense_id=ex.id) }}" style="margin-top:8px; display:grid; grid-template-columns: repeat(12,1fr); gap:8px;">
-                <input class="input" name="title" value="{{ ex.title }}" style="grid-column: span 4;">
-                <input class="input" name="category" value="{{ ex.category or '' }}" style="grid-column: span 3;">
-                <input class="input" name="amount_net" type="number" step="0.01" value="{{ ex.amount_net or 0 }}" style="grid-column: span 2;">
-                <input class="input" name="vat_rate" type="number" step="0.01" value="{{ ex.vat_rate or 0 }}" style="grid-column: span 1;">
-                <input class="input" name="surcharge_percent" type="number" step="0.01" value="{{ ex.surcharge_percent or 0 }}" style="grid-column: span 2;">
-                <select class="input" name="payment_method" style="grid-column: span 3;">
-                  {% for key in ['CASH','CARD','TRANSFER','CHEQUE'] %}
-                  <option value="{{ key }}" {% if (ex.payment_method or '').upper()==key %}selected{% endif %}>{{ key }}</option>
-                  {% endfor %}
-                </select>
-                <select class="input" name="status" style="grid-column: span 2;">
-                  {% for key in ['PAID','PENDING'] %}
-                  <option value="{{ key }}" {% if (ex.status or '').upper()==key %}selected{% endif %}>{{ 'پرداخت‌شده' if key=='PAID' else 'در انتظار' }}</option>
-                  {% endfor %}
-                </select>
-                <input class="input" name="paid_at" type="date" value="{{ ex.paid_at.strftime('%Y-%m-%d') if ex.paid_at else '' }}">
-                <input class="input" name="note" value="{{ ex.note or '' }}" placeholder="توضیح" style="grid-column: span 4;">
-                <button class="btn btn-primary" type="submit" style="grid-column: span 2;">ثبت ویرایش</button>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <!-- دکمه ویرایش (Modal) -->
+              <button
+                class="btn btn-ghost"
+                type="button"
+                data-edit
+                data-edit-url="{{ url_for('finance.expenses_edit', expense_id=ex.id) }}"
+                data-title="{{ ex.title|e }}"
+                data-category="{{ (ex.category or '')|e }}"
+                data-amount_net="{{ ex.amount_net or 0 }}"
+                data-vat_rate="{{ ex.vat_rate or 0 }}"
+                data-surcharge_percent="{{ ex.surcharge_percent or 0 }}"
+                data-payment_method="{{ (ex.payment_method or '')|upper }}"
+                data-status="{{ (ex.status or '')|upper }}"
+                data-course_id="{{ ex.course_id or '' }}"
+                data-note="{{ (ex.note or '')|e }}"
+                data-cheque_number="{{ ex.cheque_number or '' }}"
+                data-bank_name="{{ ex.bank_name or '' }}"
+                data-issuer_name="{{ ex.issuer_name or '' }}"
+                data-issue_date="{{ ex.issue_date.strftime('%Y-%m-%d') if ex.issue_date else '' }}"
+                data-due_date="{{ ex.due_date.strftime('%Y-%m-%d') if ex.due_date else '' }}"
+                data-cheque_status="{{ ex.cheque_status or '' }}"
+                >
+                ✏ ویرایش
+              </button>
+
+              <!-- حذف -->
+              <form method="post" action="{{ url_for('finance.expenses_delete', expense_id=ex.id) }}" onsubmit="return confirm('حذف این هزینه قطعی است؟');" style="display:inline;">
+                <button class="btn btn-danger" type="submit">🗑 حذف</button>
               </form>
-            </details>
-            <form method="post" action="{{ url_for('finance.expenses_delete', expense_id=ex.id) }}" onsubmit="return confirm('حذف این هزینه قطعی است؟');" style="display:inline;">
-              <button class="btn btn-danger" type="submit">حذف</button>
-            </form>
+            </div>
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="11" style="text-align:center; color:#6b7280;">هیچ هزینه‌ای ثبت نشده است.</td></tr>
+        <tr>
+          <td colspan="11" class="muted" style="text-align:center; padding:16px;">رکوردی برای نمایش وجود ندارد.</td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+
 </div>
 
-<script>
-  // live calc مبلغ کل و نمایش فیلدهای چک
-  (function(){
-    const net = document.querySelector('input[name="amount_net"]');
-    const vat = document.querySelector('input[name="vat_rate"]');
-    const fee = document.querySelector('input[name="surcharge_percent"]');
-    const chip = document.getElementById('amount-total-chip');
-    const pm   = document.getElementById('pm-select');
-    const chequeBox = document.getElementById('cheque-fields');
+<!-- Modal ویرایش هزینه -->
+<div id="expenseModal" class="ha-modal" aria-hidden="true">
+  <div class="ha-modal__backdrop"></div>
+  <div class="ha-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="expenseModalTitle">
+    <div class="ha-modal__header">
+      <div>
+        <div id="expenseModalTitle" class="ha-modal__title">ویرایش هزینه</div>
+        <div class="ha-modal__subtitle">اطلاعات را اصلاح کنید و ذخیره بزنید.</div>
+      </div>
+      <button type="button" class="ha-modal__close" data-close>×</button>
+    </div>
 
-    function fmt(n){ try { return new Intl.NumberFormat('fa-IR').format(n||0); } catch(e){ return n; } }
-    function calc(){
-      const n = parseFloat(net.value||0);
-      const v = parseFloat(vat.value||0);
-      const s = parseFloat(fee.value||0);
-      const total = n + (n*v/100) + (n*s/100);
-      chip.textContent = 'مبلغ کل: ' + fmt(Math.round(total));
-    }
-    function toggleCheque(){
-      chequeBox.style.display = (pm.value === 'CHEQUE') ? 'block':'none';
-    }
-    ['input','change'].forEach(ev=>{
-      net.addEventListener(ev, calc); vat.addEventListener(ev, calc); fee.addEventListener(ev, calc);
-      pm.addEventListener(ev, toggleCheque);
+    <form id="expenseEditForm" method="post" action="#">
+      <div class="ha-modal__body">
+        <div style="display:grid; grid-template-columns: repeat(12, 1fr); gap:12px;">
+          <div style="grid-column: span 4;">
+            <label class="label">عنوان هزینه</label>
+            <input class="input" name="title" required>
+          </div>
+
+          <div style="grid-column: span 3;">
+            <label class="label">دسته‌بندی</label>
+            <input class="input" name="category">
+          </div>
+
+          <div style="grid-column: span 2;">
+            <label class="label">مبلغ خالص</label>
+            <input class="input" name="amount_net" type="number" min="0" step="0.01" required>
+          </div>
+
+          <div style="grid-column: span 1;">
+            <label class="label">%مالیات</label>
+            <input class="input" name="vat_rate" type="number" min="0" step="0.01">
+          </div>
+
+          <div style="grid-column: span 2;">
+            <label class="label">%عوارض</label>
+            <input class="input" name="surcharge_percent" type="number" min="0" step="0.01">
+          </div>
+
+          <div style="grid-column: span 3;">
+            <label class="label">روش پرداخت</label>
+            <select class="input" name="payment_method" id="pm-select-edit">
+              <option value="CASH">نقد</option>
+              <option value="CARD">کارت</option>
+              <option value="TRANSFER">واریز بانکی</option>
+              <option value="CHEQUE">چک</option>
+            </select>
+          </div>
+
+          <div style="grid-column: span 2;">
+            <label class="label">وضعیت</label>
+            <select class="input" name="status">
+              <option value="PAID">پرداخت‌شده</option>
+              <option value="PENDING">در انتظار</option>
+            </select>
+          </div>
+
+          <div style="grid-column: span 3;">
+            <label class="label">نسبت به دوره (اختیاری)</label>
+            <select class="input" name="course_id">
+              <option value="">—</option>
+              {% for c in courses %}
+                <option value="{{ c.id }}">{{ c.title }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- فیلدهای چک (ویرایش) -->
+          <div style="grid-column: span 12; display:none;" id="cheque-fields-edit">
+            <div style="display:grid; grid-template-columns: repeat(12,1fr); gap:12px;">
+              <div style="grid-column: span 3;">
+                <label class="label">شماره چک</label>
+                <input class="input" name="cheque_number">
+              </div>
+              <div style="grid-column: span 3;">
+                <label class="label">بانک</label>
+                <input class="input" name="bank_name">
+              </div>
+              <div style="grid-column: span 3;">
+                <label class="label">صادرکننده</label>
+                <input class="input" name="issuer_name">
+              </div>
+              <div style="grid-column: span 1;">
+                <label class="label">تاریخ صدور</label>
+                <input class="input" name="issue_date" type="date">
+              </div>
+              <div style="grid-column: span 1;">
+                <label class="label">سررسید</label>
+                <input class="input" name="due_date" type="date">
+              </div>
+              <div style="grid-column: span 1;">
+                <label class="label">وضعیت چک</label>
+                <input class="input" name="cheque_status" placeholder="CLEARED / RETURNED">
+              </div>
+            </div>
+          </div>
+
+          <div style="grid-column: span 12;">
+            <label class="label">توضیحات</label>
+            <textarea class="input" name="note" rows="2"></textarea>
+          </div>
+
+          <div style="grid-column: span 6;">
+            <span class="muted" id="chip-total-edit">مبلغ کل: ۰</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ha-modal__footer">
+        <button type="button" class="btn btn-ghost" data-close>انصراف</button>
+        <button type="submit" class="btn btn-primary">ثبت ویرایش</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+/* Modal styles (بر اساس Design Tokens پروژه) */
+.ha-modal{position:fixed; inset:0; display:none; z-index:1000;}
+.ha-modal[aria-hidden="false"]{display:block;}
+.ha-modal__backdrop{position:absolute; inset:0; background:rgba(15,23,42,0.4);}
+.ha-modal__dialog{
+  position:relative; margin:5vh auto; max-width:900px; background:#fff; border:1px solid #D3D5DF;
+  border-radius:12px; box-shadow:0 20px 40px rgba(0,0,0,0.12); overflow:hidden;
+}
+.ha-modal__header, .ha-modal__footer{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; background:#F6FAF9; border-bottom:1px solid #D3D5DF;}
+.ha-modal__footer{border-top:1px solid #D3D5DF; border-bottom:none;}
+.ha-modal__body{padding:16px;}
+.ha-modal__title{font-weight:700; color:#0F172A;}
+.ha-modal__subtitle{color:#64748b; font-size:12px;}
+.ha-modal__close{border:none; background:#fff; border:1px solid #D3D5DF; border-radius:8px; width:36px; height:36px; cursor:pointer;}
+/* Inputs */
+.input{width:100%; padding:8px 10px; border:1px solid #D3D5DF; border-radius:6px;}
+.label{font-size:12px; color:#7C8A9A; margin-bottom:6px; display:block;}
+.table-responsive{overflow-x:auto;}
+.table th, .table td{padding:10px 12px; border-bottom:1px solid #F1F5F9; white-space:nowrap;}
+.btn{padding:8px 12px; border-radius:12px; border:1px solid #D3D5DF; cursor:pointer;}
+.btn-primary{background:#02AD82; border-color:#02AD82; color:#fff;}
+.btn-ghost{background:#F6FAF9; color:#0F172A;}
+.btn-danger{background:#fee2e2; color:#b91c1c; border-color:#fecaca;}
+.muted{color:#94A3B8;}
+</style>
+
+<script>
+(function(){
+  // --- افزودن: محاسبه مبلغ کل و نمایش فیلدهای چک
+  const pmNew = document.getElementById('pm-select-new');
+  const chequeBoxNew = document.getElementById('cheque-fields-new');
+  const netNew = document.querySelector('form[action$="expenses_new"] [name="amount_net"]');
+  const vatNew = document.querySelector('form[action$="expenses_new"] [name="vat_rate"]');
+  const feeNew = document.querySelector('form[action$="expenses_new"] [name="surcharge_percent"]');
+  const chipNew = document.getElementById('chip-total-new');
+
+  function fmt(n){ try{return (+n).toLocaleString('fa-IR')}catch(e){return n} }
+  function calcNew(){
+    const n = parseFloat(netNew?.value||0) || 0;
+    const v = parseFloat(vatNew?.value||0) || 0;
+    const s = parseFloat(feeNew?.value||0) || 0;
+    const total = n + (n*v/100) + (n*s/100);
+    if (chipNew) chipNew.textContent = 'مبلغ کل: ' + fmt(Math.round(total));
+  }
+  function toggleChequeNew(){
+    if (!pmNew || !chequeBoxNew) return;
+    chequeBoxNew.style.display = (pmNew.value === 'CHEQUE') ? 'block':'none';
+  }
+  ['input','change'].forEach(ev=>{
+    netNew?.addEventListener(ev, calcNew); vatNew?.addEventListener(ev, calcNew); feeNew?.addEventListener(ev, calcNew);
+    pmNew?.addEventListener(ev, toggleChequeNew);
+  });
+  calcNew(); toggleChequeNew();
+
+  // --- ویرایش با Modal
+  const modal = document.getElementById('expenseModal');
+  const form  = document.getElementById('expenseEditForm');
+  const pmEdit = document.getElementById('pm-select-edit');
+  const chequeBoxEdit = document.getElementById('cheque-fields-edit');
+  const netEdit = form?.querySelector('[name="amount_net"]');
+  const vatEdit = form?.querySelector('[name="vat_rate"]');
+  const feeEdit = form?.querySelector('[name="surcharge_percent"]');
+  const chipEdit = document.getElementById('chip-total-edit');
+  function calcEdit(){
+    const n = parseFloat(netEdit?.value||0) || 0;
+    const v = parseFloat(vatEdit?.value||0) || 0;
+    const s = parseFloat(feeEdit?.value||0) || 0;
+    const total = n + (n*v/100) + (n*s/100);
+    if (chipEdit) chipEdit.textContent = 'مبلغ کل: ' + fmt(Math.round(total));
+  }
+  function toggleChequeEdit(){
+    if (!pmEdit || !chequeBoxEdit) return;
+    chequeBoxEdit.style.display = (pmEdit.value === 'CHEQUE') ? 'block':'none';
+  }
+  ['input','change'].forEach(ev=>{
+    netEdit?.addEventListener(ev, calcEdit); vatEdit?.addEventListener(ev, calcEdit); feeEdit?.addEventListener(ev, calcEdit);
+    pmEdit?.addEventListener(ev, toggleChequeEdit);
+  });
+
+  function openModal(){ if(modal) modal.setAttribute('aria-hidden','false'); }
+  function closeModal(){ if(modal) modal.setAttribute('aria-hidden','true'); }
+
+  modal?.querySelectorAll('[data-close]').forEach(btn=> btn.addEventListener('click', closeModal));
+  modal?.addEventListener('click', (e)=>{ if(e.target === modal || e.target.classList.contains('ha-modal__backdrop')) closeModal(); });
+
+  // اتصال دکمه‌های ویرایش ردیف‌ها
+  document.querySelectorAll('[data-edit]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      if(!form) return;
+      // مقصد submit
+      const action = btn.getAttribute('data-edit-url');
+      form.setAttribute('action', action || '#');
+
+      // پرکردن فیلدها از data-*
+      function set(name, val){ const el=form.querySelector(`[name="${name}"]`); if(el){ el.value = (val ?? ''); } }
+      set('title', btn.dataset.title);
+      set('category', btn.dataset.category);
+      set('amount_net', btn.dataset.amount_net);
+      set('vat_rate', btn.dataset.vat_rate);
+      set('surcharge_percent', btn.dataset.surcharge_percent);
+      set('payment_method', btn.dataset.payment_method);
+      set('status', btn.dataset.status);
+      set('course_id', btn.dataset.course_id || '');
+      set('note', btn.dataset.note);
+      set('cheque_number', btn.dataset.cheque_number);
+      set('bank_name', btn.dataset.bank_name);
+      set('issuer_name', btn.dataset.issuer_name);
+      set('issue_date', btn.dataset.issue_date);
+      set('due_date', btn.dataset.due_date);
+      set('cheque_status', btn.dataset.cheque_status);
+
+      // وضعیت نمایش فیلدهای چک + محاسبه مبلغ کل
+      toggleChequeEdit(); calcEdit();
+      openModal();
     });
-    calc(); toggleCheque();
-  })();
+  });
+})();
 </script>
 {% endblock %}

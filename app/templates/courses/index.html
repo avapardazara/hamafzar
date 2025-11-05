@@ -22,7 +22,7 @@
       </colgroup>
       <thead>
         <tr>
-          <th>#</th>
+          <th>ردیف</th>
           <th>عنوان</th>
           <th>منتور</th>
           <th>وضعیت</th>
@@ -37,16 +37,16 @@
           <td class="ellipsis"><span class="ellipsis">{{ c.mentor_name or (c.mentor.full_name if c.mentor else '—') }}</span></td>
           <td>{{ 'فعال' if c.status=='ACTIVE' else 'آرشیو' }}</td>
           <td>
-            <div class="actions" style="display:inline-flex; gap:6px;">
+            <div class="btn-form" style="display:inline-flex; gap:6px;">
               <a class="btn btn-ghost" href="{{ url_for('courses.edit', id=c.id) }}">ویرایش</a>
               <a class="btn btn-ghost" href="{{ url_for('courses.sessions_view', course_id=c.id) }}">📋 حضور و غیاب</a>
 
               {% if c.status != 'ARCHIVED' %}
-              <form method="post" action="{{ url_for('courses.archive', id=c.id) }}" onsubmit="return confirm('بایگانی شود؟');" style="display:inline;">
+              <form method="post" action="{{ url_for('courses.archive', id=c.id) }}" onsubmit="return confirm('بایگانی شود؟');">
                 <button class="btn btn-ghost" type="submit">بایگانی</button>
               </form>
               {% endif %}
-              <form method="post" action="{{ url_for('courses.delete', id=c.id) }}" onsubmit="return confirm('حذف دائم شود؟');" style="display:inline;">
+              <form method="post" action="{{ url_for('courses.delete', id=c.id) }}" onsubmit="return confirm('حذف دائم شود؟');">
                 <button class="btn btn-ghost" type="submit">حذف</button>
               </form>
             </div>
@@ -65,7 +65,8 @@
   .data-table thead th { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; font-weight:700; color:#7C8A9A; background:#F8FAFC; text-align:right; padding:12px 14px; border-bottom:1px solid #EEF2F7; }
   .data-table td { padding:12px 14px; border-bottom:1px solid #F1F5F9; text-align:right; vertical-align:middle; white-space:nowrap; }
   .data-table tbody tr:hover td { background:#FBFDFF; }
-  .ellipsis { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; }
+  .ellipsis { max-width:100%; overflow:hidden; text-overflow:ellipsis; }
   .actions { display:inline-flex; gap:6px; align-items:center; }
+  .btn-form{display: grid; grid-column: auto;flex-wrap: wrap;}
 </style>
 {% endblock %}

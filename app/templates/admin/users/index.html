@@ -1,16 +1,14 @@
 {% extends "layouts/resource_list.html" %}
 {% set page_title = 'کاربران' %}
-{# اگر ساخت ادمین جدید داری، لینک بده؛ در غیر این صورت add_href را حذف کن #}
-{% set add_href = url_for('admin.users_index') %}
-{% set add_label = '+ ادمین جدید' %}
+{# دکمهٔ هدر لیست (اگر لی‌آوت رندر کند) — با :target باز می‌شود #}
 {% set search_placeholder = 'جستجو: نام‌کاربری / ایمیل' %}
 
 {% block colgroup %}
   <col style="width:6%;">   {# # #}
-  <col style="width:24%;">  {# نام‌کاربری #}
-  <col style="width:30%;">  {# ایمیل #}
-  <col style="width:20%;">  {# نقش #}
-  <col style="width:20%;">  {# اکشن #}
+  <col style="width:22%;">  {# نام‌کاربری #}
+  <col style="width:28%;">  {# ایمیل #}
+  <col style="width:14%;">  {# نقش #}
+  <col style="width:30%;">  {# اکشن #}
 {% endblock %}
 
 {% block thead %}
@@ -22,31 +20,259 @@
 {% endblock %}
 
 {% block tbody %}
+  {# ـــــ ردیف ابزار/دکمه‌های محلی داخل tbody تا ۱۰۰٪ رندر شوند ـــــ #}
+  <tr>
+    <td colspan="5" style="padding:0; border-bottom:none;">
+      <div class="card soft" style="display:flex; justify-content:flex-end; padding:12px; gap:8px;">
+        <a href="#create-user" class="btn btn-primary">+ کاربر جدید</a>
+      </div>
+
+      {# ـــــ استایل‌های محلی (بدون وابستگی به بلاک‌های دیگر) ـــــ #}
+      <style>
+        /* Tokens */
+        :root{
+          --ha-primary: #02AD82;
+          --ha-bg: #F6FAF9;
+          --ha-text: #0F172A;
+          --ha-border: #D3D5DF;
+        }
+        .input{width:100%; padding:8px 10px; border:1px solid var(--ha-border); border-radius:6px; font-family: Vazirmatn, sans-serif;}
+        .label{font-size:12px; color:#7C8A9A; margin-bottom:6px; display:block; font-weight:600;}
+        .btn{padding:8px 12px; border-radius:12px; border:1px solid var(--ha-border); cursor:pointer; font-family: Vazirmatn, sans-serif;}
+        .btn-primary{background:var(--ha-primary); border-color:var(--ha-primary); color:#fff;}
+        .btn-ghost{background:var(--ha-bg); color:var(--ha-text);}
+        .btn-danger{background:#fee2e2; color:#b91c1c; border-color:#fecaca;}
+
+        /* Modal base */
+        .ha-modal{position:fixed; inset:0; display:none; z-index:99999; direction:rtl;}
+        .ha-modal__backdrop{position:absolute; inset:0; background:rgba(15,23,42,0.4);}
+        .ha-modal__dialog{position:relative; margin:6vh auto; max-width:840px; background:#fff; border:1px solid var(--ha-border); border-radius:12px; box-shadow:0 24px 48px rgba(0,0,0,.14); overflow:hidden;}
+        .ha-modal__header,.ha-modal__footer{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; background:var(--ha-bg); border-bottom:1px solid var(--ha-border);}
+        .ha-modal__footer{border-top:1px solid var(--ha-border); border-bottom:0;}
+        .ha-modal__body{padding:16px;}
+        .ha-modal__title{font-weight:700; color:var(--ha-text);}
+        .ha-modal__subtitle{font-size:12px; color:#64748b;}
+        .ha-modal__close{display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--ha-border); background:#fff; border-radius:8px; width:36px; height:36px; cursor:pointer; text-decoration:none; color:var(--ha-text);}
+
+        /* Create modal: pure CSS (no JS) با :target */
+        #create-user.ha-modal:target{display:block;}
+
+        /* Edit modal: با data-open باز/بسته می‌شود */
+        #edit-user-modal[data-open="1"]{display:block;}
+      </style>
+
+      {# ـــــ مدال «ایجاد کاربر» — بدون JS برای باز/بسته‌شدن (CSS :target) ـــــ #}
+      <div id="create-user" class="ha-modal">
+        <a href="#" class="ha-modal__backdrop" aria-hidden="true"></a>
+        <div class="ha-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="ucTitle">
+          <div class="ha-modal__header">
+            <div>
+              <div id="ucTitle" class="ha-modal__title">کاربر جدید</div>
+              <div class="ha-modal__subtitle">اطلاعات را تکمیل کنید.</div>
+            </div>
+            <a href="#" class="ha-modal__close" title="بستن">×</a>
+          </div>
+          <form id="userCreateFormInline">
+            <div class="ha-modal__body">
+              <div class="grid" style="display:grid; grid-template-columns: repeat(12,1fr); gap:12px;">
+                <div style="grid-column: span 4;">
+                  <label class="label">نام کاربری</label>
+                  <input class="input" name="username" required>
+                </div>
+                <div style="grid-column: span 5;">
+                  <label class="label">ایمیل</label>
+                  <input class="input" type="email" name="email" required>
+                </div>
+                <div style="grid-column: span 3;">
+                  <label class="label">نقش</label>
+                  <select class="input" name="role" required>
+                    <option value="ADMIN">ADMIN</option>
+                    <option value="MENTOR">MENTOR</option>
+                    <option value="STUDENT">STUDENT</option>
+                  </select>
+                </div>
+                <div style="grid-column: span 6;">
+                  <label class="label">رمز عبور</label>
+                  <input class="input" type="password" name="password" minlength="6" required>
+                </div>
+                <div style="grid-column: span 6;">
+                  <label class="label">تکرار رمز عبور</label>
+                  <input class="input" type="password" name="password2" minlength="6" required>
+                </div>
+              </div>
+            </div>
+            <div class="ha-modal__footer">
+              <a href="#" class="btn btn-ghost">انصراف</a>
+              <button type="submit" class="btn btn-primary">افزودن</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {# ـــــ مدال «ویرایش کاربر» — با JS باز/بسته می‌شود (در همین tbody) ـــــ #}
+      <div id="edit-user-modal" class="ha-modal" aria-hidden="true">
+        <div class="ha-modal__backdrop" data-close-edit></div>
+        <div class="ha-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="ueTitle">
+          <div class="ha-modal__header">
+            <div>
+              <div id="ueTitle" class="ha-modal__title">ویرایش کاربر</div>
+              <div class="ha-modal__subtitle">نام کاربری/ایمیل/نقش را اصلاح کنید. رمز را خالی بگذارید تا تغییر نکند.</div>
+            </div>
+            <button type="button" class="ha-modal__close" data-close-edit>×</button>
+          </div>
+          <form id="userEditFormInline">
+            <input type="hidden" name="id">
+            <div class="ha-modal__body">
+              <div class="grid" style="display:grid; grid-template-columns: repeat(12,1fr); gap:12px;">
+                <div style="grid-column: span 4;">
+                  <label class="label">نام کاربری</label>
+                  <input class="input" name="username" required>
+                </div>
+                <div style="grid-column: span 5;">
+                  <label class="label">ایمیل</label>
+                  <input class="input" type="email" name="email" required>
+                </div>
+                <div style="grid-column: span 3;">
+                  <label class="label">نقش</label>
+                  <select class="input" name="role" required>
+                    <option value="ADMIN">ADMIN</option>
+                    <option value="MENTOR">MENTOR</option>
+                    <option value="STUDENT">STUDENT</option>
+                  </select>
+                </div>
+                <div style="grid-column: span 6;">
+                  <label class="label">رمز عبور جدید (اختیاری)</label>
+                  <input class="input" type="password" name="password" minlength="6">
+                </div>
+                <div style="grid-column: span 6;">
+                  <label class="label">تکرار رمز (اختیاری)</label>
+                  <input class="input" type="password" name="password2" minlength="6">
+                </div>
+              </div>
+            </div>
+            <div class="ha-modal__footer">
+              <button type="button" class="btn btn-ghost" data-close-edit>انصراف</button>
+              <button type="submit" class="btn btn-primary">ثبت تغییرات</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {# ـــــ اسکریپت‌های محلی (مستقل از block scripts) ـــــ #}
+      <script>
+        (function(){
+          /* ایجاد کاربر */
+          const fCreate = document.getElementById('userCreateFormInline');
+          if (fCreate){
+            fCreate.addEventListener('submit', async (e)=>{
+              e.preventDefault();
+              const fd = new FormData(fCreate);
+              const username = (fd.get('username')||'').trim();
+              const email    = (fd.get('email')||'').trim();
+              const role     = (fd.get('role')||'').toString().toUpperCase();
+              const pass1    = fd.get('password')||'';
+              const pass2    = fd.get('password2')||'';
+              if(!username || !email){ alert('نام کاربری و ایمیل الزامی است.'); return; }
+              if(pass1 !== pass2){ alert('رمزها یکسان نیستند.'); return; }
+              if(pass1.length < 6){ alert('طول رمز حداقل ۶ کاراکتر باشد.'); return; }
+              try{
+                const res = await fetch("{{ url_for('admin.users_create') }}", {
+                  method:'POST',
+                  headers:{'Content-Type':'application/json'},
+                  body: JSON.stringify({username, email, role, password: pass1})
+                });
+                const j = await res.json().catch(()=>({}));
+                if(!res.ok || !j.ok){ alert(j.error || 'خطا در ایجاد کاربر'); return; }
+                if (location.hash === '#create-user'){ history.replaceState(null,'',location.pathname+location.search); }
+                location.reload();
+              }catch{ alert('خطای شبکه'); }
+            });
+          }
+
+          /* ویرایش کاربر */
+          const editModal = document.getElementById('edit-user-modal');
+          const fEdit = document.getElementById('userEditFormInline');
+          function openEdit(){ editModal && editModal.setAttribute('data-open','1'); }
+          function closeEdit(){ editModal && editModal.removeAttribute('data-open'); }
+          editModal?.querySelectorAll('[data-close-edit]').forEach(b=> b.addEventListener('click', closeEdit));
+          editModal?.addEventListener('click', (e)=>{ if(e.target===editModal) closeEdit(); });
+
+          // در دسترس برای ردیف‌ها
+          window.__openEditUser = function(id, username, email, role){
+            if(!fEdit) return;
+            fEdit.querySelector('[name="id"]').value        = id || '';
+            fEdit.querySelector('[name="username"]').value  = username || '';
+            fEdit.querySelector('[name="email"]').value     = email || '';
+            fEdit.querySelector('[name="role"]').value      = (role || 'ADMIN').toUpperCase();
+            fEdit.querySelector('[name="password"]').value  = '';
+            fEdit.querySelector('[name="password2"]').value = '';
+            openEdit();
+          };
+
+          fEdit?.addEventListener('submit', async (e)=>{
+            e.preventDefault();
+            const fd = new FormData(fEdit);
+            const id       = fd.get('id');
+            const username = (fd.get('username')||'').trim();
+            const email    = (fd.get('email')||'').trim();
+            const role     = (fd.get('role')||'').toString().toUpperCase();
+            const pass1    = fd.get('password')||'';
+            const pass2    = fd.get('password2')||'';
+            if(!username || !email){ alert('نام کاربری و ایمیل الزامی است.'); return; }
+            if(pass1 && pass1 !== pass2){ alert('رمزها یکسان نیستند.'); return; }
+
+            try{
+              const url = `{{ url_for('admin.users_update', user_id=0) }}`.replace('/0/','/'+id+'/');
+              const res = await fetch(url, {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({username, email, role, password: (pass1 || null)})
+              });
+              const j = await res.json().catch(()=>({}));
+              if(!res.ok || !j.ok){ alert(j.error || 'خطا در ویرایش کاربر'); return; }
+              closeEdit();
+              location.reload();
+            }catch{ alert('خطای شبکه'); }
+          });
+
+          /* حذف کاربر: به‌صورت inline در هر ردیف هندل می‌شود */
+        })();
+      </script>
+    </td>
+  </tr>
+
+  {# ـــــ ردیف‌های کاربران ـــــ #}
   {% for u in users %}
     <tr>
       <td>{{ loop.index }}</td>
       <td><span class="ellipsis">{{ u.username }}</span></td>
       <td><span class="ellipsis">{{ u.email or '—' }}</span></td>
-      <td><span class="ellipsis">{{ (u.role or '').upper() }}</span></td>
+      <td><span class="ellipsis">{{ (u.role or '—')|upper }}</span></td>
       <td>
-        <div class="actions">
-          <a class="btn btn-ghost" href="{{ url_for('admin.route_to_profile_edit', user_id=u.id) }}">ویرایش پروفایل</a>
-          <a class="btn btn-ghost" href="{{ url_for('admin.users_index') }}"
-             onclick="event.preventDefault(); openCreds('{{ u.id }}','{{ u.username }}','{{ u.email }}')">تغییر رمز/یوزرنیم</a>
+        <div class="actions" style="display:flex; gap:8px; flex-wrap:wrap;">
+          <a class="btn btn-ghost" href="#"
+             onclick="event.preventDefault(); window.__openEditUser && window.__openEditUser('{{u.id}}','{{u.username|e}}','{{(u.email or '')|e}}','{{(u.role or '')|upper}}')">
+            ویرایش حساب
+          </a>
+
+          <a class="btn btn-danger" href="#"
+             onclick="event.preventDefault(); (async function(id){
+               if(!confirm('کاربر حذف شود؟')) return;
+               try{
+                 const res = await fetch(`{{ url_for('admin.users_delete', user_id=0) }}`.replace('/0','/'+id), {
+                   method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({})
+                 });
+                 const j = await res.json().catch(()=>({}));
+                 if(!res.ok || !j.ok){ alert(j.error || 'حذف انجام نشد'); return; }
+                 location.reload();
+               }catch{ alert('خطای شبکه'); }
+             })('{{u.id}}');">
+            حذف
+          </a>
         </div>
       </td>
     </tr>
   {% else %}
     <tr><td colspan="5" class="muted">کاربری یافت نشد.</td></tr>
   {% endfor %}
-{% endblock %}
-
-{% block scripts %}
-{{ super() }}
-<script>
-  function openCreds(id, username, email){
-    // اینجا می‌تونی مدال/فرم تغییر رمز را باز کنی
-    console.log('edit creds for', id, username, email);
-  }
-</script>
 {% endblock %}

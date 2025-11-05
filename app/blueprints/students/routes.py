@@ -1,8 +1,8 @@
 # app/blueprints/students/routes.py
 from flask import (
-    Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify
+    Blueprint, render_template, request, redirect, url_for, flash, jsonify
 )
-from flask_login import login_required
+from flask_login import login_required,current_user  
 from sqlalchemy import or_, func
 from ...extensions import db
 from ...models.core import Student
@@ -12,13 +12,50 @@ from app.models.skill import Skill, StudentSkill
 from app.models.course import Course
 from app.models.payment import Payment
 from app.models.enrollment import Enrollment
-
+from app.models.user import User
 from datetime import datetime, date
-
+from werkzeug.security import generate_password_hash
+from sqlalchemy.exc import IntegrityError
 bp = Blueprint("students", __name__, url_prefix="/students")
 
 # ------------------------- Helpers: Payments -------------------------
+def _to_ascii_digits(s: str | None) -> str:
+    if not s: return ""
+    return s.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789"))
 
+def _digits_only(s: str | None) -> str:
+    return "".join(ch for ch in _to_ascii_digits(s) if ch.isdigit())
+
+def _normalize_national_code(s: str | None) -> str | None:
+    v = _digits_only(s)
+    return v or None
+
+def _normalize_phone(s: str | None) -> str | None:
+    v = _digits_only(s)
+    # 98xxxxxxxxxx -> 0xxxxxxxxx
+    if v.startswith("98") and len(v) == 12:
+        v = "0" + v[2:]
+    return v or None
+def _resolve_student_for_user(u) -> Student | None:
+    """با اولویت user_id سپس email دانشجو را برای کاربر جاری پیدا می‌کند."""
+    # اگر ستون user_id روی مدل Student داری:
+    if hasattr(Student, "user_id"):
+        s = Student.query.filter_by(user_id=u.id, is_deleted=False).first()
+        if s:
+            return s
+
+    # fallback با ایمیل (case-insensitive)
+    email = ((getattr(u, "email", None) or "").strip().lower())
+    if email:
+        s = (
+            Student.query
+            .filter(func.lower(Student.email) == email, Student.is_deleted == False)
+            .first()
+        )
+        if s:
+            return s
+
+    return None
 def _normalize_kind(val: str) -> str:
     v = (val or "").strip().lower()
     if v in ("in", "income", "receive", "received"):
@@ -53,7 +90,45 @@ def _payment_is_pay_expr():
     return or_(*cols) if cols else False
 
 # ------------------------- Helpers: misc -------------------------
+def _attach_account_if_requested(form, person_obj, role_name="STUDENT"):
+    """
+    اگر کاربر در فرم تیک ساخت حساب را زده باشد، یک User با نقش role_name می‌سازیم.
+    - یوزرنیم و ایمیل یکتا چک می‌شوند.
+    - پسورد >= 6 و match.
+    - اگر Student/Mentor ستون user_id داشته باشد، لینک می‌شود.
+    """
+    create_flag = (form.get("acc_create") or "") == "1"
+    if not create_flag:
+        return True, None  # چیزی برای انجام نیست
 
+    username = (form.get("acc_username") or "").strip()
+    email    = (form.get("acc_email") or (getattr(person_obj, "email", "") or "")).strip()
+    pw1      = form.get("acc_password") or ""
+    pw2      = form.get("acc_password2") or ""
+
+    if not username or not email:
+        return False, "نام کاربری و ایمیل برای ساخت حساب الزامی است."
+    if pw1 != pw2:
+        return False, "رمزهای عبور یکسان نیستند."
+    if len(pw1) < 6:
+        return False, "طول رمز باید حداقل ۶ کاراکتر باشد."
+
+    # یکتایی
+    if User.query.filter_by(username=username).first():
+        return False, "این نام کاربری قبلاً ثبت شده است."
+    if User.query.filter_by(email=email).first():
+        return False, "این ایمیل قبلاً ثبت شده است."
+
+    u = User(username=username, email=email, role=(role_name or "STUDENT").upper())
+    u.password_hash = generate_password_hash(pw1)
+    db.session.add(u)
+    db.session.flush()  # تا u.id داشته باشیم
+
+    # اگر ستون user_id روی مدل وجود داشت، لینک کن
+    if hasattr(person_obj, "user_id"):
+        person_obj.user_id = u.id
+
+    return True, None
 def _parse_date(s: str | None):
     if not s:
         return None
@@ -118,24 +193,118 @@ def create_form():
 def create():
     f = request.form
     first = (f.get("first_name") or "").strip()
-    last = (f.get("last_name") or "").strip()
-
+    last  = (f.get("last_name")  or "").strip()
     if not first or not last:
         flash("نام و نام خانوادگی الزامی است.", "error")
+        return redirect(url_for("students.create_form"))
+
+    # --- نرمال‌سازی ورودی‌ها (هلسپرها را بالای فایل داریم)
+    national_code = _normalize_national_code(f.get("national_code"))
+    phone         = _normalize_phone(f.get("phone"))
+    email         = (f.get("email") or "").strip() or None
+    address       = (f.get("address") or "").strip() or None
+    notes         = (f.get("notes") or "").strip() or None
+
+    # ---------- سناریوی احیا (restore) در صورت حذف نرم ----------
+    # اولویت تطبیق: کدملی > موبایل > ایمیل
+    cand = None
+    if national_code:
+        cand = Student.query.filter(Student.national_code == national_code).first()
+    if not cand and phone:
+        cand = Student.query.filter(Student.phone == phone).first()
+    if not cand and email:
+        cand = Student.query.filter(Student.email == email).first()
+
+    if cand:
+        if not cand.is_deleted:
+            # رکورد فعال است → تکراری
+            if cand.national_code == national_code and national_code:
+                flash("کد ملی تکراری است.", "error")
+            elif cand.phone == phone and phone:
+                flash("شماره موبایل تکراری است.", "error")
+            elif cand.email == email and email:
+                flash("ایمیل تکراری است.", "error")
+            else:
+                flash("رکورد مشابهی از قبل وجود دارد.", "error")
+            return redirect(url_for("students.create_form"))
+
+        # احیا: رکورد حذف‌شده را برگردان و فیلدها را به‌روزرسانی کن
+        cand.first_name    = first
+        cand.last_name     = last
+        cand.national_code = national_code
+        cand.phone         = phone
+        cand.email         = email
+        cand.address       = address
+        cand.notes         = notes
+        cand.is_deleted    = False
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash("احیای رکورد به دلیل یکتا بودن یکی از فیلدها ناموفق بود.", "error")
+            return redirect(url_for("students.create_form"))
+
+        # آپلود آواتار (اختیاری)
+        file = request.files.get("avatar")
+        if file:
+            rel_path = save_student_avatar(file, cand.id)
+            if not rel_path:
+                flash("فرمت تصویر مجاز نیست یا خطایی رخ داد.", "error")
+            else:
+                cand.avatar_path = rel_path
+                db.session.commit()
+
+        # ساخت حساب کاربری اختیاری (اگر هلسپرش را داری)
+        if "_attach_account_if_requested" in globals():
+            ok, err = _attach_account_if_requested(f, cand, role_name="STUDENT")
+            if not ok:
+                flash(err, "error")
+                return redirect(url_for("students.edit_form", student_id=cand.id))
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                flash("ساخت حساب کاربری به دلیل تکراری بودن ایمیل/یوزرنیم انجام نشد.", "error")
+                return redirect(url_for("students.edit_form", student_id=cand.id))
+
+        flash("رکورد قبلی احیا و به‌روزرسانی شد.", "success")
+        return redirect(url_for("students.profile", student_id=cand.id))
+
+    # ---------- سناریوی ساخت رکورد جدید ----------
+    # (چک یکتا برای رکوردهای فعال)
+    if national_code and Student.query.filter(Student.national_code == national_code, Student.is_deleted == False).first():
+        flash("کد ملی تکراری است.", "error")
+        return redirect(url_for("students.create_form"))
+    if phone and Student.query.filter(Student.phone == phone, Student.is_deleted == False).first():
+        flash("شماره موبایل تکراری است.", "error")
+        return redirect(url_for("students.create_form"))
+    if email and Student.query.filter(Student.email == email, Student.is_deleted == False).first():
+        flash("ایمیل تکراری است.", "error")
         return redirect(url_for("students.create_form"))
 
     s = Student(
         first_name=first,
         last_name=last,
-        national_code=(f.get("national_code") or "").strip() or None,
-        phone=(f.get("phone") or "").strip() or None,
-        email=(f.get("email") or "").strip() or None,
-        address=(f.get("address") or "").strip() or None,
-        notes=(f.get("notes") or "").strip() or None,
+        national_code=national_code,
+        phone=phone,
+        email=email,
+        address=address,
+        notes=notes,
     )
     db.session.add(s)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError as e:
+        db.session.rollback()
+        es = str(getattr(e, "orig", e))
+        msg = "ثبت انجام نشد؛ یکی از فیلدهای یکتا تکراری است."
+        if "students.national_code" in es: msg = "کد ملی تکراری است."
+        elif "students.phone" in es:      msg = "شماره موبایل تکراری است."
+        elif "students.email" in es:      msg = "ایمیل تکراری است."
+        flash(msg, "error")
+        return redirect(url_for("students.create_form"))
 
+    # آواتار
     file = request.files.get("avatar")
     if file:
         rel_path = save_student_avatar(file, s.id)
@@ -144,6 +313,19 @@ def create():
         else:
             s.avatar_path = rel_path
             db.session.commit()
+
+    # حساب کاربری اختیاری
+    if "_attach_account_if_requested" in globals():
+        ok, err = _attach_account_if_requested(f, s, role_name="STUDENT")
+        if not ok:
+            flash(err, "error")
+            return redirect(url_for("students.edit_form", student_id=s.id))
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash("ساخت حساب کاربری به دلیل تکراری بودن ایمیل/یوزرنیم انجام نشد.", "error")
+            return redirect(url_for("students.edit_form", student_id=s.id))
 
     flash("کارآموز با موفقیت اضافه شد.", "success")
     return redirect(url_for("students.list"))
@@ -528,7 +710,22 @@ def _finance_summary(student_id: int):
 def finance_summary(student_id: int):
     s = Student.query.get_or_404(student_id)
 
-    # همه پلان‌های مربوط به دانشجو (مستقیم یا از طریق enrollment)
+    # همهٔ ثبت‌نام‌های دانشجو + عنوان و آبجکت Course (برای استخراج شهریه)
+    enroll_rows = (
+        db.session.query(Enrollment.course_id, Course.title, Course)
+        .join(Course, Course.id == Enrollment.course_id)
+        .filter(Enrollment.student_id == s.id)
+        .all()
+    )
+
+    course_titles = {}
+    course_fees = {}
+    for cid, ctitle, cobj in enroll_rows:
+        cid = int(cid)
+        course_titles[cid] = ctitle
+        course_fees[cid] = _get_course_fee(cobj)
+
+    # همهٔ برنامه‌های قسط مرتبط با دانشجو (مستقیم/از طریق enrollment)
     student_en_ids = db.session.query(Enrollment.id).filter(Enrollment.student_id == s.id).subquery()
     plans = (
         InstallmentPlan.query
@@ -539,51 +736,74 @@ def finance_summary(student_id: int):
         .all()
     )
 
+    # per: تجمیع مالی دوره‌هایی که «قسط دارند» (منبع واحد = اقساط)
     per = {}
     for p in plans:
-        # course_id ایمن
         cid = getattr(p, "course_id", None)
         if not cid and getattr(p, "enrollment_id", None):
             en = Enrollment.query.get(p.enrollment_id)
             cid = en.course_id if en else None
-
-        # عنوان دوره
-        title = "—"
-        if cid:
-            c = Course.query.get(cid)
-            if c:
-                title = c.title
-
-        # جمع‌ها از روی اقساط
+        if not cid:
+            continue
+        cid = int(cid)
+        title = course_titles.get(cid, "—")
         insts = p.installments or []
-        total = sum((i.amount_total or 0) for i in insts)
-        paid  = sum((i.amount_total or 0) for i in insts if (i.status or "").upper() == "PAID")
-
+        total = sum(int(i.amount_total or 0) for i in insts)
+        paid = sum(int(i.amount_total or 0) for i in insts if ((i.status or "").upper() == "PAID"))
         if cid not in per:
             per[cid] = {"course_id": cid, "course_title": title, "fee": 0, "paid": 0}
-        per[cid]["fee"]  += int(total)
-        per[cid]["paid"] += int(paid)
+        per[cid]["fee"] += total
+        per[cid]["paid"] += paid
 
-    items, total_balance = [], 0
-    for _, v in per.items():
-        bal = max(v["fee"] - v["paid"], 0)
-        v["balance"] = int(bal)
-        items.append(v)
+    items = []
+    total_balance = 0
+
+    # 1) دوره‌های دارای قسط
+    has_plan_courses = set([k for k in per.keys() if k is not None])
+    for cid, v in per.items():
+        bal = max(int(v["fee"]) - int(v["paid"]), 0)
+        row = dict(v, balance=int(bal))
+        items.append(row)
         total_balance += bal
 
+    # 2) دوره‌های بدون قسط → شهریهٔ دوره + جمع دریافتی‌های نقدی همان دوره (DB-side)
+    no_plan_course_ids = [cid for cid in course_titles.keys() if cid not in has_plan_courses]
+    if no_plan_course_ids:
+        pay_rows = (
+            db.session.query(
+                Payment.course_id,
+                func.coalesce(func.sum(Payment.amount), 0).label("sum_in"),
+            )
+            .filter(
+                Payment.student_id == s.id,
+                Payment.course_id.in_(no_plan_course_ids),
+                _payment_is_receive_expr(),
+            )
+            .group_by(Payment.course_id)
+            .all()
+        )
+        paid_map = {int(cid or 0): int(amount or 0) for cid, amount in pay_rows}
+
+        for cid in no_plan_course_ids:
+            fee = int(course_fees.get(cid, 0))
+            paid = int(paid_map.get(cid, 0))
+            bal = max(fee - paid, 0)
+            items.append({
+                "course_id": cid,
+                "course_title": course_titles.get(cid, "—"),
+                "fee": fee,
+                "paid": paid,
+                "balance": bal,
+            })
+            total_balance += bal
+
+    # مرتب‌سازی: بیشترین مانده اول
+    items.sort(key=lambda x: (-int(x["balance"]), x["course_title"] or ""))
     return jsonify({"items": items, "totals": {"balance": int(total_balance)}})
+
 @bp.get("/<int:student_id>/finance/installments")
 @login_required
 def finance_installments(student_id: int):
-    from flask import jsonify
-    from sqlalchemy import or_
-    from app.extensions import db
-    from app.models.core import Student
-    from app.models.installment_plan import InstallmentPlan
-    from app.models.installment import Installment
-    from app.models.enrollment import Enrollment
-    from app.models.course import Course
-
     # وجود دانشجو
     Student.query.get_or_404(student_id)
 
@@ -636,3 +856,16 @@ def finance_installments(student_id: int):
     # مرتب‌سازی: سررسید (خالی‌ها آخر) سپس شماره قسط
     items.sort(key=lambda x: (x["due_date"] is None, x["due_date"] or "", x["seq"] or 0))
     return jsonify({"items": items})
+@bp.get("/me")
+@login_required
+def me():
+    """پروفایل من (دانشجو): کاربر جاری را به /students/<id> ریدایرکت می‌کند."""
+    s = _resolve_student_for_user(current_user)
+    if not s:
+        from flask import flash, redirect, url_for
+        flash("برای حساب شما پروفایل دانشجویی پیدا نشد.", "error")
+        # ادمین را برگردان به لیست دانشجوها، سایرین به داشبورد
+        role = ((current_user.role or "").upper())
+        return redirect(url_for("students.list") if role == "ADMIN" else url_for("dashboard.index"))
+    from flask import redirect, url_for
+    return redirect(url_for("students.profile", student_id=s.id))

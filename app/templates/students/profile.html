@@ -51,6 +51,9 @@
     <button class="tab" data-tab="courses">دوره‌ها</button>
     <button class="tab" data-tab="skills">مهارت‌ها</button>
     <button class="tab" data-tab="finance">مالی</button>
+    {% if (current_user.role or '').upper() == 'ADMIN' %}
+      <button class="tab" data-tab="installments">مدیریت اقساط</button>
+    {% endif %}
   </div>
 
   <!-- Tab: Info -->
@@ -94,7 +97,9 @@
           <option value="DONE">به‌اتمام‌رسیده</option>
           <option value="DROPPED">انصراف</option>
         </select>
-        <button id="btnEnroll" class="btn btn-primary">افزودن</button>
+        {% if (current_user.role or '').upper() == 'ADMIN' %}
+          <button id="btnEnroll" class="btn btn-primary">افزودن</button>
+        {% endif %}
       </div>
     </div>
 
@@ -110,7 +115,7 @@
             <th>اکشن</th>
           </tr>
         </thead>
-        <tbody><!-- پر می‌شود --></tbody>
+        <tbody></tbody>
       </table>
     </div>
   </section>
@@ -142,10 +147,10 @@
 
   <!-- Tab: Finance -->
   <section id="tab-finance" class="tab-panel">
-    {# ست‌کردن نام مورد انتظار پارتشیال اقساط #}
     {% set student = s %}
     {% include "installments/_student_finance.html" %}
 
+    {% if (current_user.role or '').upper() == 'ADMIN' %}
     <div class="card" style="margin-bottom:12px;">
       <div style="display:grid; grid-template-columns: 1fr 140px 120px 1fr 120px; gap:8px; align-items:center;">
         <input type="text" id="payTitle" placeholder="شرح تراکنش (مثلاً شهریه ترم 1)" style="padding:8px 10px; border:1px solid #D3D5DF; border-radius:6px;">
@@ -160,6 +165,7 @@
         <button id="btnPayAdd" class="btn btn-primary">افزودن</button>
       </div>
     </div>
+    {% endif %}
 
     <!-- خلاصه per-course -->
     <div class="table-responsive" style="margin-bottom:10px;">
@@ -173,7 +179,7 @@
             <th>بدهی</th>
           </tr>
         </thead>
-        <tbody><!-- پر می‌شود --></tbody>
+        <tbody></tbody>
       </table>
     </div>
 
@@ -190,34 +196,44 @@
             <th>اکشن</th>
           </tr>
         </thead>
-        <tbody><!-- پر می‌شود --></tbody>
+        <tbody></tbody>
       </table>
     </div>
   </section>
+
+  {% if (current_user.role or '').upper() == 'ADMIN' %}
+  <!-- Tab: Installments (Admin only) -->
+  <section id="tab-installments" class="tab-panel">
+    <div class="table-responsive">
+      <table class="data-table" id="instTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>برنامه</th>
+            <th>دوره</th>
+            <th>قسط</th>
+            <th>سررسید</th>
+            <th>مبلغ کل</th>
+            <th>مبلغ پایه</th>
+            <th>کارمزد چک</th>
+            <th>وضعیت</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
 
 </div>
 {% endblock %}
 
 {% block scripts %}
 <style>
-/* Container */
 .profile { padding: 20px; }
-
-/* Header */
-.profile-header {
-  display: grid;
-  grid-template-columns: 120px 1fr auto;
-  gap: 20px;
-  align-items: center;
-}
-.avatar-wrap img, .avatar-fallback {
-  width: 120px; height: 120px; border-radius: 50%;
-  object-fit: cover; box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-}
-.avatar-fallback {
-  display:flex; align-items:center; justify-content:center;
-  background:#E5E7EB; font-size:42px; color:#6B7280;
-}
+.profile-header { display: grid; grid-template-columns: 120px 1fr auto; gap: 20px; align-items: center; }
+.avatar-wrap img, .avatar-fallback { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+.avatar-fallback { display:flex; align-items:center; justify-content:center; background:#E5E7EB; font-size:42px; color:#6B7280; }
 .name { margin:0; }
 .meta { display:flex; gap:10px; flex-wrap:wrap; margin:6px 0 10px; color:#6B7280; }
 .actions { display:flex; gap:10px; }
@@ -227,59 +243,42 @@
 .stat-val { font-size:20px; font-weight:800; color:#111827; }
 .stat-label { font-size:12px; color:#6B7280; }
 
-/* Tabs */
 .tabs { display:flex; gap:6px; margin:18px 0 10px; flex-wrap:wrap; }
 .tab { background:#F3F4F6; border:none; border-radius:8px; padding:8px 14px; cursor:pointer; }
 .tab.active { background:#02AD82; color:#fff; }
 .tab-panel { display:none; }
 
-/* Info grid */
 .grid.two { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
 .grid.two .full { grid-column:1 / -1; }
 .label { font-size:12px; color:#7C8A9A; margin-bottom:4px; }
 .value { font-weight:600; }
 
-/* Tables */
 .table-responsive { overflow-x:auto; }
 .data-table { width:100%; border-collapse:collapse; direction:rtl; table-layout:fixed; }
 .data-table th, .data-table td { padding:12px 14px; border-bottom:1px solid #F1F5F9; white-space:nowrap; text-align:right; }
 .data-table thead th { background:#F8FAFC; color:#7C8A9A; font-size:13px; font-weight:700; }
 
-/* Skills */
 .chips { display:flex; gap:8px; flex-wrap:wrap; }
 .chip { background:#F3F4F6; color:#374151; padding:6px 10px; border-radius:999px; font-size:12px; }
 
-.muted { color:#94A3B8; }
 .skills { display:grid; grid-template-columns: 1fr 1fr; gap: 20px; width:100%; }
 .skills .skill-card-section { background:#fff; border:1px solid #D3D5DF; border-radius:16px; padding:16px; box-shadow:0 4px 10px rgba(0,0,0,0.05); display:flex; flex-direction:column; }
 .skills h3 { margin:0 0 12px; color:#02AD82; font-size:18px; border-bottom:2px solid #D3D5DF; padding-bottom:6px; }
 
-@media (max-width: 900px) { .skills { grid-template-columns: 1fr; } }
-.skill-input { display:grid; grid-template-columns: 1fr 0.8fr 0.6fr 45px; gap: 8px; margin-bottom:10px; width:100%; box-sizing:border-box; }
-.skill-input input, .skill-input select { padding: 6px 8px; border:1px solid #D3D5DF; border-radius:6px; font-size:13px; width:100%; box-sizing:border-box; }
-.skill-input button { width:45px; height:34px; font-size:16px; border-radius:6px; border:none; cursor:pointer; background:#02AD82; color:#fff; }
-
 #enrollTable th, #enrollTable td { white-space:nowrap; }
 #enrollTable td .actions { display:inline-flex; gap:6px; align-items:center; }
 
-@media (max-width: 900px) {
-  .profile-header { grid-template-columns: 100px 1fr; }
-  .stats { grid-column:1 / -1; }
-}
-@media (max-width: 640px) {
-  .grid.two { grid-template-columns: 1fr; }
-}
+@media (max-width: 900px) { .profile-header { grid-template-columns: 100px 1fr; } .stats { grid-column:1 / -1; } .skills { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .grid.two { grid-template-columns: 1fr; } }
 </style>
 
 <script>
-// ---------- Student ID (reliable, global)
 const PROFILE_EL = document.getElementById('profile');
 const STUDENT_ID = Number(PROFILE_EL?.dataset.studentId || 0);
 
-// ---------- helpers
 function formatMoney(n){ try { return (+n).toLocaleString('fa-IR'); } catch(e){ return n; } }
 
-// ---------- Tabs
+// Tabs
 function initTabs(){
   const tabBtns = document.querySelectorAll('.tabs .tab');
   const panels = document.querySelectorAll('.tab-panel');
@@ -291,20 +290,21 @@ function initTabs(){
     const panel = document.getElementById('tab-'+key);
     if (panel) panel.style.display = 'block';
   }
-  tabBtns.forEach(btn => btn.addEventListener('click', () => show(btn.dataset.tab)));
+  tabBtns.forEach(btn => btn.addEventListener('click', () => {
+    show(btn.dataset.tab);
+    if (btn.dataset.tab === 'installments') loadInstallments();
+  }));
   const first = Array.from(tabBtns).find(b => b.classList.contains('active')) || tabBtns[0];
   if (first) show(first.dataset.tab);
 }
 
-// ---------- Skills
+// --- Simple fetch helper
 async function api(method, url, body){
-  const res = await fetch(url, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined
-  });
+  const res = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
   return res;
 }
+
+// Skills
 async function loadSkills(){
   const techList = document.getElementById('techList');
   const softList = document.getElementById('softList');
@@ -358,7 +358,7 @@ function wireSkillButtons(){
   [softInput,softDate,softHours].forEach(el=> el?.addEventListener('keydown', e=>{ if(e.key==='Enter') addSoft.click(); }));
 }
 
-// ---------- Courses
+// Courses
 function translateStatus(st){
   switch((st||'').toUpperCase()){
     case 'ONGOING': return 'درحال برگزاری';
@@ -421,7 +421,7 @@ function wireCoursesUI(){
   });
 }
 
-// ---------- Finance
+// Finance
 async function loadFinanceSummary(){
   const tbody = document.querySelector('#perCourseTable tbody');
   const topBalEl = document.getElementById('topBalanceVal');
@@ -512,8 +512,7 @@ function wireFinanceUI(){
     if(!t) return title.focus();
     if(!a || a<=0) return amount.focus();
     const res = await fetch(`{{ url_for('students.api_add_payment', student_id=0) }}`.replace('/0/payments', `/${STUDENT_ID}/payments`), {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
+      method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({title:t, amount:a, type:ty, course_id:cid})
     });
     if (res.ok){
@@ -527,16 +526,44 @@ function wireFinanceUI(){
   [title,amount].forEach(el=> el?.addEventListener('keydown', e=>{ if(e.key==='Enter') btn.click(); }));
 }
 
-/* --- حذف پیام خالیِ برنامه‌ی قسط از پارتشیال بدون تغییر استایل/کد پارتشیال --- */
+// Installments (Admin only)
+async function loadInstallments(){
+  const table = document.querySelector('#instTable tbody');
+  if (!table) return;
+  table.innerHTML = '';
+  const res = await fetch(`{{ url_for('students.finance_installments', student_id=0) }}`.replace('/0/finance/installments', `/${STUDENT_ID}/finance/installments`));
+  if (!res.ok){ table.innerHTML = '<tr><td colspan="9" class="muted">خطا در دریافت اقساط</td></tr>'; return; }
+  const data = await res.json();
+  const rows = data.items || [];
+  if (!rows.length){
+    table.innerHTML = '<tr><td colspan="9" class="muted">قسطی ثبت نشده است.</td></tr>';
+    return;
+  }
+  rows.forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML = `
+      <td>${i+1}</td>
+      <td>${r.plan_title || '—'}</td>
+      <td>${r.course_title || '—'}</td>
+      <td>${r.seq ?? '—'}</td>
+      <td>${r.due_date || '—'}</td>
+      <td>${formatMoney(r.amount_total || 0)}</td>
+      <td>${formatMoney(r.amount_base || 0)}</td>
+      <td>${formatMoney(r.cheque_fee_amount || 0)}</td>
+      <td>${r.status || 'PENDING'}</td>
+    `;
+    table.appendChild(tr);
+  });
+}
+
+// Cleanup message from partial (if exists)
 function removeInstallmentEmptyNote(){
   const financePanel = document.getElementById('tab-finance');
   if (!financePanel) return;
   const msg = 'برای این دانشجو برنامه‌ی قسطی ثبت نشده است.';
-  // هر نود متنی که دقیقاً این متن را دارد حذف می‌شود (در td/div/p/etc)
   const candidates = financePanel.querySelectorAll('td, div, p, span, small');
   candidates.forEach(el=>{
     if (el.textContent && el.textContent.trim() === msg){
-      // اگر ردیف جدول باشد، کل ردیف را حذف کن؛ در غیر اینصورت همان نود را.
       if (el.tagName === 'TD' && el.parentElement && el.parentElement.tagName === 'TR') {
         el.parentElement.remove();
       } else {
@@ -546,7 +573,6 @@ function removeInstallmentEmptyNote(){
   });
 }
 
-// ---------- Boot
 document.addEventListener('DOMContentLoaded', ()=>{
   if (!STUDENT_ID){ console.error('studentId missing'); return; }
   initTabs();
@@ -563,7 +589,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
   loadPayments();
   wireFinanceUI();
 
-  // حذف پیام خالی اقساط (از پارتشیال)
+  // Admin-only: preload installments if tab exists
+  if (document.getElementById('tab-installments')) loadInstallments();
+
   removeInstallmentEmptyNote();
 });
 </script>

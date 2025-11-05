@@ -1,6 +1,6 @@
 # app/blueprints/courses/routes.py
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
-from flask_login import login_required
+from flask_login import login_required, current_user
 from sqlalchemy import or_, and_, func
 from datetime import datetime, date as _date, timedelta as _td
 from app.extensions import db
@@ -736,3 +736,136 @@ def _serialize_student(st: Student):
         "email": st.email,
         "phone": st.phone,
     }
+
+@bp.get("/my")
+@login_required
+def my():
+    role = (current_user.role or "").upper()
+    q = (request.args.get("q") or "").strip()
+
+    # ADMIN همان صفحهٔ اصلی دوره‌ها را دارد
+    if role == "ADMIN":
+        return redirect(url_for("courses.index"))
+
+    items = []
+
+    if role == "STUDENT":
+        s = Student.query.filter_by(email=current_user.email).first()
+        if not s:
+            flash("پروفایل دانشجو برای این حساب یافت نشد.", "error")
+            return redirect(url_for("dashboard.index"))
+
+        query = (
+            db.session.query(Enrollment, Course)
+            .join(Course, Course.id == Enrollment.course_id)
+            .filter(Enrollment.student_id == s.id)
+        )
+        if q:
+            like = f"%{q}%"
+            # عنوان دوره یا نام منتور
+            query = query.filter(or_(Course.title.ilike(like),
+                                     getattr(Course, "mentor_name", "").ilike(like)))
+        rows = query.order_by(Enrollment.enrolled_at.desc()).all()
+        for e, c in rows:
+            items.append({
+                "course_id": int(c.id),
+                "title": c.title,
+                "mentor_name": getattr(c, "mentor_name", "") or "—",
+                "status": (e.status or "ONGOING"),
+                "enrolled_at": e.enrolled_at.strftime("%Y-%m-%d %H:%M") if getattr(e, "enrolled_at", None) else "—",
+            })
+        return render_template("courses/my.html", items=items, role=role, q=q)
+
+    if role == "MENTOR":
+        q_courses = Course.query
+        clauses = []
+        if hasattr(Course, "mentor_user_id"):
+            clauses.append(Course.mentor_user_id == current_user.id)
+        if hasattr(Course, "mentor_email"):
+            clauses.append(Course.mentor_email == current_user.email)
+        full_name = getattr(current_user, "full_name", None)
+        if full_name and hasattr(Course, "mentor_name"):
+            clauses.append(Course.mentor_name == full_name)
+
+        if clauses:
+            q_courses = q_courses.filter(or_(*clauses))
+        if q:
+            like = f"%{q}%"
+            q_courses = q_courses.filter(Course.title.ilike(like))
+
+        order_col = getattr(Course, "created_at", Course.id)
+        courses = q_courses.order_by(order_col.desc()).all()
+
+        for c in courses:
+            items.append({
+                "course_id": int(c.id),
+                "title": c.title,
+                "status": getattr(c, "status", "ONGOING") or "ONGOING",
+                "created_at": getattr(c, "created_at", None).strftime("%Y-%m-%d") if getattr(c, "created_at", None) else "—",
+            })
+        return render_template("courses/my.html", items=items, role=role, q=q)
+
+    return redirect(url_for("dashboard.index"))
+    role = (current_user.role or "").upper()
+
+    # ADMIN را به لیست اصلی دوره‌ها بفرست؛ این صفحه فقط برای student/mentor است
+    if role == "ADMIN":
+        return redirect(url_for("courses.index"))
+
+    items = []
+
+    if role == "STUDENT":
+        # نگاشت کاربر به رکورد دانشجو (بر اساس ایمیل)
+        s = Student.query.filter_by(email=current_user.email).first()
+        if not s:
+            flash("پروفایل دانشجو برای این حساب یافت نشد.", "error")
+            return redirect(url_for("dashboard.index"))
+
+        rows = (
+            db.session.query(Enrollment, Course)
+            .join(Course, Course.id == Enrollment.course_id)
+            .filter(Enrollment.student_id == s.id)
+            .order_by(Enrollment.enrolled_at.desc())
+            .all()
+        )
+        for e, c in rows:
+            items.append({
+                "course_id": int(c.id),
+                "title": c.title,
+                "mentor_name": getattr(c, "mentor_name", "") or "",
+                "status": (e.status or "ONGOING"),
+                "enrolled_at": e.enrolled_at.strftime("%Y-%m-%d %H:%M") if getattr(e, "enrolled_at", None) else "—",
+            })
+
+        return render_template("courses/my.html", items=items, role=role)
+
+    if role == "MENTOR":
+        # دوره‌های منتور: با حداکثر سازگاری نسبت به اسکیمای موجود
+        q = Course.query
+        clauses = []
+        if hasattr(Course, "mentor_user_id"):
+            clauses.append(Course.mentor_user_id == current_user.id)
+        if hasattr(Course, "mentor_email"):
+            clauses.append(Course.mentor_email == current_user.email)
+        # fallback: اگر full_name در User دارید و در Course.mentor_name ذخیره می‌کنید
+        full_name = getattr(current_user, "full_name", None)
+        if full_name and hasattr(Course, "mentor_name"):
+            clauses.append(Course.mentor_name == full_name)
+
+        if clauses:
+            q = q.filter(or_(*clauses))
+        # اگر هیچ کلازی نبود، لیست خالی می‌دهیم (امن)
+        courses = q.order_by(getattr(Course, "created_at", Course.id).desc()).all()
+
+        for c in courses:
+            items.append({
+                "course_id": int(c.id),
+                "title": c.title,
+                "status": getattr(c, "status", "ONGOING") or "ONGOING",
+                "created_at": getattr(c, "created_at", None).strftime("%Y-%m-%d") if getattr(c, "created_at", None) else "—",
+            })
+
+        return render_template("courses/my.html", items=items, role=role)
+
+    # نقش‌های دیگر: به داشبورد برگرد
+    return redirect(url_for("dashboard.index"))

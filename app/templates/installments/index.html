@@ -1,57 +1,139 @@
-{% extends "base.html" %}
-{% block title %}برنامه‌های اقساط | هم‌افزار{% endblock %}
-{% block page_title %}برنامه‌های اقساط{% endblock %}
+{% extends "layouts/resource_list.html" %}
+{% set page_title = 'مدیریت اقساط' %}
 
-{% block content %}
-<div class="card" style="direction:rtl; max-width:1100px; margin:auto;">
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-    <div class="muted">فهرست همه برنامه‌ها</div>
-    <a class="btn btn-primary" href="{{ url_for('installments.create_form') }}">ایجاد برنامه جدید</a>
-  </div>
+{# دکمه افزودن فقط برای ادمین #}
+{% if (current_user.role or '').upper() == 'ADMIN' %}
+  {% set add_href = '#plan-create' %}
+  {% set add_label = '+ برنامه قسط جدید' %}
+{% endif %}
 
-  <div class="table-responsive">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>عنوان</th>
-          <th>دانشجو</th>
-          <th>دوره</th>
-          <th>تعداد اقساط</th>
-          <th>مبلغ کل</th>
-          <th>پرداخت‌شده</th>
-          <th>مانده</th>
-          <th>وضعیت</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% if rows %}
-          {% for r in rows %}
-            <tr>
-              <td>{{ loop.index }}</td>
-              <td>{{ r.plan.title or '—' }}</td>
-              <td>
-                {% if r.plan.enrollment and r.plan.enrollment.student %}
-                  {{ (r.plan.enrollment.student.first_name or '') ~ ' ' ~ (r.plan.enrollment.student.last_name or '') }}
-                {% elif r.plan.student %}
-                  {{ (r.plan.student.first_name or '') ~ ' ' ~ (r.plan.student.last_name or '') }}
-                {% else %} — {% endif %}
-              </td>
-              <td>{{ r.plan.enrollment.course.title if r.plan.enrollment and r.plan.enrollment.course else (r.plan.course.title if r.plan.course else '—') }}</td>
-              <td>{{ r.count }}</td>
-              <td>{{ "{:,}".format(r.total) }}</td>
-              <td>{{ "{:,}".format(r.paid) }}</td>
-              <td class="{{ 'text-danger' if r.remain>0 else 'text-success' }}">{{ "{:,}".format(r.remain) }}</td>
-              <td>{{ r.plan.status }}</td>
-              <td><a class="btn btn-ghost" href="{{ url_for('installments.details', plan_id=r.plan.id) }}">جزئیات</a></td>
-            </tr>
-          {% endfor %}
-        {% else %}
-          <tr><td colspan="10" class="muted">موردی وجود ندارد.</td></tr>
-        {% endif %}
-      </tbody>
-    </table>
+{% block colgroup %}
+  <col style="width:6%;">   {# # #}
+  <col style="width:34%;">  {# عنوان برنامه #}
+  <col style="width:24%;">  {# مربوط به (دانشجو/دوره) #}
+  <col style="width:16%;">  {# تعداد اقساط #}
+  <col style="width:20%;">  {# اکشن #}
+{% endblock %}
+
+{% block thead %}
+  <th>#</th>
+  <th>عنوان برنامه</th>
+  <th>مربوط به</th>
+  <th>تعداد اقساط</th>
+  <th>اکشن</th>
+{% endblock %}
+
+{% block tbody %}
+  {% for p in plans %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td class="ellipsis">{{ p.title or '—' }}</td>
+      <td class="ellipsis">
+        {% if p.student %}👤 {{ p.student.full_name }}{% endif %}
+        {% if p.course %}{% if p.student %} — {% endif %}📚 {{ p.course.title }}{% endif %}
+      </td>
+      <td>{{ (p.installments|length) or 0 }}</td>
+      <td>
+        <div class="actions" style="display:flex; gap:8px; flex-wrap:wrap;">
+          <a class="btn btn-ghost" href="{{ url_for('installments.details', plan_id=p.id) }}">جزئیات</a>
+
+          {# فقط ادمین: افزودن قسط در لیست #}
+          {% if (current_user.role or '').upper() == 'ADMIN' %}
+            <a class="btn btn-primary" href="{{ url_for('installments.details', plan_id=p.id) }}#add-installment">+ قسط جدید</a>
+          {% endif %}
+        </div>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="muted">برنامه‌ای ثبت نشده است.</td></tr>
+  {% endfor %}
+{% endblock %}
+
+{% block footer_extra %}
+  {# Modal ایجاد برنامه قسط — فقط ادمین #}
+  {% if (current_user.role or '').upper() == 'ADMIN' %}
+  <div id="plan-create" class="ha-modal" aria-hidden="true">
+    <div class="ha-modal__backdrop"></div>
+    <div class="ha-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="pcTitle">
+      <div class="ha-modal__header">
+        <div><div id="pcTitle" class="ha-modal__title">برنامه قسط جدید</div></div>
+        <button type="button" class="ha-modal__close" data-close>×</button>
+      </div>
+      <form id="planCreateForm">
+        <div class="ha-modal__body">
+          <div class="grid" style="display:grid; grid-template-columns: repeat(12,1fr); gap:12px;">
+            <div style="grid-column: span 8;">
+              <label class="label">عنوان برنامه</label>
+              <input class="input" name="title" required>
+            </div>
+            <div style="grid-column: span 4;">
+              <label class="label">دانشجو</label>
+              <select class="input" name="student_id" required>
+                {% for s in students %}
+                  <option value="{{ s.id }}">{{ s.full_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div style="grid-column: span 12;">
+              <label class="label">دوره (اختیاری)</label>
+              <select class="input" name="course_id">
+                <option value="">—</option>
+                {% for c in courses %}
+                  <option value="{{ c.id }}">{{ c.title }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="ha-modal__footer">
+          <button type="button" class="btn btn-ghost" data-close>انصراف</button>
+          <button type="submit" class="btn btn-primary">ایجاد</button>
+        </div>
+      </form>
+    </div>
   </div>
-</div>
+  {% endif %}
+{% endblock %}
+
+{% block styles_extra %}
+<style>
+.ha-modal{position:fixed; inset:0; display:none; z-index:1000; direction:rtl;}
+.ha-modal[aria-hidden="false"]{display:block;}
+.ha-modal__backdrop{position:absolute; inset:0; background:rgba(15,23,42,0.4);}
+.ha-modal__dialog{position:relative; margin:6vh auto; max-width:760px; background:#fff; border:1px solid #D3D5DF; border-radius:12px; box-shadow:0 24px 48px rgba(0,0,0,.14); overflow:hidden;}
+.ha-modal__header,.ha-modal__footer{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; background:#F6FAF9; border-bottom:1px solid #D3D5DF;}
+.ha-modal__footer{border-top:1px solid #D3D5DF; border-bottom:0;}
+.ha-modal__body{padding:16px;}
+.ha-modal__title{font-weight:700; color:#0F172A;}
+.ha-modal__close{border:1px solid #D3D5DF; background:#fff; border-radius:8px; width:36px; height:36px; cursor:pointer}
+</style>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{% if (current_user.role or '').upper() == 'ADMIN' %}
+<script>
+(function(){
+  const modal = document.getElementById('plan-create');
+  function open(){ modal?.setAttribute('aria-hidden','false'); }
+  function close(){ modal?.setAttribute('aria-hidden','true'); }
+  document.addEventListener('click', (e)=>{
+    const a = e.target.closest('a[href="#plan-create"]');
+    if (a){ e.preventDefault(); open(); }
+    if (e.target === modal || e.target.classList.contains('ha-modal__backdrop') || e.target.hasAttribute('data-close')) close();
+  });
+  document.getElementById('planCreateForm')?.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const payload = Object.fromEntries(fd.entries());
+    const res = await fetch("{{ url_for('installments.api_create_plan') }}", {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    });
+    const j = await res.json().catch(()=>({}));
+    if(!res.ok || !j.ok) return alert(j.error || 'خطا در ایجاد برنامه');
+    location.reload();
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

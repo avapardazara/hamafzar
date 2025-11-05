@@ -2,12 +2,10 @@
 from flask import Blueprint, render_template, request, jsonify, url_for, redirect, flash
 from flask_login import login_required, current_user
 from sqlalchemy import or_
-
 from app.extensions import db
 from app.models.user import User
 from app.models.core import Student
-# از مدل منتور اگر داری بعداً اضافه کن:
-# from app.models.mentor import Mentor
+
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -37,9 +35,11 @@ def users_index():
 @bp.post("/users/<int:user_id>/update")
 def users_update(user_id):
     u = User.query.get_or_404(user_id)
-
     payload = request.get_json(silent=True) or {}
+
     new_username = (payload.get("username") or "").strip()
+    new_email    = (payload.get("email") or "").strip()
+    new_role     = (payload.get("role") or "").strip().upper()
     new_password = payload.get("password") or ""
 
     if new_username:
@@ -47,6 +47,17 @@ def users_update(user_id):
         if exists:
             return jsonify({"ok": False, "error": "username_taken"}), 409
         u.username = new_username
+
+    if new_email:
+        exists = User.query.filter(User.id != u.id, User.email == new_email).first()
+        if exists:
+            return jsonify({"ok": False, "error": "email_taken"}), 409
+        u.email = new_email
+
+    if new_role:
+        if new_role not in ("ADMIN", "MENTOR", "STUDENT"):
+            return jsonify({"ok": False, "error": "invalid_role"}), 400
+        u.role = new_role
 
     if new_password:
         if len(new_password) < 6:
@@ -110,3 +121,37 @@ def route_to_profile_edit(user_id):
 
     flash("نقش کاربر نامعتبر است.", "error")
     return redirect(url_for("admin.users_index"))
+@bp.post("/users/create")
+def users_create():
+    data = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip()
+    email    = (data.get("email") or "").strip()
+    role     = (data.get("role") or "ADMIN").strip().upper()
+    password = data.get("password") or ""
+
+    if role not in ("ADMIN", "MENTOR", "STUDENT"):
+        return jsonify({"ok": False, "error": "invalid_role"}), 400
+    if not username or not email or len(password) < 6:
+        return jsonify({"ok": False, "error": "invalid_input"}), 400
+
+    if User.query.filter_by(username=username).first():
+        return jsonify({"ok": False, "error": "username_taken"}), 409
+    if User.query.filter_by(email=email).first():
+        return jsonify({"ok": False, "error": "email_taken"}), 409
+
+    from werkzeug.security import generate_password_hash
+    u = User(username=username, email=email, role=role)
+    u.password_hash = generate_password_hash(password)
+    db.session.add(u)
+    db.session.commit()
+    return jsonify({"ok": True, "id": u.id}), 201
+
+@bp.post("/users/<int:user_id>/delete")
+def users_delete(user_id):
+    u = User.query.get_or_404(user_id)
+    # جلوگیری از حذف خود ادمین واردشده
+    if current_user.id == u.id:
+        return jsonify({"ok": False, "error": "cannot_delete_self"}), 400
+    db.session.delete(u)
+    db.session.commit()
+    return jsonify({"ok": True})
