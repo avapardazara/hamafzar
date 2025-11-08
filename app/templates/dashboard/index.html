@@ -40,5 +40,169 @@
       <div class="muted">داده‌ای نیست.</div>
     {% endif %}
   </div>
+  {# --- جلسات امروز - دانشجو --- #}
+{% if today_sessions_student is defined and today_sessions_student %}
+<div class="card soft" style="margin-bottom:16px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+    <div>
+      <div style="font-weight:700; color:#0F172A; font-size:15px;">
+        جلسات امروز شما
+      </div>
+      <div style="font-size:12px; color:#6B7280;">
+        لیست کلاس‌هایی که امروز برای شما برنامه‌ریزی شده است.
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:10px; display:flex; flex-direction:column; gap:8px;">
+    {% for s in today_sessions_student %}
+      <div class="ha-today-session">
+        <div class="ha-today-session-main">
+          <div class="ha-today-session-title">
+            {{ s.course.title if s.course else "بدون نام دوره" }}
+          </div>
+          <div class="ha-today-session-topic">
+            {{ s.topic or "جلسه آموزشی" }}
+          </div>
+        </div>
+        <div class="ha-today-session-meta">
+          <span class="ha-tag">
+            {{ s.session_date or "" }}
+          </span>
+          {% if s.start_time %}
+          <span class="ha-tag">
+            ساعت {{ "%02d:%02d"|format(s.start_time.hour, s.start_time.minute) }}
+          </span>
+          {% endif %}
+          {% if s.course and s.course.mentor %}
+          <span class="ha-tag muted">
+            منتور: {{ s.course.mentor.full_name or (s.course.mentor.first_name ~ " " ~ s.course.mentor.last_name) }}
+          </span>
+          {% endif %}
+        </div>
+        <div class="ha-today-session-actions">
+          <a href="{{ url_for('sessions.view', session_id=s.id) }}"
+             class="btn btn-primary btn-xs">
+            رفتن به صفحه کلاس
+          </a>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
 </div>
+{% endif %}
+{% if today_sessions_mentor is defined and today_sessions_mentor %}
+<div class="card soft" style="margin-bottom:16px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+    <div>
+      <div style="font-weight:700; color:#0F172A; font-size:15px;">
+        کلاس‌های امروز شما
+      </div>
+      <div style="font-size:12px; color:#6B7280;">
+        جلساتی که امروز مسئول برگزاری آن هستید.
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:10px; display:flex; flex-direction:column; gap:8px;">
+    {% for s in today_sessions_mentor %}
+      <div class="ha-today-session">
+        <div class="ha-today-session-main">
+          <div class="ha-today-session-title">
+            {{ s.course.title if s.course else "بدون نام دوره" }}
+          </div>
+          <div class="ha-today-session-topic">
+            {{ s.topic or "جلسه آموزشی" }}
+          </div>
+        </div>
+        <div class="ha-today-session-meta">
+          <span class="ha-tag">
+            {{ s.session_date or "" }}
+          </span>
+          {% if s.start_time %}
+          <span class="ha-tag">
+            ساعت {{ "%02d:%02d"|format(s.start_time.hour, s.start_time.minute) }}
+          </span>
+          {% endif %}
+        </div>
+        <div class="ha-today-session-actions">
+          <a href="{{ url_for('sessions.view', session_id=s.id) }}"
+             class="btn btn-primary btn-xs">
+            صفحه کلاس
+          </a>
+          <a href="{{ url_for('attendance.session', session_id=s.id) }}"
+             class="btn btn-ghost btn-xs">
+            حضور و غیاب
+          </a>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+</div>
+<style>
+.ha-today-session {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:10px 12px;
+  border:1px solid #E5E7EB;
+  border-radius:10px;
+  background:#FFFFFF;
+}
+
+.ha-today-session-main {
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+
+.ha-today-session-title {
+  font-weight:700;
+  font-size:13px;
+  color:#0F172A;
+}
+
+.ha-today-session-topic {
+  font-size:12px;
+  color:#6B7280;
+}
+
+.ha-today-session-meta {
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
+  font-size:10px;
+}
+
+.ha-today-session-actions {
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+
+.ha-tag {
+  padding:3px 8px;
+  border-radius:999px;
+  border:1px solid #D3D5DF;
+  background:#F9FAFB;
+  font-size:10px;
+  color:#0F172A;
+}
+
+.ha-tag.muted {
+  color:#6B7280;
+  border-color:#E5E7EB;
+}
+
+.btn-xs {
+  padding:4px 10px;
+  font-size:10px;
+  border-radius:8px;
+}
+</style>
+
 {% endblock %}
