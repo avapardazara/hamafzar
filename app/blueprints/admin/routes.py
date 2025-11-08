@@ -110,3 +110,25 @@ def route_to_profile_edit(user_id):
 
     flash("نقش کاربر نامعتبر است.", "error")
     return redirect(url_for("admin.users_index"))
+# ---------- حذف کاربر ----------
+@bp.post("/users/<int:user_id>/delete")
+@login_required
+def users_delete(user_id):
+    u = User.query.get_or_404(user_id)
+
+    # جلوگیری از حذف خودِ لاگین‌شده
+    if u.id == current_user.id:
+        flash("نمی‌توانی حساب کاربری خودت را حذف کنی.", "error")
+        return redirect(url_for("admin.users_index"))
+
+    # جلوگیری از حذف آخرین ادمین
+    if (u.role or "").upper() == "ADMIN":
+        admin_count = User.query.filter(User.role == "ADMIN").count()
+        if admin_count <= 1:
+            flash("نمی‌شود آخرین ادمین سیستم را حذف کرد.", "error")
+            return redirect(url_for("admin.users_index"))
+
+    db.session.delete(u)
+    db.session.commit()
+    flash("کاربر با موفقیت حذف شد.", "success")
+    return redirect(url_for("admin.users_index"))

@@ -1,52 +1,224 @@
-{% extends "layouts/resource_list.html" %}
-{% set page_title = 'کاربران' %}
-{# اگر ساخت ادمین جدید داری، لینک بده؛ در غیر این صورت add_href را حذف کن #}
-{% set add_href = url_for('admin.users_index') %}
-{% set add_label = '+ ادمین جدید' %}
-{% set search_placeholder = 'جستجو: نام‌کاربری / ایمیل' %}
+{% extends "base.html" %}
 
-{% block colgroup %}
-  <col style="width:6%;">   {# # #}
-  <col style="width:24%;">  {# نام‌کاربری #}
-  <col style="width:30%;">  {# ایمیل #}
-  <col style="width:20%;">  {# نقش #}
-  <col style="width:20%;">  {# اکشن #}
-{% endblock %}
+{% block title %}مدیریت کاربران{% endblock %}
 
-{% block thead %}
-  <th>#</th>
-  <th>نام کاربری</th>
-  <th>ایمیل</th>
-  <th>نقش</th>
-  <th>اکشن</th>
-{% endblock %}
+{% block content %}
 
-{% block tbody %}
-  {% for u in users %}
-    <tr>
-      <td>{{ loop.index }}</td>
-      <td><span class="ellipsis">{{ u.username }}</span></td>
-      <td><span class="ellipsis">{{ u.email or '—' }}</span></td>
-      <td><span class="ellipsis">{{ (u.role or '').upper() }}</span></td>
-      <td>
-        <div class="actions">
-          <a class="btn btn-ghost" href="{{ url_for('admin.route_to_profile_edit', user_id=u.id) }}">ویرایش پروفایل</a>
-          <a class="btn btn-ghost" href="{{ url_for('admin.users_index') }}"
-             onclick="event.preventDefault(); openCreds('{{ u.id }}','{{ u.username }}','{{ u.email }}')">تغییر رمز/یوزرنیم</a>
-        </div>
-      </td>
-    </tr>
-  {% else %}
-    <tr><td colspan="5" class="muted">کاربری یافت نشد.</td></tr>
-  {% endfor %}
-{% endblock %}
+<div class="page-header">
+  <h1 class="page-title">مدیریت کاربران</h1>
+</div>
 
-{% block scripts %}
-{{ super() }}
-<script>
-  function openCreds(id, username, email){
-    // اینجا می‌تونی مدال/فرم تغییر رمز را باز کنی
-    console.log('edit creds for', id, username, email);
-  }
-</script>
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-users">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>نام</th>
+          <th>ایمیل</th>
+          <th>نقش</th>
+          <th>وضعیت</th>
+          <th class="text-left">اقدامات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ loop.index }}</td>
+
+          <td>
+            <div class="user-cell">
+              <div class="user-name">
+                {{ u.full_name or u.username }}
+              </div>
+              {% if u.username %}
+              <div class="user-username">
+                @{{ u.username }}
+              </div>
+              {% endif %}
+            </div>
+          </td>
+
+          <td class="user-email">
+            {{ u.email or '—' }}
+          </td>
+
+          <td>
+            {% set role = (u.role or '').upper() %}
+            {% if role == 'ADMIN' %}
+              <span class="badge badge-success">ادمین</span>
+            {% elif role == 'MENTOR' %}
+              <span class="badge">منتور</span>
+            {% elif role == 'STUDENT' %}
+              <span class="badge badge-muted">دانشجو</span>
+            {% else %}
+              <span class="badge badge-muted">کاربر</span>
+            {% endif %}
+          </td>
+
+          <td>
+            {% if u.is_active %}
+              <span class="badge badge-success">فعال</span>
+            {% else %}
+              <span class="badge badge-muted">غیرفعال</span>
+            {% endif %}
+          </td>
+
+          <td>
+            <div class="actions">
+              <a class="btn btn-ghost"
+                 href="{{ url_for('admin.route_to_profile_edit', user_id=u.id) }}">
+                ویرایش
+              </a>
+
+              <button type="button"
+                      class="btn btn-ghost"
+                      onclick="openCreds('{{ u.id }}','{{ u.username }}','{{ u.email or '' }}')">
+                تغییر ورود
+              </button>
+
+              <form method="post"
+                    action="{{ url_for('admin.users_delete', user_id=u.id) }}"
+                    onsubmit="return confirm('حذف این کاربر قطعی است؟');">
+                <button type="submit" class="btn btn-danger">
+                  حذف
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center text-muted">
+            هیچ کاربری ثبت نشده است.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+  .page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.page-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0F172A;
+}
+
+.card {
+  background-color: #FFFFFF;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid #D3D5DF;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+}
+
+/* جدول کاربران در چارچوب کلی سایت */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table thead tr {
+  background-color: #F6FAF9;
+}
+
+.table th,
+.table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid #E5E7EB;
+  text-align: right;
+}
+
+.table th {
+  font-weight: 700;
+  color: #0F172A;
+  white-space: nowrap;
+}
+
+.table tbody tr:hover {
+  background-color: #F9FAFB;
+}
+
+.table-users .user-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.table-users .user-name {
+  font-weight: 600;
+  color: #0F172A;
+}
+
+.table-users .user-username {
+  font-size: 11px;
+  color: #6B7280;
+}
+
+.user-email {
+  font-family: Vazirmatn, system-ui;
+  direction: ltr;
+  text-align: left;
+  font-size: 11px;
+  color: #4B5563;
+}
+
+/* اکشن‌ها */
+.actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.actions form {
+  margin: 0;
+}
+
+/* دکمه حذف مطابق سیستم رنگ */
+.btn-danger {
+  background-color: #FEF2F2;
+  color: #B91C1C;
+  border-color: #FECACA;
+}
+
+.btn-danger:hover {
+  background-color: #FEE2E2;
+  color: #7F1D1D;
+  border-color: #FCA5A5;
+}
+
+/* Badge ها هماهنگ با سیستم */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 500;
+  background-color: #F6FAF9;
+  color: #0F172A;
+  border: 1px solid #D3D5DF;
+}
+
+.badge-success {
+  background-color: #ECFDF5;
+  color: #047857;
+  border-color: #BBF7D0;
+}
+
+.badge-muted {
+  opacity: 0.75;
+}
+
+</style>
 {% endblock %}
