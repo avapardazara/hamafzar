@@ -163,7 +163,7 @@
       <table class="data-table">
         <thead>
           <tr>
-            <th>#</th><th>دانشجو</th><th>دوره</th><th>شهریه</th><th>دریافتی</th><th>بدهی/مانده</th>
+            <th>#</th><th>دانشجو</th><th>دوره</th><th>شهریه</th><th>دریافتی</th><th>بدهی/مانده</th><th>اکشن</th>
           </tr>
         </thead>
 <tbody>
@@ -188,6 +188,48 @@
         <td>{{ "{:,}".format(fee) }}</td>
         <td>{{ "{:,}".format(rcv) }}</td>
         <td class="{{ 'text-danger' if bal>0 else 'text-success' }}">{{ "{:,}".format(bal) }}</td>
+        <td>
+          {% set plan_id = it.get('plan_id') %}
+          {% set en_id = it.get('en_id') %}
+          {% if bal > 0 %}
+            <div class="actions">
+              {# حالت اقساطی: plan_id موجود است #}
+              {% if plan_id %}
+                <form method="post"
+                      action="{{ url_for('finance.claims_settle', plan_id=plan_id) }}"
+                      class="inline-form">
+                  <button type="submit" class="btn btn-primary btn-xs">تسویه حساب</button>
+                </form>
+
+                <form method="post"
+                      action="{{ url_for('finance.claims_cancel', plan_id=plan_id) }}"
+                      class="inline-form"
+                      onsubmit="return confirm('بدهی این دانشجو برای این دوره و اقساط مرتبط حذف می‌شود (در صورت لغو ثبت‌نام). ادامه می‌دهی؟');">
+                  <button type="submit" class="btn btn-danger btn-xs">لغو دوره</button>
+                </form>
+
+              {# حالت نقدی: بدون اقساط، اما enrollment داریم #}
+              {% elif en_id %}
+                <form method="post"
+                      action="{{ url_for('finance.claims_settle_enrollment', enrollment_id=en_id) }}"
+                      class="inline-form">
+                  <button type="submit" class="btn btn-primary btn-xs">تسویه حساب</button>
+                </form>
+
+                <form method="post"
+                      action="{{ url_for('finance.claims_cancel_enrollment', enrollment_id=en_id) }}"
+                      class="inline-form"
+                      onsubmit="return confirm('برای حذف این بدهی باید ثبت‌نام دانشجو در این دوره لغو شده باشد. در صورت تأیید، این مطالبه از محاسبات حذف می‌شود. ادامه می‌دهی؟');">
+                  <button type="submit" class="btn btn-danger btn-xs">لغو دوره</button>
+                </form>
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </div>
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </td>
       </tr>
     {% endfor %}
   {% else %}
@@ -657,6 +699,21 @@
 .ha-modal__close{border:none; background:#fff; border:1px solid #D3D5DF; border-radius:8px; width:36px; height:36px; cursor:pointer;}
 .input{width:100%; padding:8px 10px; border:1px solid #D3D5DF; border-radius:6px;}
 .label{font-size:12px; color:#7C8A9A; margin-bottom:6px; display:block;}
+.inline-form {
+  display: inline;
+}
+
+.btn-xs {
+  padding: 4px 8px;
+  font-size: 10px;
+}
+
+.actions {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
 </style>
 
 <script>

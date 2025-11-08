@@ -51,7 +51,7 @@
     <button class="tab" data-tab="courses">دوره‌ها</button>
     <button class="tab" data-tab="skills">مهارت‌ها</button>
     <button class="tab" data-tab="finance">مالی</button>
-    {% if (current_user.role or '').upper() == 'ADMIN' %}
+    {% if (current_user.role or '').upper() == 'admin' %}
       <button class="tab" data-tab="installments">مدیریت اقساط</button>
     {% endif %}
   </div>
@@ -97,7 +97,7 @@
           <option value="DONE">به‌اتمام‌رسیده</option>
           <option value="DROPPED">انصراف</option>
         </select>
-        {% if (current_user.role or '').upper() == 'ADMIN' %}
+        {% if (current_user.role or '').upper() == 'admin' %}
           <button id="btnEnroll" class="btn btn-primary">افزودن</button>
         {% endif %}
       </div>
@@ -150,7 +150,7 @@
     {% set student = s %}
     {% include "installments/_student_finance.html" %}
 
-    {% if (current_user.role or '').upper() == 'ADMIN' %}
+    {% if (current_user.role or '').upper() == 'admin' %}
     <div class="card" style="margin-bottom:12px;">
       <div style="display:grid; grid-template-columns: 1fr 140px 120px 1fr 120px; gap:8px; align-items:center;">
         <input type="text" id="payTitle" placeholder="شرح تراکنش (مثلاً شهریه ترم 1)" style="padding:8px 10px; border:1px solid #D3D5DF; border-radius:6px;">
@@ -201,8 +201,8 @@
     </div>
   </section>
 
-  {% if (current_user.role or '').upper() == 'ADMIN' %}
-  <!-- Tab: Installments (Admin only) -->
+  {% if (current_user.role or '').upper() == 'admin' %}
+  <!-- Tab: Installments (admin only) -->
   <section id="tab-installments" class="tab-panel">
     <div class="table-responsive">
       <table class="data-table" id="instTable">
@@ -526,7 +526,7 @@ function wireFinanceUI(){
   [title,amount].forEach(el=> el?.addEventListener('keydown', e=>{ if(e.key==='Enter') btn.click(); }));
 }
 
-// Installments (Admin only)
+// Installments (admin only)
 async function loadInstallments(){
   const table = document.querySelector('#instTable tbody');
   if (!table) return;
@@ -589,7 +589,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   loadPayments();
   wireFinanceUI();
 
-  // Admin-only: preload installments if tab exists
+  // admin-only: preload installments if tab exists
   if (document.getElementById('tab-installments')) loadInstallments();
 
   removeInstallmentEmptyNote();

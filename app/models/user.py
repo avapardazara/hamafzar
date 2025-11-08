@@ -15,7 +15,7 @@ class User(UserMixin, db.Model):
     username      = db.Column(db.String(120), unique=True, index=True, nullable=False)
 
     password_hash = db.Column(db.String(256), nullable=False)
-    role          = db.Column(db.String(30), default="ADMIN", index=True)  # ساده: ADMIN, MENTOR, STUDENT, FINANCE
+    role          = db.Column(db.String(30), default="admin", index=True)  # ساده: admin, MENTOR, STUDENT, FINANCE
     is_active     = db.Column(db.Boolean, default=True, nullable=False)
     created_at    = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
@@ -25,6 +25,10 @@ class User(UserMixin, db.Model):
     def check_password(self, raw: str) -> bool:
         return check_password_hash(self.password_hash, raw)
 
+    @property
+    def is_admin(self) -> bool:
+        # مرجع: اگر نقش دقیقا admin (case-insensitive) بود
+        return (self.role or "").lower() == "admin"
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))

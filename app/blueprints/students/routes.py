@@ -866,6 +866,6 @@ def me():
         flash("برای حساب شما پروفایل دانشجویی پیدا نشد.", "error")
         # ادمین را برگردان به لیست دانشجوها، سایرین به داشبورد
         role = ((current_user.role or "").upper())
-        return redirect(url_for("students.list") if role == "ADMIN" else url_for("dashboard.index"))
+        return redirect(url_for("students.list") if role == "admin" else url_for("dashboard.index"))
     from flask import redirect, url_for
     return redirect(url_for("students.profile", student_id=s.id))

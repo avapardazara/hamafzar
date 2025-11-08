@@ -474,7 +474,7 @@ def _student_course_installment_totals():
 # =========================
 @bp.get("/")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def dashboard():
     today = date.today()
     start_month = date(today.year, today.month, 1)
@@ -660,18 +660,20 @@ def dashboard():
          .all()
      )
     for en, co, st in rows_base:
-        key = (int(st.id), int(co.id))
-        fee = int(per_inst.get(key, {}).get("fee", 0))
-        paid = int(per_inst.get(key, {}).get("paid", 0))
-        remain = max(fee - paid, 0)
-        print(f"[Student {st.id} - {st.first_name or ''} {st.last_name or ''}] Course: {co.title} | Fee: {fee:,} | Paid: {paid:,} | Remain: {remain:,}")
+        # محاسبات نهایی این ثبت‌نام بر اساس helper واحد
         fee, paid = _enrollment_financials(en)
         fee = int(fee or 0)
         paid = int(paid or 0)
         remain = max(fee - paid, 0)
+
+        # پلن(های) قسط مرتبط با این ثبت‌نام → اولین پلن را برای اکشن استفاده می‌کنیم
+        plans = _plans_for_enrollment(en)
+        plan_id = plans[0].id if plans else None
+
         rec_items.append(
             dict(
                 en_id=en.id,
+                plan_id=plan_id,
                 student_name=(f"{st.first_name or ''} {st.last_name or ''}".strip() or f"دانشجو #{st.id}"),
                 student_id=st.id,
                 course_title=co.title,
@@ -681,6 +683,7 @@ def dashboard():
                 remain=remain,
             )
         )
+
     rec_items.sort(key=lambda x: (-x["remain"], x["student_name"]))
 
     # === تب «دوره‌ها» ===
@@ -727,7 +730,6 @@ def dashboard():
             due=mf["due"],
         ))
 
-
     # === تب «اقساط» (فقط اقساط باز) ===
     inst_rows = []
     plans = InstallmentPlan.query.all()
@@ -757,7 +759,6 @@ def dashboard():
                 )
             )
     inst_rows.sort(key=lambda x: (x["due"] is None, x["due"] or "", x["title"]))
-
     # ---- نمایش داشبورد
     return render_template(
         "finance/dashboard.html",
@@ -794,7 +795,7 @@ def dashboard():
 # ------------------------ صفحات تفکیکی ------------------------
 @bp.get("/receivables")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def receivables():
     q = (request.args.get("q") or "").strip()
     course_id = request.args.get("course_id", type=int)
@@ -845,7 +846,7 @@ def receivables():
 
 @bp.get("/courses")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def courses_report():
     q = (request.args.get("q") or "").strip()
     mentor_id = request.args.get("mentor_id", type=int)
@@ -893,7 +894,7 @@ def courses_report():
 
 @bp.get("/mentors")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def mentors_report():
     rows = []
     for m in Mentor.query.order_by(Mentor.id.desc()).all():
@@ -911,7 +912,7 @@ def mentors_report():
 
 @bp.get("/installments")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def installments():
     """صفحه اقساط باز بر مبنای InstallmentPlan/Installment + مدیریت چک‌ها"""
     today = date.today()
@@ -981,7 +982,7 @@ def installments():
 # ------------------------ Expenses (costs) ------------------------
 @bp.get("/expenses")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def expenses_page():
     if not Expense:
         return render_template("finance/expenses.html", items=[], courses=Course.query.order_by(Course.title.asc()).all())
@@ -1005,7 +1006,7 @@ def expenses_page():
 
 @bp.post("/expenses/new")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def expenses_new():
     from app.models.expense import Expense as _Expense  # type: ignore
 
@@ -1077,7 +1078,7 @@ def expenses_new():
 # ------------------------ Assets (fixed assets) ------------------------
 @bp.get("/assets")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def assets_page():
     items = (
         Asset.query
@@ -1093,7 +1094,7 @@ def assets_page():
 
 @bp.post("/assets/new")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def assets_new():
     name = (request.form.get("name") or "").strip()
     if not name:
@@ -1150,7 +1151,7 @@ def assets_new():
 
 @bp.post("/assets/<int:asset_id>/edit")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def assets_edit(asset_id):
     a = Asset.query.get_or_404(asset_id)
 
@@ -1193,7 +1194,7 @@ def assets_edit(asset_id):
 
 @bp.post("/assets/<int:asset_id>/delete")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def assets_delete(asset_id):
     a = Asset.query.get_or_404(asset_id)
     try:
@@ -1208,7 +1209,7 @@ def assets_delete(asset_id):
 
 @bp.post("/expenses/<int:expense_id>/edit")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def expenses_edit(expense_id):
     exp = Expense.query.get_or_404(expense_id)
     f = request.form
@@ -1333,10 +1334,161 @@ def expenses_edit(expense_id):
 
 @bp.post("/expenses/<int:expense_id>/delete")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def expenses_delete(expense_id):
     exp = Expense.query.get_or_404(expense_id)
     db.session.delete(exp)
     db.session.commit()
     flash("هزینه حذف شد.", "info")
     return redirect(request.referrer or url_for("finance.expenses_page"))
+@bp.post("/claims/<int:plan_id>/settle")
+@login_required
+@role_required(["admin"])
+def claims_settle(plan_id):
+    plan = InstallmentPlan.query.get_or_404(plan_id)
+
+    pending_installments = [
+        ins for ins in (plan.installments or [])
+        if (ins.status or "").lower() not in ("paid", "settled")
+    ]
+
+    if not pending_installments:
+        flash("این دانشجو بدهی فعالی برای این دوره ندارد.", "info")
+        return redirect(url_for("finance.dashboard"))
+
+    now = datetime.utcnow()
+    for ins in pending_installments:
+        ins.status = "paid"
+        if hasattr(ins, "paid_at") and not getattr(ins, "paid_at", None):
+            ins.paid_at = now
+
+    db.session.commit()
+    flash("تسویه حساب دانشجو برای این دوره با موفقیت ثبت شد.", "success")
+    return redirect(url_for("finance.dashboard"))
+    # اقساطی که هنوز تسویه نشدن
+    pending_installments = [
+        ins for ins in plan.installments
+        if (ins.status or "").lower() not in ("paid", "settled")
+    ]
+
+    if not pending_installments:
+        flash("این دانشجو بدهی فعالی برای این دوره ندارد.", "info")
+        return redirect(url_for("finance.index", tab="claims"))
+
+    now = datetime.utcnow()
+
+    # منبع واحد محاسبه درآمد = اقساط → همین‌جا paid می‌کنیم
+    for ins in pending_installments:
+        ins.status = "paid"
+        if hasattr(ins, "paid_at"):
+            ins.paid_at = ins.paid_at or now
+
+    db.session.commit()
+    flash("تسویه حساب دانشجو برای این دوره با موفقیت ثبت شد.", "success")
+    return redirect(url_for("finance.index", tab="claims"))
+# ------------------ مطالبات مالی: لغو دوره ------------------ #
+
+@bp.post("/claims/<int:plan_id>/cancel")
+@login_required
+@role_required(["admin"])
+def claims_cancel(plan_id):
+    plan = InstallmentPlan.query.get_or_404(plan_id)
+    enrollment = getattr(plan, "enrollment", None)
+
+    inactive_statuses = {"cancelled", "canceled", "removed", "withdrawn"}
+
+    is_inactive = False
+    if enrollment is not None:
+        if hasattr(enrollment, "is_active"):
+            is_inactive = not bool(enrollment.is_active)
+        elif hasattr(enrollment, "active"):
+            is_inactive = not bool(enrollment.active)
+
+        status_val = str(getattr(enrollment, "status", "")).lower()
+        if status_val in inactive_statuses:
+            is_inactive = True
+
+    if not is_inactive:
+        flash("تا زمانی که ثبت‌نام دانشجو در این دوره لغو نشده، امکان حذف بدهی وجود ندارد.", "error")
+        return redirect(url_for("finance.dashboard"))
+
+    for ins in list(plan.installments or []):
+        db.session.delete(ins)
+
+    db.session.delete(plan)
+    db.session.commit()
+
+    flash("بدهی این دانشجو برای این دوره حذف شد و در محاسبات لحاظ نخواهد شد.", "success")
+    return redirect(url_for("finance.dashboard"))
+@bp.post("/claims/enrollment/<int:enrollment_id>/settle")
+@login_required
+@role_required(["admin"])
+def claims_settle_enrollment(enrollment_id):
+    en = Enrollment.query.get_or_404(enrollment_id)
+
+    # محاسبه‌ی بدهی این ثبت‌نام با helper واحد
+    fee, paid = _enrollment_financials(en)
+    fee = int(fee or 0)
+    paid = int(paid or 0)
+    remain = fee - paid
+
+    if remain <= 0:
+        flash("این دانشجو بدهی فعالی برای این دوره ندارد.", "info")
+        return redirect(url_for("finance.dashboard"))
+
+    # ثبت پرداخت نقدی برای مبلغ باقیمانده
+    p = Payment()
+
+    if hasattr(Payment, "amount"):
+        p.amount = remain
+    if hasattr(Payment, "status"):
+        p.status = "paid"
+    if hasattr(Payment, "kind"):
+        # اگر مدل kind دارد، آن را به شهریه تنظیم می‌کنیم
+        p.kind = "tuition"
+
+    now = datetime.utcnow()
+    if hasattr(Payment, "paid_at"):
+        p.paid_at = now
+
+    # لینک‌های ایمن به ثبت‌نام/دانشجو/دوره
+    if hasattr(Payment, "enrollment_id"):
+        p.enrollment_id = en.id
+    if hasattr(Payment, "student_id"):
+        p.student_id = en.student_id
+    if hasattr(Payment, "course_id"):
+        p.course_id = en.course_id
+
+    db.session.add(p)
+    db.session.commit()
+
+    flash("تسویه نقدی این دانشجو برای این دوره ثبت شد.", "success")
+    return redirect(url_for("finance.dashboard"))
+@bp.post("/claims/enrollment/<int:enrollment_id>/cancel")
+@login_required
+@role_required(["admin"])
+def claims_cancel_enrollment(enrollment_id):
+    en = Enrollment.query.get_or_404(enrollment_id)
+
+    # فقط اگر ثبت‌نام عملاً لغو شده باشد
+    inactive_statuses = {"cancelled", "canceled", "removed", "withdrawn"}
+
+    status_val = str(getattr(en, "status", "")).lower()
+    is_inactive = status_val in inactive_statuses
+
+    # اگر مدل فیلد is_active یا active دارد، در نظر بگیر
+    if hasattr(en, "is_active") and en.is_active is False:
+        is_inactive = True
+    if hasattr(en, "active") and not en.active:
+        is_inactive = True
+
+    if not is_inactive:
+        flash("برای حذف این بدهی، ابتدا ثبت‌نام دانشجو در این دوره را لغو کنید.", "error")
+        return redirect(url_for("finance.dashboard"))
+
+    # با لغو ثبت‌نام:
+    # - در rec_items دیگر نمایش داده نمی‌شود (فیلتر ACTIVE/ONGOING)
+    # - در _course_financials هم لحاظ نمی‌شود
+    # پس نیازی به دست‌کاری اضافه نیست.
+    flash("مطالبه این دانشجو برای این دوره از محاسبات مطالبات حذف شد.", "success")
+    return redirect(url_for("finance.dashboard"))

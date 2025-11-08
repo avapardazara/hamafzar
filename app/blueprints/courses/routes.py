@@ -743,8 +743,8 @@ def my():
     role = (current_user.role or "").upper()
     q = (request.args.get("q") or "").strip()
 
-    # ADMIN همان صفحهٔ اصلی دوره‌ها را دارد
-    if role == "ADMIN":
+    # admin همان صفحهٔ اصلی دوره‌ها را دارد
+    if role == "admin":
         return redirect(url_for("courses.index"))
 
     items = []
@@ -808,8 +808,8 @@ def my():
     return redirect(url_for("dashboard.index"))
     role = (current_user.role or "").upper()
 
-    # ADMIN را به لیست اصلی دوره‌ها بفرست؛ این صفحه فقط برای student/mentor است
-    if role == "ADMIN":
+    # admin را به لیست اصلی دوره‌ها بفرست؛ این صفحه فقط برای student/mentor است
+    if role == "admin":
         return redirect(url_for("courses.index"))
 
     items = []

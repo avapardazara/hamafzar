@@ -156,13 +156,13 @@
 <script>
 // ---- Safe context from data-attributes (no Jinja in JS)
 var __ctx = document.getElementById('inst-ctx');
-var IS_ADMIN = __ctx && __ctx.dataset && __ctx.dataset.isAdmin === '1';
+var IS_admin = __ctx && __ctx.dataset && __ctx.dataset.isadmin === '1';
 var PLAN_ID  = __ctx && __ctx.dataset ? parseInt(__ctx.dataset.planId || '0', 10) : 0;
 
 function openModal(el){ if (el) el.setAttribute('aria-hidden','false'); }
 function closeModal(el){ if (el) el.setAttribute('aria-hidden','true'); }
 
-if (IS_ADMIN) {
+if (IS_admin) {
   var btnAdd = document.getElementById('btnAddInst');
   if (btnAdd){
     btnAdd.addEventListener('click', async function(){

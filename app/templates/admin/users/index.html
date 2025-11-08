@@ -86,7 +86,7 @@
                 <div style="grid-column: span 3;">
                   <label class="label">نقش</label>
                   <select class="input" name="role" required>
-                    <option value="ADMIN">ADMIN</option>
+                    <option value="admin">admin</option>
                     <option value="MENTOR">MENTOR</option>
                     <option value="STUDENT">STUDENT</option>
                   </select>
@@ -135,7 +135,7 @@
                 <div style="grid-column: span 3;">
                   <label class="label">نقش</label>
                   <select class="input" name="role" required>
-                    <option value="ADMIN">ADMIN</option>
+                    <option value="admin">admin</option>
                     <option value="MENTOR">MENTOR</option>
                     <option value="STUDENT">STUDENT</option>
                   </select>
@@ -203,7 +203,7 @@
             fEdit.querySelector('[name="id"]').value        = id || '';
             fEdit.querySelector('[name="username"]').value  = username || '';
             fEdit.querySelector('[name="email"]').value     = email || '';
-            fEdit.querySelector('[name="role"]').value      = (role || 'ADMIN').toUpperCase();
+            fEdit.querySelector('[name="role"]').value      = (role || 'admin').toUpperCase();
             fEdit.querySelector('[name="password"]').value  = '';
             fEdit.querySelector('[name="password2"]').value = '';
             openEdit();
@@ -250,10 +250,16 @@
       <td><span class="ellipsis">{{ (u.role or '—')|upper }}</span></td>
       <td>
         <div class="actions" style="display:flex; gap:8px; flex-wrap:wrap;">
-          <a class="btn btn-ghost" href="#"
-             onclick="event.preventDefault(); window.__openEditUser && window.__openEditUser('{{u.id}}','{{u.username|e}}','{{(u.email or '')|e}}','{{(u.role or '')|upper}}')">
-            ویرایش حساب
-          </a>
+<a class="btn btn-ghost"
+   href="#"
+   onclick="window.__openEditUser && window.__openEditUser(
+       {{ u.id }},
+       '{{ (u.username or '')|e }}',
+       '{{ (u.email or '')|e }}',
+       '{{ (u.role or '')|upper }}'
+   )">
+  تغییر ورود
+</a>
 
           <a class="btn btn-danger" href="#"
              onclick="event.preventDefault(); (async function(id){

@@ -1,5 +1,6 @@
 # app/blueprints/admin/routes.py
-from flask import Blueprint, render_template, request, jsonify, url_for, redirect, flash
+from flask import Blueprint, render_template, request, jsonify, url_for, redirect, flash, abort
+
 from flask_login import login_required, current_user
 from sqlalchemy import or_
 from app.extensions import db
@@ -14,10 +15,8 @@ bp = Blueprint("admin", __name__, url_prefix="/admin")
 @bp.before_request
 @login_required
 def ensure_admin():
-    if (current_user.role or "").upper() != "ADMIN":
-        flash("دسترسی مجاز نیست.", "error")
-        return redirect(url_for("dashboard.index"))
-
+    if not getattr(current_user, "is_admin", False):
+        abort(403)
 
 # ---------- لیست کاربران ----------
 @bp.get("/users")
@@ -55,6 +54,7 @@ def users_update(user_id):
         u.email = new_email
 
     if new_role:
+        new_role = new_role.upper()
         if new_role not in ("ADMIN", "MENTOR", "STUDENT"):
             return jsonify({"ok": False, "error": "invalid_role"}), 400
         u.role = new_role
@@ -72,7 +72,7 @@ def users_update(user_id):
 # ---------- ساخت ادمین جدید (اختیاری) ----------
 @bp.post("/users/create-admin")
 def create_admin():
-    if (current_user.role or "").upper() != "ADMIN":
+    if not getattr(current_user, "is_admin", False):
         return jsonify({"ok": False, "error": "forbidden"}), 403
 
     data = request.get_json(silent=True) or {}
@@ -94,7 +94,6 @@ def create_admin():
     db.session.add(u)
     db.session.commit()
     return jsonify({"ok": True, "id": u.id}), 201
-
 
 # ---------- رفتن به صفحه ویرایش پروفایل بر اساس نقش ----------
 @bp.get("/users/<int:user_id>/edit-profile")
@@ -123,13 +122,17 @@ def route_to_profile_edit(user_id):
     return redirect(url_for("admin.users_index"))
 @bp.post("/users/create")
 def users_create():
+    if not current_user.is_admin:
+        return jsonify({"ok": False, "error": "forbidden"}), 403
     data = request.get_json(silent=True) or {}
     username = (data.get("username") or "").strip()
     email    = (data.get("email") or "").strip()
     role     = (data.get("role") or "ADMIN").strip().upper()
+    if role not in ("ADMIN", "MENTOR", "STUDENT"):
+        return jsonify({"ok": False, "error": "invalid_role"}), 400
     password = data.get("password") or ""
 
-    if role not in ("ADMIN", "MENTOR", "STUDENT"):
+    if role not in ("admin", "MENTOR", "STUDENT"):
         return jsonify({"ok": False, "error": "invalid_role"}), 400
     if not username or not email or len(password) < 6:
         return jsonify({"ok": False, "error": "invalid_input"}), 400

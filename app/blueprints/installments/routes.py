@@ -73,7 +73,7 @@ def _get_data():
 # ---------------------------
 @bp.get("/")
 @login_required
-@role_required(["ADMIN","STUDENT"])
+@role_required(["admin","STUDENT"])
 def index():
     # لیست پلن‌ها + پرلود قسط‌ها برای محاسبات (جلوگیری از N+1)
     plans = (
@@ -114,7 +114,7 @@ def index():
 # ---------------------------
 @bp.get("/new")
 @login_required
-@role_required(["ADMIN","STUDENT"])
+@role_required(["admin","STUDENT"])
 def create_form():
     courses = Course.query.order_by(Course.title.asc()).all()
     students = Student.query.order_by(Student.id.desc()).all()
@@ -146,7 +146,7 @@ def create_form():
 # ---------------------------
 @bp.post("/new")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def create_submit():
     title = (request.form.get("title") or "").strip()
     course_id = request.form.get("course_id", type=int)
@@ -218,7 +218,7 @@ def create_submit():
 # ---------------------------
 @bp.get("/<int:plan_id>")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def details(plan_id: int):
     plan = InstallmentPlan.query.get_or_404(plan_id)
     insts = (Installment.query
@@ -237,7 +237,7 @@ def details(plan_id: int):
 # ---------------------------
 @bp.post("/<int:plan_id>/pay/<int:inst_id>")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def pay_installment(plan_id: int, inst_id: int):
     plan = InstallmentPlan.query.get_or_404(plan_id)
     inst = Installment.query.filter_by(id=inst_id, plan_id=plan.id).first_or_404()
@@ -248,7 +248,7 @@ def pay_installment(plan_id: int, inst_id: int):
 
 @bp.post("/<int:plan_id>/unpay/<int:inst_id>")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def unpay_installment(plan_id: int, inst_id: int):
     plan = InstallmentPlan.query.get_or_404(plan_id)
     inst = Installment.query.filter_by(id=inst_id, plan_id=plan.id).first_or_404()
@@ -262,7 +262,7 @@ def unpay_installment(plan_id: int, inst_id: int):
 # -----------------------------------------------------------
 @bp.get("/student/<int:student_id>.json")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def api_student_installments(student_id: int):
     role = (current_user.role or "").upper()
 
@@ -371,7 +371,7 @@ def api_student_installments(student_id: int):
 # ========= CRUD چکِ قسط =========
 @bp.post("/cheques/new")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def cheque_new():
     if not InstallmentCheque:
         flash("مدل چک در سیستم فعال نیست.", "danger")
@@ -407,7 +407,7 @@ def cheque_new():
 
 @bp.post("/cheques/<int:cheque_id>/edit")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def cheque_edit(cheque_id):
     if not InstallmentCheque:
         flash("مدل چک در سیستم فعال نیست.", "danger")
@@ -446,7 +446,7 @@ def cheque_edit(cheque_id):
 
 @bp.post("/cheques/<int:cheque_id>/delete")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def cheque_delete(cheque_id):
     if not InstallmentCheque:
         flash("مدل چک در سیستم فعال نیست.", "danger")
@@ -464,7 +464,7 @@ def cheque_delete(cheque_id):
     return redirect(url_for("installments.create_form"))
 @bp.post("/<int:inst_id>/edit")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def installment_edit(inst_id):
     inst = Installment.query.get_or_404(inst_id)
 
@@ -530,7 +530,7 @@ def installment_edit(inst_id):
 
 @bp.post("/<int:inst_id>/delete")
 @login_required
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def installment_delete(inst_id):
     inst = Installment.query.get_or_404(inst_id)
 
@@ -552,7 +552,7 @@ def installment_delete(inst_id):
     return redirect(url_for("installments.create_form"))
 
 @bp.post("/api/plans/<int:plan_id>/installments/add")
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def api_add_installment(plan_id):
     # فقط برای اطمینان: پلن باید وجود داشته باشد
     plan = InstallmentPlan.query.get_or_404(plan_id)
@@ -592,7 +592,7 @@ def api_add_installment(plan_id):
 
 # ---------- API: update installment ----------
 @bp.post("/api/installments/<int:inst_id>/update")
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def api_update_installment(inst_id):
     inst = Installment.query.get_or_404(inst_id)
     data = _get_data()
@@ -634,7 +634,7 @@ def api_update_installment(inst_id):
 
 # ---------- API: mark paid ----------
 @bp.post("/api/installments/<int:inst_id>/mark_paid")
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def api_mark_paid(inst_id):
     inst = Installment.query.get_or_404(inst_id)
     if hasattr(inst, "status"):
@@ -645,7 +645,7 @@ def api_mark_paid(inst_id):
 
 # ---------- API: mark unpaid ----------
 @bp.post("/api/installments/<int:inst_id>/mark_unpaid")
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def api_mark_unpaid(inst_id):
     inst = Installment.query.get_or_404(inst_id)
     if hasattr(inst, "status"):
@@ -656,7 +656,7 @@ def api_mark_unpaid(inst_id):
 
 # ---------- API: delete installment ----------
 @bp.post("/api/installments/<int:inst_id>/delete")
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def api_delete_installment(inst_id):
     inst = Installment.query.get_or_404(inst_id)
 
@@ -674,7 +674,7 @@ def api_delete_installment(inst_id):
         db.session.rollback()
         return jsonify({"ok": False, "error": str(e)}), 500
 @bp.post("/<int:plan_id>/edit")
-@role_required(["ADMIN"])
+@role_required(["admin"])
 def plan_edit(plan_id: int):
     plan = InstallmentPlan.query.get_or_404(plan_id)
     d = request.form

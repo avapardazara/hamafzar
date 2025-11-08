@@ -27,7 +27,7 @@ bp = Blueprint("sessions", __name__, url_prefix="/sessions")
 def _can_manage_course(course: Course) -> bool:
     if not course:
         return False
-    if getattr(current_user, "role", None) == "ADMIN":
+    if getattr(current_user, "role", None) == "admin":
         return True
     return getattr(current_user, "id", None) == getattr(course, "mentor_id", None)
 
@@ -76,7 +76,7 @@ def list_by_course(course_id: int):
 # ---------- New / Create ----------
 @bp.get("/new/<int:course_id>")
 @login_required
-@role_required(["MENTOR", "ADMIN"])
+@role_required(["MENTOR", "admin"])
 def new(course_id: int):
     course = Course.query.get_or_404(course_id)
     if not _can_manage_course(course):
@@ -92,7 +92,7 @@ def new(course_id: int):
 
 @bp.post("/create/<int:course_id>")
 @login_required
-@role_required(["MENTOR", "ADMIN"])
+@role_required(["MENTOR", "admin"])
 def create(course_id: int):
     course = Course.query.get_or_404(course_id)
     if not _can_manage_course(course):
@@ -146,7 +146,7 @@ def view(session_id: int):
 # ---------- Edit / Update ----------
 @bp.get("/<int:session_id>/edit")
 @login_required
-@role_required(["MENTOR", "ADMIN"])
+@role_required(["MENTOR", "admin"])
 def edit(session_id: int):
     s = CourseSession.query.get_or_404(session_id)
     course = Course.query.get_or_404(s.course_id)
@@ -163,7 +163,7 @@ def edit(session_id: int):
 
 @bp.post("/<int:session_id>/update")
 @login_required
-@role_required(["MENTOR", "ADMIN"])
+@role_required(["MENTOR", "admin"])
 def update(session_id: int):
     s = CourseSession.query.get_or_404(session_id)
     course = Course.query.get_or_404(s.course_id)
@@ -194,7 +194,7 @@ def update(session_id: int):
 # ---------- Delete ----------
 @bp.post("/<int:session_id>/delete")
 @login_required
-@role_required(["MENTOR", "ADMIN"])
+@role_required(["MENTOR", "admin"])
 def delete(session_id: int):
     s = CourseSession.query.get_or_404(session_id)
     course = Course.query.get_or_404(s.course_id)
@@ -211,7 +211,7 @@ def delete(session_id: int):
 # ---------- Upload file ----------
 @bp.post("/<int:session_id>/files")
 @login_required
-@role_required(["MENTOR", "ADMIN"])
+@role_required(["MENTOR", "admin"])
 def upload_file(session_id: int):
     s = CourseSession.query.get_or_404(session_id)
     course = Course.query.get_or_404(s.course_id)
@@ -242,7 +242,7 @@ def upload_file(session_id: int):
 # ---------- Delete file ----------
 @bp.post("/files/<int:file_id>/delete")
 @login_required
-@role_required(["MENTOR", "ADMIN"])
+@role_required(["MENTOR", "admin"])
 def delete_file(file_id: int):
     # اگر SessionFile داری:
     # sf = SessionFile.query.get_or_404(file_id)

@@ -1,16 +1,32 @@
 from functools import wraps
 from flask import redirect, url_for, flash
-from flask_login import current_user
+from flask_login import current_user, login_required
 
-def role_required(roles):
-    """ Decorator to check if user has the required role(s). """
+def role_required(*roles):
+    """
+    استفاده:
+      @role_required("admin")
+      @role_required("ADMIN")
+      @role_required("admin", "MENTOR")
+      @role_required(["admin", "MENTOR"])
+    همه چیز case-insensitive چک می‌شود.
+    """
+
+    # اگر یه لیست/تاپل تکی پاس داده شده بود:
+    if len(roles) == 1 and isinstance(roles[0], (list, tuple, set)):
+        roles = roles[0]
+
+    allowed = {str(r).lower() for r in roles}
+
     def decorator(func):
         @wraps(func)
+        @login_required
         def wrapper(*args, **kwargs):
-            # بررسی که role کاربر در لیست roles قرار داره یا نه
-            if current_user.role not in roles:
+            user_role = (getattr(current_user, "role", "") or "").lower()
+            if user_role not in allowed:
                 flash("دسترسی مجاز نیست.", "error")
-                return redirect(url_for("dashboard.index"))  # یا هر صفحه دیگه‌ای که مناسب باشه
+                return redirect(url_for("dashboard.index"))
             return func(*args, **kwargs)
         return wrapper
+
     return decorator

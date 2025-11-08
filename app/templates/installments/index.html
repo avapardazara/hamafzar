@@ -2,7 +2,7 @@
 {% set page_title = 'مدیریت اقساط' %}
 
 {# دکمه افزودن فقط برای ادمین #}
-{% if (current_user.role or '').upper() == 'ADMIN' %}
+{% if (current_user.role or '').upper() == 'admin' %}
   {% set add_href = url_for('installments.create_form') %}
   {% set add_label = '+ برنامه قسط جدید' %}
 {% endif %}
@@ -46,7 +46,7 @@
 
 {% block footer_extra %}
   {# Modal ایجاد برنامه قسط — فقط ادمین #}
-  {% if (current_user.role or '').upper() == 'ADMIN' %}
+  {% if (current_user.role or '').upper() == 'admin' %}
   <div id="plan-create" class="ha-modal" aria-hidden="true">
     <div class="ha-modal__backdrop"></div>
     <div class="ha-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="pcTitle">
@@ -106,7 +106,7 @@
 
 {% block scripts %}
 {{ super() }}
-{% if (current_user.role or '').upper() == 'ADMIN' %}
+{% if (current_user.role or '').upper() == 'admin' %}
 <script>
 (function(){
   const modal = document.getElementById('plan-create');

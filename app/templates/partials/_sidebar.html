@@ -4,7 +4,7 @@
     <!-- داشبورد برای همه نقش‌ها -->
     <a href="{{ url_for('dashboard.index') }}" class="{{ 'active' if request.endpoint=='dashboard.index' else '' }}">🏠 داشبورد</a>
 
-    {% if current_user.role == 'ADMIN' %}
+    {% if current_user.role == 'admin' %}
       <!-- فقط برای Admin -->
        <a href="{{ url_for('courses.index') }}" class="{{ 'active' if request.blueprint=='courses' else '' }}">📚 دوره‌ها</a> 
    <a href="{{ url_for('mentors.list') }}" class="{{ 'active' if request.blueprint=='mentors' else '' }}">👨‍🏫 منتورها</a>
