@@ -3,7 +3,7 @@
 
 {# دکمه افزودن فقط برای ادمین #}
 {% if (current_user.role or '').upper() == 'ADMIN' %}
-  {% set add_href = '#plan-create' %}
+  {% set add_href = url_for('installments.create_form') %}
   {% set add_label = '+ برنامه قسط جدید' %}
 {% endif %}
 
@@ -36,11 +36,6 @@
       <td>
         <div class="actions" style="display:flex; gap:8px; flex-wrap:wrap;">
           <a class="btn btn-ghost" href="{{ url_for('installments.details', plan_id=p.id) }}">جزئیات</a>
-
-          {# فقط ادمین: افزودن قسط در لیست #}
-          {% if (current_user.role or '').upper() == 'ADMIN' %}
-            <a class="btn btn-primary" href="{{ url_for('installments.details', plan_id=p.id) }}#add-installment">+ قسط جدید</a>
-          {% endif %}
         </div>
       </td>
     </tr>
@@ -126,7 +121,7 @@
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const payload = Object.fromEntries(fd.entries());
-    const res = await fetch("{{ url_for('installments.api_create_plan') }}", {
+    const res = await fetch("{{ url_for('installments.create_form') }}", {
       method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
     });
     const j = await res.json().catch(()=>({}));

@@ -8,111 +8,129 @@
 {% block page_title %}{{ page_title }}{% endblock %}
 
 {% block content %}
-<form method="post" enctype="multipart/form-data" class="card" style="direction:rtl;">
-   <div class="form-group">
+{# --- تشخیص حالت صفحه --- #}
+{% set is_edit = (m is defined) and m and (m.id is not none) %}
+{% set form_action = url_for('mentors.update_basic', mentor_id=m.id) if is_edit else url_for('mentors.create_form') %}
+
+<form action="{{ form_action }}" method="post" enctype="multipart/form-data" class="card" style="direction:rtl;">
+  <div class="form-group">
     <div class="avatar-upload" style="position:relative; display:inline-block;">
-  <label for="avatar" style="cursor:pointer;">
-     {% if m.avatar %}
-      <img id="avatarPreview"
-           src="{{ url_for('files.uploaded_file', filename=m.avatar) }}"
-           alt="Avatar"
-           style="width:120px;height:120px;border-radius:50%;object-fit:cover;box-shadow:var(--elev-1);">
-    {% else %}
-      <div id="avatarPlaceholder"
-           style="width:120px;height:120px;border-radius:50%;background:#F3F4F6;display:flex;align-items:center;justify-content:center;font-size:32px;color:#9CA3AF;box-shadow:var(--elev-1);">
-        👤
-      </div>
-    {% endif %}
-  </label>
-
-  <input type="file"
-         name="avatar"
-         id="avatar"
-         accept="image/*"
-         style="display:none;"
-         onchange="previewAvatar(event)">
-
-  {% if m and m.avatar_path %}
-    <div style="margin-top:6px;">
-      <label style="font-size:13px;color:#EF4444;cursor:pointer;">
-        <input type="checkbox" name="delete_avatar" value="1"> حذف تصویر
+      <label for="avatar" style="cursor:pointer;">
+        {% if m and m.avatar %}
+          <img id="avatarPreview"
+               src="{{ url_for('files.uploaded_file', filename=m.avatar) }}"
+               alt="Avatar"
+               style="width:120px;height:120px;border-radius:50%;object-fit:cover;box-shadow:var(--elev-1);">
+        {% else %}
+          <div id="avatarPlaceholder"
+               style="width:120px;height:120px;border-radius:50%;background:#F3F4F6;display:flex;align-items:center;justify-content:center;font-size:32px;color:#9CA3AF;box-shadow:var(--elev-1);">
+            👤
+          </div>
+        {% endif %}
       </label>
-    </div>
-  {% endif %}
-</div>
 
-<script>
-  function previewAvatar(event) {
-    const file = event.target.files[0];
-    const preview = document.getElementById('avatarPreview');
-    const placeholder = document.getElementById('avatarPlaceholder');
-    if (file) {
-      const url = URL.createObjectURL(file);
-      if (preview) {
-        preview.src = url;
-      } else if (placeholder) {
-        const img = document.createElement('img');
-        img.id = 'avatarPreview';
-        img.src = url;
-        img.style.width = '120px';
-        img.style.height = '120px';
-        img.style.borderRadius = '50%';
-        img.style.objectFit = 'cover';
-        img.style.boxShadow = 'var(--elev-1)';
-        placeholder.replaceWith(img);
+      <input type="file"
+             name="avatar"
+             id="avatar"
+             accept="image/*"
+             style="display:none;"
+             onchange="previewAvatar(event)">
+
+      {% if is_edit and m.avatar %}
+        <div style="margin-top:6px;">
+          <label style="font-size:13px;color:#EF4444;cursor:pointer;">
+            <input type="checkbox" name="delete_avatar" value="1"> حذف تصویر
+          </label>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <script>
+    function previewAvatar(event) {
+      const file = event.target.files[0];
+      const preview = document.getElementById('avatarPreview');
+      const placeholder = document.getElementById('avatarPlaceholder');
+      if (file) {
+        const url = URL.createObjectURL(file);
+        if (preview) {
+          preview.src = url;
+        } else if (placeholder) {
+          const img = document.createElement('img');
+          img.id = 'avatarPreview';
+          img.src = url;
+          img.style.width = '120px';
+          img.style.height = '120px';
+          img.style.borderRadius = '50%';
+          img.style.objectFit = 'cover';
+          img.style.boxShadow = 'var(--elev-1)';
+          placeholder.replaceWith(img);
+        }
       }
     }
-  }
-</script>
+  </script>
 
-        <label>نام</label>
-        <input type="text" name="first_name" class="input" value="{{ m.first_name or '' }}" required>
-      </div>
-      <div class="form-group">
-        <label>نام خانوادگی</label>
-        <input type="text" name="last_name" class="input" value="{{ m.last_name or '' }}" required>
-      </div>
-      <div class="form-group" style="grid-column:1 / span 2;">
-        <label>ایمیل</label>
-        <input type="email" name="email" class="input" value="{{ m.email or '' }}">
-      </div>
-      <div class="form-group" style="grid-column:1 / span 2;">
-        <label>شماره تماس</label>
-        <input type="text" name="phone" class="input" value="{{ m.phone or '' }}">
-      </div>
-      <div class="card" style="grid-column:1 / -1;">
-  <div class="actions" style="justify-content:space-between;">
-    <div class="label" style="margin:0;">حساب کاربری ورود (اختیاری)</div>
-    <label style="display:flex; align-items:center; gap:6px;">
-      <input type="checkbox" name="acc_create" value="1"> ساخت حساب برای این منتور
-    </label>
+  <div class="form-group">
+    <label>نام</label>
+    <input type="text" name="first_name" class="input"
+           value="{{ (m.first_name if m else '') or request.form.get('first_name','') }}" required>
   </div>
 
-  <div class="grid two" style="gap:12px; margin-top:12px;">
-    <div>
-      <label class="label">نام کاربری</label>
-      <input class="input" name="acc_username" placeholder="username">
-    </div>
-    <div>
-      <label class="label">ایمیل ورود</label>
-      <input class="input" type="email" name="acc_email" placeholder="email@example.com">
-    </div>
-    <div>
-      <label class="label">رمز عبور</label>
-      <input class="input" type="password" name="acc_password" minlength="6" placeholder="حداقل ۶ کاراکتر">
-    </div>
-    <div>
-      <label class="label">تکرار رمز</label>
-      <input class="input" type="password" name="acc_password2" minlength="6" placeholder="تکرار رمز">
-    </div>
+  <div class="form-group">
+    <label>نام خانوادگی</label>
+    <input type="text" name="last_name" class="input"
+           value="{{ (m.last_name if m else '') or request.form.get('last_name','') }}" required>
   </div>
 
-  <small class="muted">اگر این بخش را خالی بگذاری یا تیک بالا را نزنی، حساب کاربری ساخته نمی‌شود.</small>
-</div>
-      <div class="form-actions" style="grid-column:1 / span 2; display:flex; gap:12px; justify-content:flex-start;">
-        <button type="submit" class="btn btn-primary">ثبت منتور</button>
-        <a class="btn btn-ghost" href="{{ url_for('mentors.list') }}">بازگشت به لیست</a>
+  <div class="form-group" style="grid-column:1 / span 2;">
+    <label>ایمیل</label>
+    <input type="email" name="email" class="input"
+           value="{{ (m.email if m else '') or request.form.get('email','') }}">
+  </div>
+
+  <div class="form-group" style="grid-column:1 / span 2;">
+    <label>شماره تماس</label>
+    <input type="text" name="phone" class="input"
+           value="{{ (m.phone if m else '') or request.form.get('phone','') }}">
+  </div>
+
+  {# بخش حساب کاربری اختیاری؛ فقط UI است، ارسال می‌شود ولی وابسته به is_edit نیست #}
+  <div class="card" style="grid-column:1 / -1;">
+    <div class="actions" style="justify-content:space-between;">
+      <div class="label" style="margin:0;">حساب کاربری ورود (اختیاری)</div>
+      <label style="display:flex; align-items:center; gap:6px;">
+        <input type="checkbox" id="acc_create" name="acc_create" value="1"> ساخت حساب برای این منتور
+      </label>
+    </div>
+
+    <div id="acc_fields" class="grid two" style="gap:12px; margin-top:12px; display:none;">
+      <div>
+        <label class="label">نام کاربری</label>
+        <input class="input" name="acc_username" placeholder="username"
+               value="{{ request.form.get('acc_username','') }}">
       </div>
+      <div>
+        <label class="label">ایمیل ورود</label>
+        <input class="input" type="email" name="acc_email" placeholder="email@example.com"
+               value="{{ request.form.get('acc_email','') or (m.email if m else '') }}">
+      </div>
+      <div>
+        <label class="label">رمز عبور</label>
+        <input class="input" type="password" name="acc_password" minlength="6" placeholder="حداقل ۶ کاراکتر">
+      </div>
+      <div>
+        <label class="label">تکرار رمز</label>
+        <input class="input" type="password" name="acc_password2" minlength="6" placeholder="تکرار رمز">
+      </div>
+    </div>
+
+    <small class="muted">اگر این بخش را خالی بگذاری یا تیک بالا را نزنی، حساب کاربری ساخته نمی‌شود.</small>
+  </div>
+
+  <div class="form-actions" style="grid-column:1 / span 2; display:flex; gap:12px; justify-content:flex-start;">
+    <button type="submit" class="btn btn-primary">{{ 'ذخیره تغییرات' if is_edit else 'ثبت منتور' }}</button>
+    <a class="btn btn-ghost" href="{{ url_for('mentors.list') }}">بازگشت به لیست</a>
+  </div>
 </form>
 
 <style>
@@ -123,39 +141,26 @@
 </style>
 
 <script>
-    (function(){
-      const cb = document.getElementById('acc_create');
-      const fs = document.getElementById('acc_fields');
-      const emailMain = document.querySelector('input[name="email"]');
-      const emailAcc  = document.querySelector('input[name="acc_email"]');
+(function(){
+  const cb        = document.getElementById('acc_create');
+  const fields    = document.getElementById('acc_fields');
+  const emailMain = document.querySelector('input[name="email"]');
+  const emailAcc  = document.querySelector('input[name="acc_email"]');
 
-      function toggle(){
-        if (!cb || !fs) return;
-        const on = cb.checked;
-        fs.style.display = on ? 'grid' : 'none';
-        if (on && emailMain && emailAcc && !emailAcc.value){
-          emailAcc.value = emailMain.value || '';
-        }
-      }
-      cb && cb.addEventListener('change', toggle);
-      emailMain && emailMain.addEventListener('blur', ()=> {
-        // اگر کاربر تیک زده و ایمیل اکانت خالی است، ایمیل اصلی را کپی کن
-        if (cb && cb.checked && emailAcc && !emailAcc.value){
-          emailAcc.value = emailMain.value || '';
-        }
-      });
-      toggle();
-    })();
-  // پیش‌نمایش زنده
-  const inp = document.getElementById('avatarInput');
-  const img = document.getElementById('avatarPreview');
-  document.querySelector('.avatar-uploader').addEventListener('click', () => inp.click());
-  inp.addEventListener('change', () => {
-    const f = inp.files && inp.files[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = e => { img.src = e.target.result; };
-    reader.readAsDataURL(f);
+  function toggle(){
+    if (!cb || !fields) return;
+    fields.style.display = cb.checked ? 'grid' : 'none';
+    if (cb.checked && emailMain && emailAcc && !emailAcc.value){
+      emailAcc.value = emailMain.value || '';
+    }
+  }
+  cb && cb.addEventListener('change', toggle);
+  emailMain && emailMain.addEventListener('blur', ()=>{
+    if (cb && cb.checked && emailAcc && !emailAcc.value){
+      emailAcc.value = emailMain.value || '';
+    }
   });
+  toggle();
+})();
 </script>
 {% endblock %}

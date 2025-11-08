@@ -68,20 +68,27 @@
   </div>
 
   {# --- فیلدهای حساب کاربری (بدون تغییر استایل/کلاس) --- #}
+<form action="{{ url_for('mentors.update_account', mentor_id=m.id) }}" method="post" class="grid2" style="margin-top:12px;">
   <div class="form-group">
     <label>نام کاربری</label>
-    <input name="acc_username" class="input" placeholder="username">
+    <input name="acc_username" class="input" value="{{ m.user.username if m.user else '' }}" required>
   </div>
   <div class="form-group">
-    <label>رمز عبور جدید</label>
+    <label>ایمیل ورود</label>
+    <input name="acc_email" type="email" class="input" value="{{ m.user.email if m.user else (m.email or '') }}" required>
+  </div>
+  <div class="form-group">
+    <label>رمز جدید (اختیاری)</label>
     <input name="acc_password" type="password" class="input" minlength="6">
   </div>
   <div class="form-group">
     <label>تکرار رمز</label>
     <input name="acc_password2" type="password" class="input" minlength="6">
   </div>
-
   <div class="form-actions">
+    <button class="btn btn-primary" type="submit">ثبت تغییرات حساب</button>
+  </div>
+</form>
     <!-- ذخیره اطلاعات پایه -->
     <button class="btn btn-primary" type="submit">ذخیره</button>
 

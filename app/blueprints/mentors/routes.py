@@ -480,86 +480,56 @@ def payments_delete(mentor_id, pay_id):
 @login_required
 def update_account(mentor_id):
     m = Mentor.query.get_or_404(mentor_id)
-    payload = request.get_json(silent=True) or request.form
 
-    acc_username = (payload.get("acc_username") or "").strip()
-    acc_email    = (payload.get("acc_email") or (m.email or "")).strip()
-    acc_pass1    = payload.get("acc_password") or ""
-    acc_pass2    = payload.get("acc_password2") or ""
+    # گرفتن فیلدها از فرم
+    username = (request.form.get("acc_username") or "").strip()
+    email    = (request.form.get("acc_email") or "").strip()
+    pw1      = request.form.get("acc_password") or ""
+    pw2      = request.form.get("acc_password2") or ""
 
-    # اگر چیزی برای تغییر نیومده، قبول ولی کاری نکن
-    if not (acc_username or acc_email or acc_pass1 or acc_pass2):
-        if request.is_json:
-            return jsonify(ok=True)
-        flash("تغییری برای حساب کاربری ارسال نشد.", "info")
+    # بررسی صحت داده‌ها
+    if not username or not email:
+        flash("نام کاربری و ایمیل الزامی است.", "error")
         return redirect(url_for("mentors.edit_form", mentor_id=m.id))
 
-    if acc_pass1 and (len(acc_pass1) < 6 or acc_pass1 != acc_pass2):
-        msg = "رمز عبور نامعتبر است یا تکرار آن یکسان نیست."
-        return (jsonify(ok=False, error=msg), 400) if request.is_json else \
-               (flash(msg, "error"), redirect(url_for("mentors.edit_form", mentor_id=m.id)))
+    if pw1 and pw1 != pw2:
+        flash("رمز عبور و تکرار آن یکسان نیستند.", "error")
+        return redirect(url_for("mentors.edit_form", mentor_id=m.id))
 
-    # پیدا کردن/ساخت کاربر
-    u = None
-    # اگر mentor.user_id داری، اولویت با آن
-    if hasattr(m, "user_id") and m.user_id:
-        u = User.query.get(m.user_id)
+    if pw1 and len(pw1) < 6:
+        flash("رمز عبور باید حداقل ۶ کاراکتر باشد.", "error")
+        return redirect(url_for("mentors.edit_form", mentor_id=m.id))
 
-    if not u and acc_email:
-        u = User.query.filter_by(email=acc_email).first()
-    if not u and acc_username:
-        u = User.query.filter_by(username=acc_username).first()
+    # چک کردن یکتایی ایمیل و نام کاربری
+    u = User.query.filter_by(username=username).first()
+    if u and u.id != m.user_id:
+        flash("نام کاربری قبلاً استفاده شده است.", "error")
+        return redirect(url_for("mentors.edit_form", mentor_id=m.id))
 
-    if not u:
-        # ساخت کاربر جدید
-        if not acc_username or not acc_email or not acc_pass1:
-            msg = "برای ساخت حساب جدید، نام‌کاربری/ایمیل/رمز الزامی است."
-            return (jsonify(ok=False, error=msg), 400) if request.is_json else \
-                   (flash(msg, "error"), redirect(url_for("mentors.edit_form", mentor_id=m.id)))
+    u = User.query.filter_by(email=email).first()
+    if u and u.id != m.user_id:
+        flash("ایمیل قبلاً استفاده شده است.", "error")
+        return redirect(url_for("mentors.edit_form", mentor_id=m.id))
 
-        if User.query.filter_by(username=acc_username).first():
-            msg = "نام‌کاربری تکراری است."
-            return (jsonify(ok=False, error=msg), 409) if request.is_json else \
-                   (flash(msg, "error"), redirect(url_for("mentors.edit_form", mentor_id=m.id)))
-        if User.query.filter_by(email=acc_email).first():
-            msg = "ایمیل تکراری است."
-            return (jsonify(ok=False, error=msg), 409) if request.is_json else \
-                   (flash(msg, "error"), redirect(url_for("mentors.edit_form", mentor_id=m.id)))
-
-        u = User(username=acc_username, email=acc_email, role="MENTOR",
-                 password_hash=generate_password_hash(acc_pass1))
+    # اگر منتور یوزر نداشت، ایجاد می‌کنیم
+    if not m.user_id:
+        u = User(username=username, email=email, role="MENTOR")
+        u.password_hash = generate_password_hash(pw1) if pw1 else None
         db.session.add(u)
-        db.session.flush()
-    else:
-        # یکتا بودن در صورت تغییر
-        if acc_username and u.username != acc_username:
-            if User.query.filter(User.id != u.id, User.username == acc_username).first():
-                msg = "نام‌کاربری تکراری است."
-                return (jsonify(ok=False, error=msg), 409) if request.is_json else \
-                       (flash(msg, "error"), redirect(url_for("mentors.edit_form", mentor_id=m.id)))
-            u.username = acc_username
-        if acc_email and u.email != acc_email:
-            if User.query.filter(User.id != u.id, User.email == acc_email).first():
-                msg = "ایمیل تکراری است."
-                return (jsonify(ok=False, error=msg), 409) if request.is_json else \
-                       (flash(msg, "error"), redirect(url_for("mentors.edit_form", mentor_id=m.id)))
-            u.email = acc_email
-        if acc_pass1:
-            u.password_hash = generate_password_hash(acc_pass1)
-
-        u.role = "MENTOR"
-
-    # لینک user به mentor (در صورت وجود ستون)
-    if hasattr(m, "user_id"):
+        db.session.commit()
         m.user_id = u.id
+    else:
+        u = User.query.get(m.user_id)
+        u.username = username
+        u.email = email
+        if pw1:
+            u.password_hash = generate_password_hash(pw1)
+        db.session.commit()
 
-    db.session.commit()
-
-    if request.is_json:
-        return jsonify(ok=True)
-
-    flash("حساب کاربری منتور به‌روزرسانی شد.", "success")
+    flash("اطلاعات حساب کاربری به‌روزرسانی شد.", "success")
     return redirect(url_for("mentors.edit_form", mentor_id=m.id))
+
+
 @bp.post("/<int:mentor_id>/delete")
 @login_required
 def delete(mentor_id):
@@ -582,3 +552,14 @@ def delete(mentor_id):
     db.session.commit()
     flash("منتور حذف شد.", "info")
     return redirect(url_for("mentors.list"))
+@bp.get("/me")
+@login_required
+def my_profile():
+    m = Mentor.query.filter(
+        or_(getattr(Mentor, "user_id", None) == current_user.id,
+            Mentor.email == current_user.email)
+    ).first()
+    if not m:
+        flash("پروفایل منتور پیدا نشد.", "error")
+        return redirect(url_for("dashboard.index"))
+    return redirect(url_for("mentors.edit_form", mentor_id=m.id))

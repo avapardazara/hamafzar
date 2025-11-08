@@ -2,6 +2,8 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_user, logout_user, current_user, login_required
 from ...extensions import db
 from ...models.user import User
+from sqlalchemy import or_
+from werkzeug.security import check_password_hash
 
 bp = Blueprint("auth", __name__, url_prefix="/auth")
 
@@ -43,3 +45,14 @@ def logout():
     logout_user()
     flash("با موفقیت خارج شدی.", "info")
     return redirect(url_for("auth.login_form"))
+
+@bp.post("/login")
+def login_post():
+    identity = (request.form.get("username") or "").strip()  # username یا email
+    password = request.form.get("password") or ""
+    user = User.query.filter(or_(User.username == identity, User.email == identity)).first()
+    if not user or not user.password_hash or not check_password_hash(user.password_hash, password):
+        flash("نام کاربری/ایمیل یا رمز عبور نادرست است.", "error")
+        return redirect(url_for("auth.login_form"))
+    login_user(user, remember=True)
+    return redirect(url_for("dashboard.index"))

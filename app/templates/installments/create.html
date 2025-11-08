@@ -4,8 +4,10 @@
 
 {% block content %}
 <div class="card" style="direction:rtl; max-width:900px; margin:auto;">
-  <form method="post" action="{{ url_for('installments.create_submit') }}" style="display:grid; gap:16px;">
-    
+
+  <!-- فرم مستقل ایجاد برنامه اقساط -->
+  <form id="plan-create" method="post" action="{{ url_for('installments.create_submit') }}" style="display:grid; gap:16px;">
+
     {# ---- دوره ---- #}
     {% if course %}
       <input type="hidden" name="course_id" value="{{ course.id }}">
@@ -66,16 +68,19 @@
       <input class="input" id="title" name="title" placeholder="مثلاً اقساط شهریه ترم پاییز">
     </div>
 
-    {# ---- مبلغ پایه و پیش‌پرداخت ---- #}
+    {# ---- مبلغ‌ها ---- #}
     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px;">
       <div>
         <label>مبلغ پایه (تومان)</label>
-        <input class="input" id="base_amount" name="base_amount" type="text" readonly
-               placeholder="به‌صورت خودکار از شهریه دوره خوانده می‌شود">
+        <input class="input" id="base_amount" type="text" placeholder="در صورت نیاز وارد کنید" />
       </div>
       <div>
         <label for="down_payment">پیش‌پرداخت (تومان)</label>
-        <input class="input" id="down_payment" name="down_payment" type="number" min="0" value="0">
+        <input class="input" id="down_payment" type="number" min="0" value="0">
+      </div>
+      <div>
+        <label for="total_amount">مبلغ کل قابل تقسیط (تومان)</label>
+        <input class="input" id="total_amount" name="total_amount" type="number" min="0" required placeholder="مثلاً 10000000">
       </div>
     </div>
 
@@ -83,7 +88,7 @@
     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px;">
       <div>
         <label for="installments_count">تعداد اقساط</label>
-        <input class="input" id="installments_count" name="installments_count" type="number" min="1" value="1">
+        <input class="input" id="installments_count" name="installments_count" type="number" min="1" value="1" required>
       </div>
       <div>
         <label>مبلغ هر قسط (نمایشی)</label>
@@ -114,8 +119,22 @@
     <div id="cheque_fields" style="display:none; margin-top:8px;">
       <label for="cheque_fee_percent">کارمزد چک (%)</label>
       <input class="input" id="cheque_fee_percent" name="cheque_fee_percent" type="number" step="0.1" min="0" value="0">
-      <div class="card" style="direction:rtl; margin-top:16px;">
-  <h3 style="font-weight:700; color:#0F172A; margin-bottom:12px;">مدیریت چک‌های اقساط</h3>
+    </div>
+
+    {# ---- دکمه‌ها ---- #}
+    <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:12px;">
+      <a class="btn btn-ghost" href="{{ url_for('installments.index') }}">انصراف</a>
+      <button class="btn btn-primary" type="submit">ثبت برنامه اقساط</button>
+    </div>
+
+  </form>
+</div>
+
+{# ----------------------------- #}
+{#  مدیریت چک‌ها (خارج از فرم)  #}
+{# ----------------------------- #}
+<div class="card" style="direction:rtl; max-width:900px; margin:16px auto 0;">
+  <h3 style="font-weight:700; color:#0F172A; margin-bottom:12px;">مدیریت چک‌های اقساط (اختیاری)</h3>
 
   <!-- فرم افزودن چک -->
   <form method="post" action="{{ url_for('installments.cheque_new') }}"
@@ -145,7 +164,7 @@
 
     <div style="grid-column: span 2;">
       <label class="label">مبلغ</label>
-      <input class="input" name="amount" type="number" step="0.01" placeholder="0">
+      <input class="input" name="amount" type="number" step="1" min="0" placeholder="0">
     </div>
 
     <div style="grid-column: span 1;">
@@ -174,7 +193,7 @@
   </form>
 
   <hr style="margin:16px 0; border:none; border-top:1px solid #e5e7eb;">
-  
+
   <!-- جدول چک‌های ثبت شده -->
   <div class="table-responsive">
     <table class="table" style="width:100%; border-collapse:collapse;">
@@ -197,7 +216,6 @@
           <tr>
             <td>{{ loop.index }}</td>
             <td>
-              {# نمایش خلاصه قسط مربوطه #}
               {% set inst = ch.installment %}
               {% if inst %}
                 {{ inst.title or ('قسط #' ~ inst.id) }} — {{ inst.due_date or '-' }}
@@ -226,9 +244,9 @@
                   </select>
                   <input class="input" name="cheque_number" value="{{ ch.cheque_number }}" style="grid-column: span 3;">
                   <input class="input" name="bank_name" value="{{ ch.bank_name or '' }}" style="grid-column: span 2;">
-                  <input class="input" name="amount" type="number" step="0.01" value="{{ ch.amount or '' }}" style="grid-column: span 2; text-align:left;">
-                  <input class="input" name="issue_date" type="date" value="{{ ch.issue_date|date('%Y-%m-%d') if ch.issue_date }}" style="grid-column: span 1;">
-                  <input class="input" name="due_date" type="date" value="{{ ch.due_date|date('%Y-%m-%d') if ch.due_date }}" style="grid-column: span 1;">
+                  <input class="input" name="amount" type="number" step="1" min="0" value="{{ ch.amount or '' }}" style="grid-column: span 2; text-align:left;">
+                  <input class="input" name="issue_date" type="date" value="{{ ch.issue_date.strftime('%Y-%m-%d') if ch.issue_date }}" style="grid-column: span 1;">
+                  <input class="input" name="due_date" type="date" value="{{ ch.due_date.strftime('%Y-%m-%d') if ch.due_date }}" style="grid-column: span 1;">
                   <input class="input" name="status" value="{{ ch.status or '' }}" style="grid-column: span 2;">
                   <input class="input" name="note" value="{{ ch.note or '' }}" placeholder="توضیح" style="grid-column: span 6;">
                   <button class="btn btn-primary" type="submit" style="grid-column: span 2;">ثبت ویرایش</button>
@@ -249,41 +267,38 @@
     </table>
   </div>
 </div>
-    </div>
-
-    {# ---- دکمه‌ها ---- #}
-    <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:12px;">
-      <a class="btn btn-ghost" href="{{ url_for('installments.index') }}">انصراف</a>
-      <button class="btn btn-primary" type="submit">ثبت برنامه اقساط</button>
-    </div>
-
-  </form>
-</div>
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
   const baseEl = document.getElementById("base_amount");
   const downEl = document.getElementById("down_payment");
+  const totalEl = document.getElementById("total_amount");
   const countEl = document.getElementById("installments_count");
   const perEl = document.getElementById("per_installment");
   const chequeBox = document.getElementById("use_cheques");
   const chequeFields = document.getElementById("cheque_fields");
 
-  // کارمزد چک toggle
-  chequeBox?.addEventListener("change", e => {
+  // toggle کارمزد چک
+  chequeBox?.addEventListener("change", () => {
     chequeFields.style.display = chequeBox.checked ? "block" : "none";
   });
 
-  // محاسبه لحظه‌ای مبلغ هر قسط
+  // محاسبه لحظه‌ای مبلغ کل و مبلغ هر قسط
+  function toNumber(v){ return parseFloat(String(v||'').replace(/,/g,'')) || 0; }
   function recalc() {
-    const base = parseFloat(baseEl.value.replace(/,/g,'')) || 0;
-    const down = parseFloat(downEl.value) || 0;
-    const count = parseInt(countEl.value) || 1;
-    const each = (base - down) / count;
-    if (!isNaN(each)) perEl.value = new Intl.NumberFormat('fa-IR').format(Math.max(each,0));
+    const base = toNumber(baseEl?.value);
+    const down = toNumber(downEl?.value);
+    if (baseEl && downEl && totalEl && (base || down)) {
+      const suggested = Math.max(base - down, 0);
+      if (!totalEl.matches(":focus")) totalEl.value = suggested;
+    }
+    const total = toNumber(totalEl?.value);
+    const count = parseInt(countEl?.value || "1", 10) || 1;
+    const each = total / count;
+    if (perEl) perEl.value = new Intl.NumberFormat('fa-IR').format(isFinite(each) ? Math.max(each,0) : 0);
   }
-  [downEl, countEl].forEach(el => el.addEventListener("input", recalc));
 
+  [baseEl, downEl, totalEl, countEl].forEach(el => el && el.addEventListener("input", recalc));
   recalc();
 });
 </script>
@@ -295,5 +310,7 @@ document.addEventListener("DOMContentLoaded", function() {
   .btn-primary { background:#02AD82; color:#fff; border:none; }
   .btn-ghost { background:#F6FAF9; color:#0F172A; border:1px solid #D3D5DF; }
   .muted { color:#7C8A9A; font-size:13px; }
+  .table-responsive { width:100%; overflow:auto; }
+  .table th, .table td { padding:8px; border-bottom:1px solid #e5e7eb; }
 </style>
 {% endblock %}

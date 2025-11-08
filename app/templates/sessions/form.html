@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% set editing = (s is defined and s) %}
+{% set page_title = editing and "ویرایش جلسه" or "افزودن جلسه" %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block page_title %}{{ page_title }}{% endblock %}
+{% block content %}
+<div class="page" dir="rtl">
+  <div class="header-row" style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+    {% if course %}
+      <a class="btn btn-ghost" href="{{ url_for('sessions.list_by_course', course_id=course.id) }}">← بازگشت</a>
+      <div style="font-weight:700;color:#0F172A;">{{ course.title }}</div>
+    {% else %}
+      <a class="btn btn-ghost" href="{{ back_url or url_for('dashboard.index') }}">← بازگشت</a>
+    {% endif %}
+    <div style="margin-inline-start:auto;"></div>
+  </div>
+
+  <form action="{{ form_action }}" method="post" class="card soft" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    {% if course %}<input type="hidden" name="course_id" value="{{ course.id }}">{% endif %}
+    <div class="form-group" style="grid-column:1 / -1;">
+      <label>موضوع جلسه</label>
+      <input name="topic" class="input" required value="{{ (s.topic if editing else '') or '' }}">
+    </div>
+    <div class="form-group">
+      <label>تاریخ و ساعت</label>
+      <input name="date" type="datetime-local" class="input"
+             {% if editing and s.date %} value="{{ s.date.strftime('%Y-%m-%dT%H:%M') }}"{% endif %} required>
+    </div>
+    <div class="form-group" style="grid-column:1 / -1;">
+      <label>توضیحات</label>
+      <textarea name="description" class="input" rows="4" style="resize:vertical;">{{ (s.description if editing else '') or '' }}</textarea>
+    </div>
+    <div class="form-actions" style="grid-column:1 / -1;display:flex;gap:12px;">
+      <button class="btn btn-primary" type="submit">{{ editing and "ذخیره تغییرات" or "ثبت جلسه" }}</button>
+      {% if course %}
+        <a class="btn btn-ghost" href="{{ url_for('sessions.list_by_course', course_id=course.id) }}">انصراف</a>
+      {% else %}
+        <a class="btn btn-ghost" href="{{ back_url or url_for('dashboard.index') }}">انصراف</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}

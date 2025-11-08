@@ -474,7 +474,7 @@ def _student_course_installment_totals():
 # =========================
 @bp.get("/")
 @login_required
-@role_required(["admin"])
+@role_required(["ADMIN"])
 def dashboard():
     today = date.today()
     start_month = date(today.year, today.month, 1)
@@ -794,7 +794,7 @@ def dashboard():
 # ------------------------ صفحات تفکیکی ------------------------
 @bp.get("/receivables")
 @login_required
-@role_required(["admin"])
+@role_required(["ADMIN"])
 def receivables():
     q = (request.args.get("q") or "").strip()
     course_id = request.args.get("course_id", type=int)
@@ -845,7 +845,7 @@ def receivables():
 
 @bp.get("/courses")
 @login_required
-@role_required(["admin"])
+@role_required(["ADMIN"])
 def courses_report():
     q = (request.args.get("q") or "").strip()
     mentor_id = request.args.get("mentor_id", type=int)
@@ -893,7 +893,7 @@ def courses_report():
 
 @bp.get("/mentors")
 @login_required
-@role_required(["admin"])
+@role_required(["ADMIN"])
 def mentors_report():
     rows = []
     for m in Mentor.query.order_by(Mentor.id.desc()).all():
@@ -911,7 +911,7 @@ def mentors_report():
 
 @bp.get("/installments")
 @login_required
-@role_required(["admin"])
+@role_required(["ADMIN"])
 def installments():
     """صفحه اقساط باز بر مبنای InstallmentPlan/Installment + مدیریت چک‌ها"""
     today = date.today()
@@ -981,7 +981,7 @@ def installments():
 # ------------------------ Expenses (costs) ------------------------
 @bp.get("/expenses")
 @login_required
-@role_required(["admin"])
+@role_required(["ADMIN"])
 def expenses_page():
     if not Expense:
         return render_template("finance/expenses.html", items=[], courses=Course.query.order_by(Course.title.asc()).all())
@@ -1005,7 +1005,7 @@ def expenses_page():
 
 @bp.post("/expenses/new")
 @login_required
-@role_required(["admin"])
+@role_required(["ADMIN"])
 def expenses_new():
     from app.models.expense import Expense as _Expense  # type: ignore
 
@@ -1077,7 +1077,7 @@ def expenses_new():
 # ------------------------ Assets (fixed assets) ------------------------
 @bp.get("/assets")
 @login_required
-@role_required(["admin"])
+@role_required(["ADMIN"])
 def assets_page():
     items = (
         Asset.query
@@ -1093,7 +1093,7 @@ def assets_page():
 
 @bp.post("/assets/new")
 @login_required
-@role_required(["admin"])
+@role_required(["ADMIN"])
 def assets_new():
     name = (request.form.get("name") or "").strip()
     if not name:
@@ -1150,7 +1150,7 @@ def assets_new():
 
 @bp.post("/assets/<int:asset_id>/edit")
 @login_required
-@role_required(["admin"])
+@role_required(["ADMIN"])
 def assets_edit(asset_id):
     a = Asset.query.get_or_404(asset_id)
 
@@ -1193,7 +1193,7 @@ def assets_edit(asset_id):
 
 @bp.post("/assets/<int:asset_id>/delete")
 @login_required
-@role_required(["admin"])
+@role_required(["ADMIN"])
 def assets_delete(asset_id):
     a = Asset.query.get_or_404(asset_id)
     try:
@@ -1208,7 +1208,7 @@ def assets_delete(asset_id):
 
 @bp.post("/expenses/<int:expense_id>/edit")
 @login_required
-@role_required(["admin"])
+@role_required(["ADMIN"])
 def expenses_edit(expense_id):
     exp = Expense.query.get_or_404(expense_id)
     f = request.form
@@ -1333,7 +1333,7 @@ def expenses_edit(expense_id):
 
 @bp.post("/expenses/<int:expense_id>/delete")
 @login_required
-@role_required(["admin"])
+@role_required(["ADMIN"])
 def expenses_delete(expense_id):
     exp = Expense.query.get_or_404(expense_id)
     db.session.delete(exp)
