@@ -1,7 +1,7 @@
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin
-from ..extensions import db, login_manager
+from ..extensions import db, login_manager, bcrypt
 
 class User(UserMixin, db.Model):
     __tablename__ = "users"
@@ -19,11 +19,21 @@ class User(UserMixin, db.Model):
     is_active     = db.Column(db.Boolean, default=True, nullable=False)
     created_at    = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
-    def set_password(self, raw: str):
-        self.password_hash = generate_password_hash(raw)
+    def set_password(self, password: str):
+        self.password_hash = bcrypt.generate_password_hash(password).decode("utf-8")
 
-    def check_password(self, raw: str) -> bool:
-        return check_password_hash(self.password_hash, raw)
+    def check_password(self, password: str) -> bool:
+        return bcrypt.check_password_hash(self.password_hash, password)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "username": self.username,
+            "full_name": self.full_name,
+            "is_active": self.is_active,
+            "created_at": self.created_at.isoformat(),
+        }
+
 
     @property
     def is_admin(self) -> bool:

@@ -1,46 +1,46 @@
-import os
-from flask import Flask, url_for
-from .config import Config
-from .extensions import init_app as init_extensions
-from .blueprints.files import bp as files_bp
-from .blueprints import  finance_bp 
-from app.blueprints.api import api_bp
-from app.cli import register_cli
+from flask import Flask
+from .extensions import init_extensions, db, jwt
+from .config import Config  # اگر دارید
+from .models.user import User
+# ...
 
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-
-def create_app(config_class=Config):
+def create_app(config_class: type = Config):
     app = Flask(__name__, instance_relative_config=True)
-    app.register_blueprint(files_bp)
     app.config.from_object(config_class)
-    app.register_blueprint(finance_bp)
-    app.config.from_pyfile("config.py", silent=True)
-    app.register_blueprint(api_bp)
-    register_cli(app)
-    os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
-    # اطمینان از وجود پوشه‌ی instance
-    os.makedirs(app.instance_path, exist_ok=True)
-
-    app.config.setdefault("UPLOAD_DIR", os.path.join(os.getcwd(), "uploads"))
-    os.makedirs(app.config["UPLOAD_DIR"], exist_ok=True)
-
-    # فیلتر Jinja برای URL عکس پروفایل
-    def avatar_url(filename):
-        if filename:
-            return url_for("uploaded_file", filename=filename)
-        return url_for("static", filename="images/avatar-default.png")
-    app.jinja_env.filters["avatar_url"] = avatar_url
-
-    # 🚨 مسیر DB را "بدون شرط" به instance/app.db ست کن (مطلق)
-    db_path = os.path.join(app.instance_path, "app.db").replace("\\", "/")
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
 
     init_extensions(app)
 
-    from .blueprints import blueprints
-    for bp in blueprints:
-        if bp.name in app.blueprints:
-            continue
-        app.register_blueprint(bp)
+    # ثبت بلوپرینت‌های قبلی شما ...
+    from .blueprints.api import api_bp
+    app.register_blueprint(api_bp, url_prefix="/api")
+
+    # ثبت Auth API
+    from .blueprints.api_auth import api_auth_bp
+    app.register_blueprint(api_auth_bp, url_prefix="/api/auth")
+
+    # JWT تنظیمات پایه (اگر در Config نبود)
+    app.config.setdefault("JWT_SECRET_KEY", app.config.get("SECRET_KEY", "change-me"))
+    app.config.setdefault("JWT_ACCESS_TOKEN_EXPIRES", 60 * 60)  # 1h
+
+    # نمونه هندلر خطای JWT (اختیاری)
+    @jwt.invalid_token_loader
+    def invalid_token(reason):
+        return {"message": "Invalid token", "reason": reason}, 401
 
     return app
+@app.cli.command("create-user")
+def create_user():
+    """Flask CLI: ایجاد کاربر تست"""
+    import getpass
+    username = input("username: ").strip()
+    full_name = input("full name (optional): ").strip()
+    password = getpass.getpass("password: ")
+    if not username or not password:
+        print("username & password required"); return
+    if User.query.filter_by(username=username).first():
+        print("User exists"); return
+    u = User(username=username, full_name=full_name)
+    u.set_password(password)
+    db.session.add(u)
+    db.session.commit()
+    print(f"User {username} created.")

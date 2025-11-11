@@ -1,13 +1,18 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-from flask_login import LoginManager
+from flask_jwt_extended import JWTManager
+from flask_bcrypt import Bcrypt
+from flask_cors import CORS
 
 db = SQLAlchemy()
 migrate = Migrate()
-login_manager = LoginManager()
-login_manager.login_view = "auth.login_form"  # اگر کاربر لاگین نباشه، هدایت می‌شه به این
+jwt = JWTManager()
+bcrypt = Bcrypt()
 
-def init_app(app):
+def init_extensions(app):
     db.init_app(app)
     migrate.init_app(app, db)
-    login_manager.init_app(app)
+    bcrypt.init_app(app)
+    jwt.init_app(app)
+    # CORS: اجازه به فرانت محلی
+    CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=False)
