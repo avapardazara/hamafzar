@@ -1,30 +1,39 @@
 {% extends "base.html" %}
 {% block title %}جلسات دوره | هم‌افزار{% endblock %}
-{% block page_title %}جلسات دوره{% endblock %}
+{% block page_title %}جلسهٔ جدید / ویرایش جلسه{% endblock %}
 
 {% block content %}
-<form method="post" class="card" style="direction:rtl; max-width:900px; margin:auto;">
+<form id="sessionForm" method="post" class="card" style="direction:rtl; max-width:900px; margin:auto;">
   <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
     <div>
       <label class="label">تاریخ جلسه</label>
-      <input type="hidden" name="session_date" id="session_date" value="{{ s.session_date if s else '' }}">
-      <input type="text" id="sessionDateFa" class="input" autocomplete="off" placeholder="تاریخ شمسی">
+      <!-- مقدارِ دیتابیسی: ISO-8601 -->
+      <input type="hidden" name="session_date" id="session_date"
+            value="{{ s.session_date.strftime('%Y-%m-%d') if s and s.session_date else '' }}">
+      <!-- ورودی شمسیِ نمایشی -->
+       <input type="text" id="sessionDateFa" class="input" autocomplete="off" placeholder="تاریخ شمسی/میلادی">
     </div>
+
     <div>
       <label class="label">ساعت شروع</label>
-      <input type="time" name="start_time" class="input" value="{{ s.start_time.strftime('%H:%M') if s and s.start_time else '' }}">
+      <input type="time" name="start_time" class="input"
+             value="{{ s.start_time.strftime('%H:%M') if s and s.start_time else '' }}">
+      <small class="hint">اگر خالی باشد، پیش‌فرض 09:00 ذخیره می‌شود.</small>
     </div>
+
     <div>
       <label class="label">ساعت پایان</label>
-      <input type="time" name="end_time" class="input" value="{{ s.end_time.strftime('%H:%M') if s and s.end_time else '' }}">
+      <input type="time" name="end_time" class="input"
+             value="{{ s.end_time.strftime('%H:%M') if s and s.end_time else '' }}">
+      <small class="hint">اختیاری</small>
     </div>
-    <div>
-      <label class="label">اتاق</label>
-      <input class="input" name="room" value="{{ s.room if s else '' }}">
-    </div>
+
+    <!-- room در مدل ستونی ندارد؛ اگر نیاز داری بعداً ستون اضافه می‌کنیم.
+         فعلاً این فیلد حذف شد تا گیج‌کننده نباشد. -->
+
     <div style="grid-column:1 / -1;">
       <label class="label">یادداشت</label>
-      <input class="input" name="note" value="{{ s.note if s else '' }}">
+      <input class="input" name="description" value="{{ s.description if s else '' }}">
     </div>
   </div>
 
@@ -35,8 +44,57 @@
 </form>
 
 <script>
-document.addEventListener('DOMContentLoaded', function(){
-  attachPDatepicker('#sessionDateFa', '#session_date', '{{ s.session_date if s else "" }}');
+document.addEventListener('DOMContentLoaded', function () {
+  var $hidden = document.getElementById('session_date');
+  var $text   = document.getElementById('sessionDateFa');
+
+  var initialIso = ($hidden && $hidden.value) ? $hidden.value : '';
+  console.log('[sessions] hidden.session_date initial =', initialIso);
+
+  // اگر attachPDatepicker هست، ازش برای اتصال استفاده کن
+  if (typeof attachPDatepicker === 'function') {
+    try {
+      attachPDatepicker('#sessionDateFa', '#session_date', initialIso);
+      console.log('[sessions] attachPDatepicker applied with initial =', initialIso);
+    } catch (e) {
+      console.warn('[sessions] attachPDatepicker error:', e);
+      //Fallback: حداقل مقدار اولیه را نشان بده
+      if ($text && initialIso) $text.value = initialIso;
+    }
+  } else {
+    // اگر پلاگین لود نشده، مقدار را مستقیم نشان بده
+    if ($text && initialIso) $text.value = initialIso;
+    console.log('[sessions] attachPDatepicker not found. Fallback set text to', $text.value);
+  }
+
+  // Sync از text به hidden
+  if ($text && $hidden) {
+    $text.addEventListener('change', function () {
+      var raw = ($text.value || '').trim();
+      console.log('[sessions] text.change ->', raw);
+      // اگر پلاگین تاریخ شمسی داری، خودش باید hidden را ست کند؛
+      // ولی برای اطمینان، اگر الگوی YYYY-MM-DD بود، همگام می‌کنیم:
+      var isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (isoMatch) {
+        $hidden.value = raw;
+      }
+      console.log('[sessions] hidden now =', $hidden.value);
+    });
+  }
+
+  // قبل از ارسال، لاگ کن ببینیم چی می‌ره بک‌اند
+  var $form = $text && $text.form ? $text.form : document.querySelector('form');
+  if ($form) {
+    $form.addEventListener('submit', function (ev) {
+      console.log('[sessions] SUBMIT payload:', {
+        session_date: $hidden ? $hidden.value : null,
+        start_time:   (document.querySelector('input[name="start_time"]') || {}).value || null,
+        end_time:     (document.querySelector('input[name="end_time"]') || {}).value || null,
+        room:         (document.querySelector('input[name="room"]') || {}).value || null,
+        note:         (document.querySelector('input[name="note"]') || {}).value || null
+      });
+    });
+  }
 });
 </script>
 {% endblock %}
