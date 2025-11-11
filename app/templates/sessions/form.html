@@ -7,7 +7,7 @@
 <div class="page" dir="rtl">
   <div class="header-row" style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
     {% if course %}
-      <a class="btn btn-ghost" href="{{ url_for('sessions.list_by_course', course_id=course.id) }}">← بازگشت</a>
+      <a class="btn btn-ghost" href="{{ url_for('sessions.by_course', course_id=course.id) }}">← بازگشت</a>
       <div style="font-weight:700;color:#0F172A;">{{ course.title }}</div>
     {% else %}
       <a class="btn btn-ghost" href="{{ back_url or url_for('dashboard.index') }}">← بازگشت</a>
@@ -33,11 +33,49 @@
     <div class="form-actions" style="grid-column:1 / -1;display:flex;gap:12px;">
       <button class="btn btn-primary" type="submit">{{ editing and "ذخیره تغییرات" or "ثبت جلسه" }}</button>
       {% if course %}
-        <a class="btn btn-ghost" href="{{ url_for('sessions.list_by_course', course_id=course.id) }}">انصراف</a>
+        <a class="btn btn-ghost" href="{{ url_for('sessions.by_course', course_id=course.id) }}">انصراف</a>
       {% else %}
         <a class="btn btn-ghost" href="{{ back_url or url_for('dashboard.index') }}">انصراف</a>
       {% endif %}
     </div>
   </form>
 </div>
+<script>
+  // انتخاب فرم ارسال شده برای ایجاد جلسه
+  const form = document.getElementById("session-form"); // فرض کنید ID فرم شما session-form هست
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault(); // جلوگیری از ارسال پیش‌فرض فرم
+
+    // گرفتن داده‌های فرم
+    const formData = new FormData(form);
+
+    // تبدیل داده‌ها به JSON
+    let data = {};
+    formData.forEach((value, key) => {
+      data[key] = value;
+    });
+
+    // چاپ داده‌های فرم به کنسول
+    console.log("داده‌های فرم ارسال‌شده:");
+    console.log(data);
+
+    // ارسال داده‌ها به سرور با استفاده از Fetch API
+    fetch("/courses/2/sessions/generate", { // اینجا URL روت ایجاد جلسه است
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json", // ارسال به صورت JSON
+      },
+      body: JSON.stringify(data),
+    })
+      .then(response => response.json())
+      .then(result => {
+        console.log("نتیجه از سرور:");
+        console.log(result);
+      })
+      .catch(error => {
+        console.error("خطا در ارسال درخواست:", error);
+      });
+  });
+</script>
 {% endblock %}

@@ -1,24 +1,18 @@
-# app/blueprints/sessions/routes.py
 from __future__ import annotations
+from datetime import date
+from flask import Blueprint, render_template, abort, request, redirect,url_for, flash, current_app
+from flask_login import login_required, current_user
+from app.extensions import db
+from app.models.course import Course
+from app.models.course_session import CourseSession
+from app.models.enrollment import Enrollment
+from app.models.mentor import Mentor
+from app.models.core import Student
 import os
 from datetime import datetime
 from typing import Optional
-
-from flask import (
-    Blueprint, render_template, request, redirect,
-    url_for, flash, current_app
-)
-from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
-
-from app.extensions import db
 from app.utils.decorators import role_required
-from app.models.course import Course
-from app.models.course_session import CourseSession
-# اگر مدل فایل جلسه جدا داری:
-# from app.models.session_file import SessionFile
-# اگر نداری موقتاً این کلاس ساده را تعریف کن یا از مدل موجودت استفاده کن.
-from sqlalchemy import text
 
 bp = Blueprint("sessions", __name__, url_prefix="/sessions")
 
@@ -31,19 +25,15 @@ def _can_manage_course(course: Course) -> bool:
         return True
     return getattr(current_user, "id", None) == getattr(course, "mentor_id", None)
 
-
-def _parse_dt_local(val: Optional[str]) -> Optional[datetime]:
-    """
-    ورودی از input[type=datetime-local] مثل 2025-11-08T10:30
-    """
-    if not val:
+def _parse_dt_local(date_str: str):
+    """تبدیل رشته تاریخ به datetime"""
+    if not date_str:
         return None
-    for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"):
-        try:
-            return datetime.strptime(val, fmt)
-        except ValueError:
-            pass
-    return None
+    try:
+        # فرض می‌کنیم که فرمت تاریخ به صورت "%Y-%m-%dT%H:%M" است
+        return datetime.strptime(date_str, "%Y-%m-%dT%H:%M")
+    except ValueError:
+        return None
 
 
 def _upload_root() -> str:
@@ -56,22 +46,69 @@ def _upload_root() -> str:
 
 
 # ---------- List sessions of a course ----------
-@bp.get("/of-course/<int:course_id>")
+
+@bp.get("/course/<int:course_id>")
 @login_required
-def list_by_course(course_id: int):
+def by_course(course_id):
+    """
+    لیست جلسات یک دوره:
+    - ادمین: همه دوره‌ها
+    - منتور: فقط اگر منتور این دوره است
+    - دانشجو: فقط اگر در این دوره ثبت‌نام ACTIVE/ONGOING دارد
+    """
     course = Course.query.get_or_404(course_id)
-    items = (
+
+    role = (getattr(current_user, "role", "") or "").lower()
+
+    # --- بررسی دسترسی ---
+    allowed = False
+
+    if role == "admin":
+        allowed = True
+
+    elif role == "mentor":
+        mentor = Mentor.query.filter_by(user_id=current_user.id).first()
+        if mentor and (
+            getattr(course, "mentor_id", None) == mentor.id
+            or getattr(getattr(course, "mentor", None), "id", None) == mentor.id
+        ):
+            allowed = True
+
+    elif role == "student":
+        student = Student.query.filter_by(user_id=current_user.id).first()
+        if student:
+            en = (
+                Enrollment.query
+                .filter(
+                    Enrollment.student_id == student.id,
+                    Enrollment.course_id == course.id,
+                    Enrollment.status.in_(("ACTIVE", "ONGOING")),
+                )
+                .first()
+            )
+            if en:
+                allowed = True
+
+    if not allowed:
+        abort(403)
+
+    # --- لیست جلسات دوره ---
+    sessions = (
         CourseSession.query
-        .filter_by(course_id=course.id)
-        .order_by(CourseSession.date.desc())
+        .filter(CourseSession.course_id == course.id)
+        .order_by(CourseSession.date.asc())
         .all()
     )
-    can_manage = _can_manage_course(course)
-    return render_template(
-        "sessions/list.html",
-        course=course, items=items, can_manage=can_manage
-    )
 
+    today = date.today()
+
+    return render_template(
+        "sessions/by_course.html",
+        course=course,
+        sessions=sessions,
+        today=today,
+        role=role,
+    )
 
 # ---------- New / Create ----------
 @bp.get("/new/<int:course_id>")
@@ -81,7 +118,7 @@ def new(course_id: int):
     course = Course.query.get_or_404(course_id)
     if not _can_manage_course(course):
         flash("شما اجازه افزودن جلسه برای این دوره را ندارید.", "error")
-        return redirect(url_for("sessions.list_by_course", course_id=course.id))
+        return redirect(url_for("sessions.by_course", course_id=course.id))
 
     return render_template(
         "sessions/form.html",
@@ -97,12 +134,12 @@ def create(course_id: int):
     course = Course.query.get_or_404(course_id)
     if not _can_manage_course(course):
         flash("شما اجازه افزودن جلسه برای این دوره را ندارید.", "error")
-        return redirect(url_for("sessions.list_by_course", course_id=course.id))
+        return redirect(url_for("sessions.by_course", course_id=course.id))
 
     topic = (request.form.get("topic") or "").strip()
     description = (request.form.get("description") or "").strip()
     date_val = _parse_dt_local(request.form.get("date"))
-
+   
     if not topic:
         flash("موضوع جلسه الزامی است.", "error")
         return redirect(url_for("sessions.new", course_id=course.id))
@@ -115,13 +152,19 @@ def create(course_id: int):
         mentor_id=getattr(current_user, "id", None),
         topic=topic,
         description=description or None,
-        date=date_val,
+        date=date_val,  # ذخیره تاریخ جلسه
     )
+
     db.session.add(s)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        flash(f"خطا در ذخیره داده‌ها: {e}", "error")
+        return redirect(url_for("sessions.new", course_id=course.id))
+
     flash("جلسه با موفقیت ثبت شد.", "success")
     return redirect(url_for("sessions.view", session_id=s.id))
-
 
 # ---------- View ----------
 @bp.get("/<int:session_id>")
@@ -205,7 +248,7 @@ def delete(session_id: int):
     db.session.delete(s)
     db.session.commit()
     flash("جلسه حذف شد.", "success")
-    return redirect(url_for("sessions.list_by_course", course_id=course.id))
+    return redirect(url_for("sessions.by_course", course_id=course.id))
 
 
 # ---------- Upload file ----------

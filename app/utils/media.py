@@ -4,7 +4,8 @@ import uuid
 from werkzeug.utils import secure_filename
 from flask import current_app
 
-ALLOWED_EXT = {"png", "jpg", "jpeg", "gif", "webp"}
+ALLOWED_EXT = {"png", "jpg", "jpeg", "gif", "webp","pdf","doc"}
+ALLOWED_ALL = None
 
 def _uploads_root():
     return os.path.join(current_app.instance_path, "uploads")
@@ -57,3 +58,38 @@ def remove_media(rel_path: str | None):
             os.remove(abs_path)
     except Exception:
         pass
+def save_uploaded_file(file_storage, *, subdir="sessions", allowed_exts=ALLOWED_ALL):
+    """
+    فایل را زیر instance/uploads/<subdir>/ ذخیره می‌کند.
+    خروجی: مسیر relative برای ذخیره در DB مثل: 'uploads/sessions/123/my.pdf'
+    """
+    if not file_storage or not getattr(file_storage, "filename", ""):
+        return None
+
+    fname = secure_filename(file_storage.filename)
+    if not fname:
+        return None
+
+    # اگر بخواهی محدودیت پسوند بگذاری:
+    if allowed_exts is not None:
+        ext = os.path.splitext(fname)[1].lower().lstrip(".")
+        if ext not in allowed_exts:
+            return None
+
+    root = os.path.join(current_app.instance_path, "uploads", subdir)
+    os.makedirs(root, exist_ok=True)
+    abs_path = os.path.join(root, fname)
+
+    # اگر فایل همنام وجود داشت، suffix عددی اضافه کن
+    base, ext = os.path.splitext(fname)
+    i = 1
+    while os.path.exists(abs_path):
+        fname = f"{base}_{i}{ext}"
+        abs_path = os.path.join(root, fname)
+        i += 1
+
+    file_storage.save(abs_path)
+
+    # مسیر relative که بعداً با send_from_directory سرو می‌کنیم
+    rel = os.path.join("uploads", subdir, fname).replace("\\", "/")
+    return rel

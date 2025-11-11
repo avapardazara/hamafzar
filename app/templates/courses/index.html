@@ -40,6 +40,7 @@
             <div class="btn-form" style="display:inline-flex; gap:6px;">
               <a class="btn btn-ghost" href="{{ url_for('courses.edit', id=c.id) }}">ویرایش</a>
               <a class="btn btn-ghost" href="{{ url_for('courses.sessions_view', course_id=c.id) }}">📋 حضور و غیاب</a>
+              <a class="btn btn-ghost" href="{{ url_for('sessions.by_course', course_id=c.id) }}">🎓 جلسات دوره</a>
 
               {% if c.status != 'ARCHIVED' %}
               <form method="post" action="{{ url_for('courses.archive', id=c.id) }}" onsubmit="return confirm('بایگانی شود؟');">
@@ -61,12 +62,88 @@
 </div>
 
 <style>
-  .data-table { width:100%; border-collapse:collapse; table-layout:fixed; direction:rtl; background:#fff; border-radius:12px; overflow:hidden; }
-  .data-table thead th { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; font-weight:700; color:#7C8A9A; background:#F8FAFC; text-align:right; padding:12px 14px; border-bottom:1px solid #EEF2F7; }
-  .data-table td { padding:12px 14px; border-bottom:1px solid #F1F5F9; text-align:right; vertical-align:middle; white-space:nowrap; }
-  .data-table tbody tr:hover td { background:#FBFDFF; }
-  .ellipsis { max-width:100%; overflow:hidden; text-overflow:ellipsis; }
-  .actions { display:inline-flex; gap:6px; align-items:center; }
-  .btn-form{display: grid; grid-column: auto;flex-wrap: wrap;}
+  .data-table { 
+    width:100%; 
+    border-collapse:collapse; 
+    table-layout:fixed; 
+    direction:rtl; 
+    background:#fff; 
+    border-radius:12px; 
+    overflow:hidden; 
+  }
+  .data-table thead th { 
+    white-space:nowrap; 
+    overflow:hidden; 
+    text-overflow:ellipsis; 
+    font-size:13px; 
+    font-weight:700; 
+    color:#7C8A9A; 
+    background:#F8FAFC; 
+    text-align:right; 
+    padding:12px 14px; 
+    border-bottom:1px solid #EEF2F7; 
+  }
+  .data-table td { 
+    padding:12px 14px; 
+    border-bottom:1px solid #F1F5F9; 
+    text-align:right; 
+    vertical-align:middle; 
+    white-space:nowrap; 
+  }
+  .data-table tbody tr:hover td { 
+    background:#FBFDFF; 
+  }
+
+  /* سبک دکمه‌ها */
+  .btn-ghost {
+    padding:6px 12px;
+    font-size:12px;
+    border-radius:8px;
+    background-color:#F3F4F6;
+    color:#6B7280;
+    border:1px solid #D3D5DF;
+    transition: all 0.3s ease;
+  }
+
+  .btn-ghost:hover {
+    background-color:#F9FAFB;
+    color:#02AD82;
+    border-color:#B2B8C1;
+  }
+
+  .btn-primary {
+    padding:6px 12px;
+    font-size:12px;
+    border-radius:8px;
+    background-color:#02AD82;
+    color:white;
+    border:1px solid #02AD82;
+    transition: all 0.3s ease;
+  }
+
+  .btn-primary:hover {
+    background-color:#027A56;
+    border-color:#027A56;
+  }
+
+  .actions {
+    display:inline-flex;
+    gap:6px;
+    align-items:center;
+  }
+
+  /* فضای مناسب برای هر دکمه */
+  .btn-form {
+    display: grid;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  /* برای زیباتر شدن hover جدول */
+  .ellipsis {
+    max-width:100%; 
+    overflow:hidden; 
+    text-overflow:ellipsis; 
+  }
 </style>
 {% endblock %}

@@ -3,6 +3,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from sqlalchemy import or_, and_, func
 from datetime import datetime, date as _date, timedelta as _td
+from datetime import date
 from app.extensions import db
 from app.models.course import Course
 from app.models.mentor import Mentor
@@ -12,6 +13,8 @@ from app.models.core import Student
 from app.models.enrollment import Enrollment
 from werkzeug.utils import secure_filename
 import os
+from flask import send_from_directory, abort
+from app.utils.media import save_uploaded_file
 
 bp = Blueprint("courses", __name__, url_prefix="/courses")
 
@@ -65,48 +68,39 @@ def create():
         flash("نام دوره الزامی است.", "error")
         return redirect(url_for("courses.new"))
 
+    start_date_str = request.form.get("start_date")  # تاریخ شروع
+    end_date_str = request.form.get("end_date")      # تاریخ پایان
+    start_time_str = request.form.get("start_time")  # زمان شروع
+    end_time_str = request.form.get("end_time")      # زمان پایان
+
+    # تبدیل تاریخ‌ها به نوع مناسب
+    start_date = _parse_date(start_date_str)
+    end_date = _parse_date(end_date_str)
+
+    # بررسی تاریخ‌ها
+    if not start_date:
+        flash("تاریخ شروع نامعتبر است.", "error")
+        return redirect(url_for("courses.new"))
+    if not end_date:
+        flash("تاریخ پایان نامعتبر است.", "error")
+        return redirect(url_for("courses.new"))
+
+    # تنظیم زمان به 00:00 اگر کاربر وارد نکرد
+    start_time = _parse_time(start_time_str) or datetime.strptime("00:00:00", "%H:%M:%S").time()
+    end_time = _parse_time(end_time_str) or datetime.strptime("00:00:00", "%H:%M:%S").time()
+
     c = Course(
         title=title,
         description=(request.form.get("description") or "").strip() or None,
         mentor_id=(int(request.form.get("mentor_id")) if request.form.get("mentor_id") else None),
-        start_date=_parse_date(request.form.get("start_date")),
-        end_date=_parse_date(request.form.get("end_date")),
+        start_date=start_date,
+        end_date=end_date,
         schedule_type=(request.form.get("schedule_type") or "CUSTOM"),
         fee_per_student=_to_int(request.form.get("fee_per_student")),
         installment_enabled=(request.form.get("installment_enabled") == "1"),
         mentor_share_percent=_to_float(request.form.get("mentor_share_percent")),
         status=(request.form.get("status") or "ACTIVE"),
     )
-
-    if c.mentor_id:
-        m = Mentor.query.get(c.mentor_id)
-        c.mentor_name = (m.full_name or (f"{m.first_name or ''} {m.last_name or ''}".strip())) if m else None
-
-    c.sessions_json = _safe_json(request.form.get("sessions_json")) or None
-
-    wdays = _safe_json(request.form.get("weekly_days_json")) or []
-    c.weekly_days_json = wdays or None
-    sdays_csv = ",".join(wdays) if wdays else None
-    if hasattr(Course, "schedule_days"):
-        c.schedule_days = sdays_csv
-
-    raw_pair = (request.form.get("pair_odd") or "").upper().strip() or None
-    mapped_pattern = "EVEN" if raw_pair == "PAIR" else ("ODD" if raw_pair == "ODD" else None)
-    c.pair_odd = raw_pair
-    if hasattr(Course, "schedule_pattern"):
-        c.schedule_pattern = mapped_pattern
-
-    c.installments_json = _safe_json(request.form.get("installments_json")) or None
-
-    ok, err = _validate_schedule_inputs_for(c)
-    if not ok:
-        flash(err, "error")
-        return redirect(url_for("courses.new"))
-
-    cover_file = request.files.get("cover_image")
-    cover_rel = save_uploaded_image(cover_file, subdir="courses")
-    if cover_rel:
-        c.cover_image = cover_rel
 
     db.session.add(c)
     db.session.commit()
@@ -223,7 +217,7 @@ def sessions_json(course_id):
         "start_time": s.start_time.isoformat() if s.start_time else None,
         "end_time": s.end_time.isoformat() if s.end_time else None,
         "room": s.room,
-        "note": s.note
+        "note": getattr(s, "description", None)
     } for s in qs]
     return jsonify(items)
 
@@ -323,12 +317,26 @@ def api_generate_sessions(course_id):
     if not final_days:
         return jsonify({"ok": False, "error": "هیچ تاریخی برای ایجاد جلسه یافت نشد."}), 400
 
+    # چاپ تاریخ‌های جلسات برای بررسی
+    print("تاریخ‌های ایجاد شده برای جلسات:")
     for d in sorted(final_days):
-        db.session.add(CourseSession(course_id=course_id, session_date=d))
+        print(f"- {d}")
+
+    # ذخیره جلسات
+    for d in sorted(final_days):
+        # اگر d از نوع datetime.date است، آن را به datetime تبدیل می‌کنیم
+        if isinstance(d, date):  # اگر d از نوع date است
+            session_date = datetime.combine(d, datetime.min.time())  # تاریخ را با زمان 00:00:00 ترکیب کنید
+            print(f"در حال ذخیره تاریخ جلسه: {session_date}")  # لاگ تاریخ‌ها
+        else:
+            session_date = datetime.strptime(d, "%Y-%m-%d")  # اگر رشته است، از strptime برای تبدیل استفاده کن
+            print(f"در حال ذخیره تاریخ جلسه: {session_date}")  # لاگ تاریخ‌ها
+
+        # ذخیره تاریخ‌ها در فیلد `date` به‌طور مستقیم
+        db.session.add(CourseSession(course_id=course_id, date=session_date, session_date=d))
 
     db.session.commit()
     return jsonify({"ok": True, "created": len(final_days)})
-
 # ============================
 # صفحه حضور و غیاب (HTML)
 # ============================
@@ -634,13 +642,22 @@ def _to_float(x):
     except Exception:
         return None
 
-def _parse_date(s):
-    if not s:
+def _parse_date(date_str):
+    if not date_str:
         return None
     try:
-        return datetime.strptime(s, "%Y-%m-%d").date()
+        return datetime.strptime(date_str, "%Y-%m-%d").date()  # تبدیل به تاریخ
     except Exception:
         return None
+
+def _parse_time(time_str):
+    if not time_str:
+        return datetime.strptime("00:00:00", "%H:%M:%S").time()  # زمان پیش‌فرض
+    try:
+        return datetime.strptime(time_str, "%H:%M:%S").time()
+    except Exception:
+        return None
+
 
 def _safe_json(s):
     if not s:
@@ -869,3 +886,76 @@ def my():
 
     # نقش‌های دیگر: به داشبورد برگرد
     return redirect(url_for("dashboard.index"))
+# -----------------------------
+# Files per session (Upload/List/Delete/Download)
+# -----------------------------
+@bp.get("/<int:course_id>/sessions/<int:session_id>/files.json")
+@login_required
+def session_files_json(course_id, session_id):
+    s = CourseSession.query.filter_by(id=session_id, course_id=course_id).first_or_404()
+    items = [{
+        "id": f.id,
+        "file_path": f.file_path,
+        "description": f.description or "",
+        "uploaded_at": f.uploaded_at.strftime("%Y-%m-%d %H:%M"),
+        "download_url": url_for("courses.download_session_file", file_id=f.id)
+   } for f in s.files]
+    return jsonify(items)
+
+@bp.post("/<int:course_id>/sessions/<int:session_id>/files")
+@login_required
+def upload_session_file(course_id, session_id):
+     s = CourseSession.query.filter_by(id=session_id, course_id=course_id).first_or_404()
+ 
+     file = request.files.get("file")
+     desc = (request.form.get("description") or "").strip() or None
+ 
+     # در پوشه مجزا برای هر جلسه ذخیره کن: sessions/<session_id>
+     rel = save_uploaded_file(file, subdir=f"sessions/{s.id}")
+     if not rel:
+         return jsonify({"ok": False, "error": "فایل معتبر نیست"}), 400
+ 
+     from app.models.course_session import SessionFile
+     rec = SessionFile(session_id=s.id, file_path=rel, description=desc)
+     db.session.add(rec)
+     db.session.commit()
+ 
+     return jsonify({
+         "ok": True,
+         "id": rec.id,
+         "file_path": rec.file_path,
+         "description": rec.description,
+         "uploaded_at": rec.uploaded_at.strftime("%Y-%m-%d %H:%M"),
+         "download_url": url_for("courses.download_session_file", file_id=rec.id)
+     })
+ 
+@bp.delete("/sessions/files/<int:file_id>")
+@login_required
+def delete_session_file(file_id):
+     from app.models.course_session import SessionFile
+     f = SessionFile.query.get_or_404(file_id)
+     # امنیت: فقط کسانی که به دوره دسترسی دارند باید حذف کنند (بنا بر نقش/مالکیت؛ در حال حاضر ساده نگه می‌داریم)
+     # می‌تونی اینجا نقش‌ها را چک کنی.
+     abs_root = current_app.instance_path
+     abs_path = os.path.join(abs_root, f.file_path)
+     try:
+         if os.path.isfile(abs_path):
+             os.remove(abs_path)
+     except Exception:
+         pass
+     db.session.delete(f)
+     db.session.commit()
+     return jsonify({"ok": True})
+ 
+@bp.get("/sessions/files/<int:file_id>/download")
+@login_required
+def download_session_file(file_id):
+     from app.models.course_session import SessionFile
+     f = SessionFile.query.get_or_404(file_id)
+     abs_root = current_app.instance_path
+     abs_path = os.path.join(abs_root, f.file_path)
+     if not os.path.isfile(abs_path):
+         abort(404)
+     # جدا کردن دایرکتوری و نام فایل برای send_from_directory
+     directory, filename = os.path.split(abs_path)
+     return send_from_directory(directory, filename, as_attachment=True)

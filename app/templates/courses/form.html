@@ -78,7 +78,14 @@
           <label class="label">تاریخ پایان</label>
           <input class="input" type="date" name="end_date" value="{{ c.end_date if c and c.end_date else '' }}">
         </div>
-
+        <div>  
+               <label for="start_time">زمان شروع (اختیاری):</label>
+    <input type="time" id="start_time" name="start_time">
+        </div>  
+              <div>
+            <label for="end_time">زمان پایان (اختیاری):</label>
+    <input type="time" id="end_time" name="end_time">
+        </div>
         <div style="grid-column:1 / -1;">
           <label class="label">توضیحات دوره</label>
           <textarea class="input" name="description" rows="4">{{ c.description if c else '' }}</textarea>

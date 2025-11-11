@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}جلسات {{ course.title }} | هم‌افزار{% endblock %}
+{% block page_title %}جلسات دوره{% endblock %}
+
+{% block content %}
+<div class="card" style="direction:rtl; max-width:1100px; margin:auto;">
+
+  <div class="card soft" style="margin-bottom:12px;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+      <div>
+        <div style="font-weight:700; font-size:16px; color:#0F172A;">
+          {{ course.title }}
+        </div>
+        <div style="font-size:12px; color:#6B7280; margin-top:4px;">
+          برنامه جلسات این دوره
+          {% if course.mentor %}
+            | منتور:
+            <span style="font-weight:600; color:#111827;">
+              {{ course.mentor.full_name
+                 or (course.mentor.first_name ~ " " ~ course.mentor.last_name) }}
+            </span>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if role in ["admin", "mentor"] %}
+      <div style="display:flex; gap:8px; align-items:center;">
+        <a href="{{ url_for('courses.index', course_id=course.id) }}"
+           class="btn btn-ghost">
+          بازگشت به دوره
+        </a>
+        <a href="{{ url_for('sessions.new', course_id=course.id) }}"
+           class="btn btn-primary">
+          + افزودن جلسه
+        </a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card soft">
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>تاریخ</th>
+            <th>ساعت</th>
+            <th>موضوع جلسه</th>
+            <th>وضعیت</th>
+            <th style="width:200px;">اقدام</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if sessions %}
+            {% for s in sessions %}
+              {% set is_past = s.session_date and s.session_date < today %}
+              {% set is_today = s.session_date == today %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ s.session_date or "" }}</td>
+                <td>
+                  {% if s.start_time %}
+                    {{ "%02d:%02d"|format(s.start_time.hour, s.start_time.minute) }}
+                  {% else %}—{% endif %}
+                </td>
+                <td>
+                  <span style="font-weight:600; color:#0F172A;">
+                    {{ s.topic or "جلسه آموزشی" }}
+                  </span>
+                  {% if s.description %}
+                    <div style="font-size:11px; color:#6B7280; margin-top:2px; max-width:360px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                      {{ s.description }}
+                    </div>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if is_today %}
+                    <span class="ha-badge ha-badge-live">امروز</span>
+                  {% elif is_past %}
+                    <span class="ha-badge ha-badge-muted">برگزار شده</span>
+                  {% else %}
+                    <span class="ha-badge ha-badge-soft">آتی</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+                    <a href="{{ url_for('sessions.view', session_id=s.id) }}"
+                       class="btn btn-ghost btn-xs">
+                      صفحه جلسه
+                    </a>
+
+                    {% if role in ["admin", "mentor"] %}
+                      <a href="{{ url_for('attendance.session_view', course_id=course.id, session_id=s.id) }}"
+                         class="btn btn-ghost btn-xs">
+                        حضور و غیاب
+                      </a>
+                      <a href="{{ url_for('sessions.edit', session_id=s.id) }}"
+                         class="btn btn-ghost btn-xs">
+                        ویرایش
+                      </a>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="6" class="muted" style="text-align:center; padding:16px;">
+                هنوز جلسه‌ای برای این دوره ثبت نشده است.
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<style>
+  .card.soft{
+    border:1px solid #E5E7EB;
+    border-radius:12px;
+    padding:12px;
+    margin-bottom:10px;
+    background:#FFFFFF;
+    box-shadow:0 6px 14px rgba(15,23,42,0.04);
+  }
+  .data-table{
+    width:100%;
+    border-collapse:collapse;
+    direction:rtl;
+  }
+  .data-table th,
+  .data-table td{
+    padding:9px 10px;
+    border-bottom:1px solid #F1F5F9;
+    font-size:12px;
+    white-space:nowrap;
+    text-align:right;
+  }
+  .data-table thead th{
+    background:#F8FAFC;
+    color:#6B7280;
+    font-weight:700;
+  }
+  .muted{
+    color:#9CA3AF;
+  }
+  .ha-badge{
+    display:inline-flex;
+    align-items:center;
+    padding:2px 8px;
+    border-radius:999px;
+    font-size:10px;
+    border:1px solid transparent;
+  }
+  .ha-badge-live{
+    background:#FEF2F2;
+    color:#B91C1C;
+    border-color:#FCA5A5;
+  }
+  .ha-badge-soft{
+    background:#ECFDF5;
+    color:#166534;
+    border-color:#BBF7D0;
+  }
+  .ha-badge-muted{
+    background:#F9FAFB;
+    color:#6B7280;
+    border-color:#E5E7EB;
+  }
+  .btn-xs{
+    padding:4px 9px;
+    font-size:10px;
+    border-radius:8px;
+  }
+</style>
+{% endblock %}

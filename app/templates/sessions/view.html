@@ -6,7 +6,7 @@
 <div class="page" dir="rtl">
   <div class="header-row" style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
     {% if course %}
-      <a class="btn btn-ghost" href="{{ url_for('sessions.list_by_course', course_id=course.id) }}">← بازگشت</a>
+      <a class="btn btn-ghost" href="{{ url_for('sessions.by_course', course_id=course.id) }}">← بازگشت</a>
       <div style="font-weight:700;color:#0F172A;">{{ course.title }}</div>
     {% endif %}
     <div style="margin-inline-start:auto;color:#64748B;font-size:13px;">شناسه جلسه: {{ s.id }}</div>
@@ -23,7 +23,7 @@
     {% endif %}
     <div style="grid-column:1 / -1;display:flex;gap:8px;justify-content:flex-end;">
       {% if can_manage %}<a class="btn btn-ghost" href="{{ url_for('sessions.edit', session_id=s.id) }}">ویرایش جلسه</a>{% endif %}
-      <a class="btn btn-primary" href="{{ url_for('attendance.view_session', session_id=s.id) }}">حضور/غیاب این جلسه</a>
+      <a class="btn btn-primary" href="{{ url_for('attendance.session_view', session_id=s.id, course_id=course.id) }}">حضور/غیاب این جلسه</a>
     </div>
   </div>
 
