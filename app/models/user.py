@@ -1,8 +1,11 @@
 from datetime import datetime
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import check_password_hash as wz_check
 from flask_login import UserMixin
 from ..extensions import db, login_manager
+from flask_bcrypt import Bcrypt
 
+
+bcrypt = Bcrypt()
 class User(UserMixin, db.Model):
     __tablename__ = "users"
     id = db.Column(db.Integer, primary_key=True)
@@ -19,11 +22,34 @@ class User(UserMixin, db.Model):
     is_active     = db.Column(db.Boolean, default=True, nullable=False)
     created_at    = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
-    def set_password(self, raw: str):
-        self.password_hash = generate_password_hash(raw)
+    def set_password(self, password: str):
+        self.password_hash = bcrypt.generate_password_hash(password).decode("utf-8")
 
     def check_password(self, raw: str) -> bool:
-        return check_password_hash(self.password_hash, raw)
+        ph = (self.password_hash or "").strip()
+
+        # اگر هش، bcrypt استاندارد است ($2a$ / $2b$ / $2y$)
+        if ph.startswith("$2a$") or ph.startswith("$2b$") or ph.startswith("$2y$"):
+            try:
+                return bcrypt.check_password_hash(ph, raw)
+            except Exception:
+                return False  # هرچیزی غیرمنتظره: لاگین نامعتبر
+
+        # تلاش برای پشتیبانی از هش‌های legacy (Werkzeug PBKDF2)
+        try:
+            return wz_check(ph, raw)
+        except Exception:
+            # نه bcrypt است نه werkzeug؛ پسورد نامعتبر تلقی شود
+            return False
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "username": self.username,
+            "full_name": self.full_name,
+            "is_active": self.is_active,
+            "created_at": self.created_at.isoformat(),
+        }
 
     @property
     def is_admin(self) -> bool:

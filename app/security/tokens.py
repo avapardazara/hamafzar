@@ -6,6 +6,8 @@ from datetime import datetime
 from flask import request, jsonify, g
 from app.extensions import db
 from app.models.api_token import ApiToken
+from flask_jwt_extended import decode_token
+from app.models.user import User
 
 # هش استاندارد (SHA-256 hex)
 def hash_token(plaintext: str) -> str:
@@ -36,15 +38,35 @@ def authenticate_request_or_none():
     token_raw = _read_token_from_headers()
     if not token_raw:
         return None
+
+    # 1) تلاش اول: توکن API کلاسیک (جدول ApiToken)
     token_h = hash_token(token_raw)
     tok = ApiToken.query.filter_by(token_hash=token_h).first()
-    if not tok or not tok.is_active():
+    if tok and tok.is_active():
+        tok.last_used_at = datetime.utcnow()
+        db.session.commit()
+        g.api_user = tok.user
+        g.api_token = tok
+        return tok.user
+
+    # 2) تلاش دوم: فرض کنیم این توکن در واقع JWT هست
+    try:
+        data = decode_token(token_raw)
+        # بسته به تنظیمات، identity معمولا در 'sub' یا 'identity' ذخیره می‌شود
+        identity = data.get("sub") or data.get("identity")
+        if not identity:
+            return None
+
+        user = User.query.get(int(identity))
+        if not user:
+            return None
+
+        g.api_user = user
+        g.api_token = None  # این‌جا ApiToken نداریم، فقط JWT بوده
+        return user
+    except Exception:
+        # اگر JWT هم معتبر نبود، None برمی‌گردونیم تا 401 داده شود
         return None
-    tok.last_used_at = datetime.utcnow()
-    db.session.commit()
-    g.api_user = tok.user
-    g.api_token = tok
-    return tok.user
 
 def api_auth_required(roles=None):
     """

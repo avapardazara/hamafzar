@@ -7,5 +7,6 @@ app = create_app()
 # 📁 سرو فایل‌های آپلودی (مثل تصاویر دانشجو)
 @app.route("/uploads/<path:filename>")
 def uploaded_file(filename):
-    upload_root = os.path.join(current_app.root_path, "..", "uploads")
-    return send_from_directory(upload_root, filename)
+    # اینجا دقیقاً باید با _uploads_root در files.py یکی باشه
+    uploads_root = os.path.join(os.getcwd(), "uploads")
+    return send_from_directory(uploads_root, filename)
