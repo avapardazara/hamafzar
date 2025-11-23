@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 
 from flask import jsonify, g, request
 from sqlalchemy.exc import IntegrityError
@@ -16,19 +16,85 @@ from app.models.course import Course
 from app.utils.files import save_mentor_avatar
 from app.utils.files import save_course_cover, delete_course_cover
 from app.blueprints.mentors.routes import _attach_account_if_requested
-from app.models.mentor_payment import MentorPayment  # 👈 این خط جدید
+from app.models.mentor_payment import MentorPayment
 from app.models.course_session import CourseSession, Attendance
 
+from app.models.installment_plan import InstallmentPlan
+from app.models.installment import Installment
+from app.models.installment_cheque import InstallmentCheque
 
+
+
+from app.blueprints.courses.routes import (
+    _validate_schedule_inputs_for,
+    _norm_dates_str_list,
+    _generate_dates_weekly,
+)
 
 try:
     from app.models.enrollment import Enrollment
 except ImportError:  # اگر فعلاً نداری، بعداً پرش می‌کنیم
     Enrollment = None
+try:
+    from app.models.course_session import SessionFile
+except Exception:
+    SessionFile = None
 
+# -------------------------------------------------
+# ✅ fallback uploader (چون save_uploaded_file در پروژه نیست)
+# -------------------------------------------------
+import os
+from werkzeug.utils import secure_filename
+from flask import current_app
+
+def save_uploaded_file(file, subdir="sessions"):
+    """
+    فایل را در uploads/<subdir>/ ذخیره می‌کند
+    خروجی: مسیر نسبی برای ذخیره روی DB
+    """
+    if not file or not getattr(file, "filename", ""):
+        return None
+
+    filename = secure_filename(file.filename)
+
+    uploads_root = os.path.join(current_app.root_path, "..", "uploads")
+    target_dir = os.path.join(uploads_root, subdir)
+    os.makedirs(target_dir, exist_ok=True)
+
+    abs_path = os.path.join(target_dir, filename)
+    file.save(abs_path)
+
+    rel_path = f"{subdir}/{filename}".replace("\\", "/")
+    return rel_path
+
+def _student_brief(st: Student) -> dict:
+    """خلاصه اطلاعات دانشجو برای JSON"""
+    full_name = getattr(st, "full_name", None)
+    if not full_name:
+        full_name = f"{(st.first_name or '').strip()} {(st.last_name or '').strip()}".strip() or "—"
+
+    return {
+        "id": st.id,
+        "full_name": full_name,
+        "phone": getattr(st, "phone", None),
+        "code": getattr(st, "student_code", None),
+        "major": getattr(st, "major", None),
+        "is_deleted": getattr(st, "is_deleted", False),
+    }
+
+# =========================
+# ✅ Global OPTIONS handler (CORS preflight)
+# =========================
+@api_bp.route("/<path:_path>", methods=["OPTIONS"])
+def api_options_passthrough(_path):
+    """
+    برای اینکه هیچ preflight ای 404 نخوره.
+    مرورگر قبل از درخواست واقعی، OPTIONS می‌زنه و باید 200 بگیره.
+    """
+    return jsonify({"ok": True}), 200
 #---------------financeHelpers-------------------
 def session_to_dict(s: CourseSession, stats: dict | None = None) -> dict:
-    """خروجی استاندارد جلسه برای فرانت (همون چیزی که تو تب Sessions استفاده می‌کنیم)."""
+    """خروجی استاندارد جلسه برای فرانت (همون چیزی که تو تب Sessions و صفحه جزئیات استفاده می‌کنیم)."""
     stats = stats or {}
 
     # تاریخ جلسه: هر ستونی که داری، یکی رو برمی‌داریم
@@ -45,6 +111,10 @@ def session_to_dict(s: CourseSession, stats: dict | None = None) -> dict:
     except Exception:
         session_date = str(session_date) if session_date is not None else None
 
+    # 🔹 موضوع و توضیحات از مدل CourseSession
+    topic = getattr(s, "topic", None)
+    description = getattr(s, "description", None)
+
     return {
         "id": getattr(s, "id", None),
         "course_id": getattr(s, "course_id", None),
@@ -53,6 +123,8 @@ def session_to_dict(s: CourseSession, stats: dict | None = None) -> dict:
         "end_time": getattr(s, "end_time", None),
         "duration_minutes": getattr(s, "duration_minutes", None),
         "status": getattr(s, "status", None) or "PLANNED",
+        "topic": topic,
+        "description": description,
         "stats": {
             "total": stats.get("total", 0),
             "present": stats.get("present", 0),
@@ -60,6 +132,20 @@ def session_to_dict(s: CourseSession, stats: dict | None = None) -> dict:
         },
     }
 
+
+def _parse_date_field(value):
+    """
+    رشته YYYY-MM-DD رو به date تبدیل می‌کند.
+    اگر خالی یا نامعتبر باشد -> None
+    """
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+    except Exception:
+        return None
 
 # ---------- Health ----------
 
@@ -164,20 +250,19 @@ def api_me():
 
 # ---------- Helper: تبدیل رشته تاریخ به date پایتونی ----------
 
-def _parse_date_param(raw: str | None):
+def _parse_date(value):
     """
-    ورودی خام مثل '2024-01-01' یا '2024/01/01' رو به date تبدیل می‌کند.
-    اگر خالی/نامعتبر باشد None برمی‌گرداند.
+    ورودی: رشته YYYY-MM-DD
+    خروجی: date یا None
     """
-    if not raw:
+    if not value:
         return None
-    raw = raw.strip()
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d"):
-        try:
-            return datetime.strptime(raw, fmt).date()
-        except ValueError:
-            continue
-    return None
+    if isinstance(value, date):
+        return value
+    try:
+        return datetime.strptime(value[:10], "%Y-%m-%d").date()
+    except Exception:
+        return None
 
 
 # ======================================================
@@ -241,15 +326,19 @@ def api_students_list():
 @api_auth_required()
 def api_student_detail(student_id: int):
     """
-    پروفایل دانشجو (نسخه ساده؛ فعلاً فقط اطلاعات اصلی)
+    پروفایل دانشجو + لیست دوره‌های ثبت‌نام‌شده
     GET /api/students/<id>
     """
     s = Student.query.filter_by(id=student_id, is_deleted=False).first_or_404()
 
+    # اطلاعات اصلی
+    full_name = getattr(s, "full_name", None)
+    if not full_name:
+        full_name = f"{(s.first_name or '').strip()} {(s.last_name or '').strip()}".strip() or None
+
     data = {
         "id": s.id,
-        "full_name": getattr(s, "full_name", None)
-                     or f"{getattr(s, 'first_name', '')} {getattr(s, 'last_name', '')}".strip() or None,
+        "full_name": full_name,
         "first_name": getattr(s, "first_name", None),
         "last_name": getattr(s, "last_name", None),
         "phone": getattr(s, "phone", None),
@@ -257,13 +346,47 @@ def api_student_detail(student_id: int):
         "email": getattr(s, "email", None),
         "avatar_url": getattr(s, "avatar_url", None),
         "created_at": getattr(s, "created_at", None).isoformat() if getattr(s, "created_at", None) else None,
-        "enrollments": [],
-        "payments": [],
-        "instalments": [],
     }
 
-    return jsonify(data)
+    # ---- لیست ثبت‌نام‌ها (دوره‌های دانشجو) ----
+    enrollments_payload = []
+    if Enrollment is not None:
+        enrs = (
+            Enrollment.query
+            .filter_by(student_id=student_id)
+            .all()
+        )
+        for e in enrs:
+            course = getattr(e, "course", None)
+            mentor_name = None
+            if course is not None:
+                mentor = getattr(course, "mentor", None)
+                if mentor is not None:
+                    mentor_name = (
+                        getattr(mentor, "full_name", None)
+                        or f"{(getattr(mentor, 'first_name', '') or '').strip()} "
+                           f"{(getattr(mentor, 'last_name', '') or '').strip()}".strip()
+                        or None
+                    )
 
+            enrollments_payload.append({
+                "id": e.id,
+                "course_id": getattr(e, "course_id", None),
+                "course_title": getattr(course, "title", None) if course else None,
+                "status": getattr(e, "status", None) or "ACTIVE",
+                "mentor_name": mentor_name,
+                "enrolled_at": getattr(e, "enrolled_at", None).isoformat()
+                               if getattr(e, "enrolled_at", None) else None,
+                "joined_at": getattr(e, "joined_at", None).isoformat()
+                             if getattr(e, "joined_at", None) else None,
+            })
+
+    data["enrollments"] = enrollments_payload
+    # فعلاً پرداخت و اقساط خالی می‌مانند تا بعداً وصلشان کنیم
+    data["payments"] = []
+    data["instalments"] = []
+
+    return jsonify(data)
 
 @api_bp.post("/students")
 @api_auth_required()
@@ -738,6 +861,8 @@ def api_course_detail(course_id):
 @api_bp.route("/courses", methods=["POST"])
 @api_auth_required()
 def api_course_create():
+    from flask import request, jsonify
+
     form = request.form
     files = request.files
 
@@ -745,38 +870,70 @@ def api_course_create():
     if not title:
         return jsonify({"error": "نام دوره الزامی است."}), 400
 
-    course = Course(
-        title=title,
-        mentor_id=_to_int_or_none(form.get("mentor_id")),
-        status=(form.get("status") or "ACTIVE").upper(),
+    # 🔹 فقط فیلدهایی را پاس می‌دهیم که واقعاً در مدل Course وجود دارند
+    kwargs = {}
 
-        start_date=form.get("start_date") or None,
-        end_date=form.get("end_date") or None,
-        start_time=form.get("start_time") or None,
-        end_time=form.get("end_time") or None,
+    # ستونی که مطمئناً داری
+    kwargs["title"] = title
 
-        description=form.get("description") or None,
+    if hasattr(Course, "mentor_id"):
+        kwargs["mentor_id"] = _to_int_or_none(form.get("mentor_id"))
 
-        fee_per_student=_to_float_or_none(form.get("fee_per_student")),
-        mentor_share_percent=_to_float_or_none(form.get("mentor_share_percent")),
+    if hasattr(Course, "status"):
+        kwargs["status"] = (form.get("status") or "ACTIVE").upper()
 
-        schedule_type=form.get("schedule_type") or None,
-        schedule_days=form.get("schedule_days") or None,
-        schedule_pattern=form.get("schedule_pattern") or None,
-        weekly_days_json=form.get("weekly_days_json") or None,
-        sessions_json=form.get("sessions_json") or None,
-    )
+    if hasattr(Course, "description"):
+        kwargs["description"] = form.get("description") or None
 
+    # 🔸 تاریخ‌ها → تبدیل به date
+    if hasattr(Course, "start_date"):
+        kwargs["start_date"] = _parse_date_field(form.get("start_date"))
+
+    if hasattr(Course, "end_date"):
+        kwargs["end_date"] = _parse_date_field(form.get("end_date"))
+
+    # اگر در مدل ستون start_time / end_time وجود ندارد، اصلاً اضافه‌شان نمی‌کنیم
+    if hasattr(Course, "start_time"):
+        kwargs["start_time"] = form.get("start_time") or None
+    if hasattr(Course, "end_time"):
+        kwargs["end_time"] = form.get("end_time") or None
+
+    # مالی
+    if hasattr(Course, "fee_per_student"):
+        kwargs["fee_per_student"] = _to_float_or_none(form.get("fee_per_student"))
+
+    if hasattr(Course, "mentor_share_percent"):
+        kwargs["mentor_share_percent"] = _to_float_or_none(form.get("mentor_share_percent"))
+
+    # capacity / category / level اگر وجود دارد
     if hasattr(Course, "capacity"):
-        setattr(course, "capacity", _to_int_or_none(form.get("capacity")))
+        kwargs["capacity"] = _to_int_or_none(form.get("capacity"))
+
     if hasattr(Course, "category"):
-        setattr(course, "category", form.get("category") or None)
+        kwargs["category"] = form.get("category") or None
+
     if hasattr(Course, "level"):
-        setattr(course, "level", form.get("level") or None)
+        kwargs["level"] = form.get("level") or None
+
+    # اگر بعداً schedule_type و ... را به مدل اضافه کردی، این‌ها فعال می‌شوند
+    if hasattr(Course, "schedule_type"):
+        kwargs["schedule_type"] = form.get("schedule_type") or None
+    if hasattr(Course, "schedule_days"):
+        kwargs["schedule_days"] = form.get("schedule_days") or None
+    if hasattr(Course, "schedule_pattern"):
+        kwargs["schedule_pattern"] = form.get("schedule_pattern") or None
+    if hasattr(Course, "weekly_days_json"):
+        kwargs["weekly_days_json"] = form.get("weekly_days_json") or None
+    if hasattr(Course, "sessions_json"):
+        kwargs["sessions_json"] = form.get("sessions_json") or None
+
+    # ✅ ساخت شیء Course فقط با فیلدهای معتبر
+    course = Course(**kwargs)
 
     db.session.add(course)
-    db.session.commit()
+    db.session.commit()  # برای اینکه course.id داشته باشیم
 
+    # ذخیره‌ی کاور اگر ارسال شده
     file_storage = files.get("cover_image")
     if file_storage:
         rel = save_course_cover(file_storage, course.id)
@@ -793,47 +950,95 @@ def api_course_create():
 @api_bp.route("/courses/<int:course_id>", methods=["PUT"])
 @api_auth_required()
 def api_course_update(course_id):
+    from flask import request, jsonify
+
     course = Course.query.get_or_404(course_id)
 
+    # soft-delete check
     if getattr(course, "is_deleted", False):
         return jsonify({"error": "not_found"}), 404
 
     form = request.form
     files = request.files
 
-    title = (form.get("title") or "").strip()
-    if title:
-        course.title = title
+    # عنوان
+    if "title" in form:
+        title = (form.get("title") or "").strip()
+        if title:
+            course.title = title
 
-    mentor_id = form.get("mentor_id")
-    if mentor_id is not None:
-        course.mentor_id = _to_int_or_none(mentor_id)
+    # منتور
+    if "mentor_id" in form and hasattr(Course, "mentor_id"):
+        course.mentor_id = _to_int_or_none(form.get("mentor_id"))
 
-    status = form.get("status")
-    if status:
-        course.status = status.upper()
+    # وضعیت
+    if "status" in form and hasattr(Course, "status"):
+        status = (form.get("status") or "").strip()
+        if status:
+            course.status = status.upper()
 
-    for attr in ["start_date", "end_date", "start_time", "end_time", "description",
-                 "schedule_type", "schedule_days", "schedule_pattern",
-                 "weekly_days_json", "sessions_json"]:
-        if attr in form:
-            setattr(course, attr, form.get(attr) or None)
+    # 🔸 تاریخ‌ها (با تبدیل به date)
+    if hasattr(Course, "start_date") and "start_date" in form:
+        raw = (form.get("start_date") or "").strip()
+        course.start_date = _parse_date_field(raw) if raw else None
 
-    if "fee_per_student" in form:
+    if hasattr(Course, "end_date") and "end_date" in form:
+        raw = (form.get("end_date") or "").strip()
+        course.end_date = _parse_date_field(raw) if raw else None
+
+    # ساعت‌ها (فقط اگر ستونش در مدل باشد)
+    if hasattr(Course, "start_time") and "start_time" in form:
+        course.start_time = form.get("start_time") or None
+
+    if hasattr(Course, "end_time") and "end_time" in form:
+        course.end_time = form.get("end_time") or None
+
+    # توضیحات
+    if hasattr(Course, "description") and "description" in form:
+        course.description = form.get("description") or None
+
+    # مالی
+    if hasattr(Course, "fee_per_student") and "fee_per_student" in form:
         course.fee_per_student = _to_float_or_none(form.get("fee_per_student"))
-    if "mentor_share_percent" in form:
+
+    if hasattr(Course, "mentor_share_percent") and "mentor_share_percent" in form:
         course.mentor_share_percent = _to_float_or_none(form.get("mentor_share_percent"))
 
+    # capacity / category / level
     if hasattr(Course, "capacity") and "capacity" in form:
-        setattr(course, "capacity", _to_int_or_none(form.get("capacity")))
-    if hasattr(Course, "category") and "category" in form:
-        setattr(course, "category", form.get("category") or None)
-    if hasattr(Course, "level") and "level" in form:
-        setattr(course, "level", form.get("level") or None)
+        course.capacity = _to_int_or_none(form.get("capacity"))
 
+    if hasattr(Course, "category") and "category" in form:
+        course.category = form.get("category") or None
+
+    if hasattr(Course, "level") and "level" in form:
+        course.level = form.get("level") or None
+
+    # schedule_* اگر در مدل باشد
+    if hasattr(Course, "schedule_type") and "schedule_type" in form:
+        course.schedule_type = form.get("schedule_type") or None
+
+    if hasattr(Course, "schedule_days") and "schedule_days" in form:
+        course.schedule_days = form.get("schedule_days") or None
+
+    if hasattr(Course, "schedule_pattern") and "schedule_pattern" in form:
+        course.schedule_pattern = form.get("schedule_pattern") or None
+
+    if hasattr(Course, "weekly_days_json") and "weekly_days_json" in form:
+        course.weekly_days_json = form.get("weekly_days_json") or None
+
+    if hasattr(Course, "sessions_json") and "sessions_json" in form:
+        course.sessions_json = form.get("sessions_json") or None
+
+    # کاور جدید
     file_storage = files.get("cover_image")
     if file_storage:
-        delete_course_cover(course)
+        # اول قبلی را حذف کن (اگر فانکشن delete_course_cover داری)
+        try:
+            delete_course_cover(course)
+        except Exception:
+            pass
+
         rel = save_course_cover(file_storage, course.id)
         if rel:
             if hasattr(course, "cover_image"):
@@ -842,7 +1047,7 @@ def api_course_update(course_id):
                 course.cover_path = rel
 
     db.session.commit()
-    return jsonify(course_to_dict(course))
+    return jsonify(course_to_dict(course)), 200
 
 
 @api_bp.route("/courses/<int:course_id>", methods=["PATCH"])
@@ -1231,37 +1436,45 @@ def _enrollment_to_dict(en, st: Student | None = None) -> dict:
         "status": status,
     }
 
-
-@api_bp.get("/courses/<int:course_id>/students")
+@api_bp.route("/courses/<int:course_id>/students", methods=["GET"])
 @api_auth_required()
-def api_course_students(course_id: int):
-    """
-    دانشجوهای ثبت‌نام‌شده در دوره
-    GET /api/courses/<course_id>/students
-    خروجی:
-      { "items": [...], "total": ... }
-    """
-    if Enrollment is None:
-        # اگر فعلاً مدل ثبت‌نام نداری، خالی برمی‌گردونیم تا فرانت کرش نکنه
-        return jsonify({"items": [], "total": 0}), 200
+def api_course_students(course_id):
+    """لیست دانشجوهای ثبت‌نام‌شده + دانشجوهای قابل انتخاب (حذف‌نشده و هنوز در این دوره نیستند)"""
+    from flask import jsonify
 
-    q = (
-        db.session.query(Enrollment, Student)
-        .join(Student, Enrollment.student_id == Student.id)
-        .filter(Enrollment.course_id == course_id)
+    course = Course.query.get_or_404(course_id)
+
+    # دانشجوهای ثبت‌نام شده در این دوره
+    enrolled_q = (
+        db.session.query(Student)
+        .join(Enrollment, Enrollment.student_id == Student.id)
+        .filter(
+            Enrollment.course_id == course.id,
+            getattr(Student, "is_deleted", False) == False,  # noqa: E712
+        )
+        .order_by(Student.id.desc())
     )
+    enrolled = [_student_brief(st) for st in enrolled_q]
 
-    # اگر soft-delete یا وضعیت داشته باشی اینجا می‌تونی فیلتر کنی
-    if hasattr(Enrollment, "is_deleted"):
-        q = q.filter(Enrollment.is_deleted.is_(False))
+    # id های ثبت‌نام شده
+    enrolled_ids = [s["id"] for s in enrolled]
 
-    items = []
-    for en, st in q.all():
-        items.append(_enrollment_to_dict(en, st))
+    # دانشجوهای قابل انتخاب (is_deleted = False و هنوز تو این دوره نیستند)
+    available_q = Student.query.filter(
+        getattr(Student, "is_deleted", False) == False,  # noqa: E712
+        ~Student.id.in_(enrolled_ids) if enrolled_ids else True,
+    ).order_by(Student.id.desc())
+    available = [_student_brief(st) for st in available_q]
 
-    return jsonify({"items": items, "total": len(items)}), 200
-
-
+    return jsonify({
+        "course_id": course.id,
+        "enrolled": enrolled,
+        "available": available,
+        "counts": {
+            "enrolled": len(enrolled),
+            "available": len(available),
+        },
+    }), 200
 # ---------- خلاصه مالی دوره ----------
 
 @api_bp.get("/courses/<int:course_id>/finance")
@@ -1314,3 +1527,898 @@ def api_course_finance(course_id: int):
             "mentor_due": mentor_due,
         }
     ), 200
+
+
+@api_bp.route("/courses/<int:course_id>/students/enroll", methods=["POST"])
+@api_auth_required()
+def api_course_students_enroll(course_id):
+    """ثبت‌نام یک دانشجو در دوره (enroll)"""
+    from flask import request, jsonify
+
+    course = Course.query.get_or_404(course_id)
+
+    # هم JSON و هم فرم را پشتیبانی کنیم
+    data = request.get_json(silent=True) or request.form or {}
+    sid = data.get("student_id")
+    try:
+        sid = int(sid)
+    except (TypeError, ValueError):
+        sid = None
+
+    if not sid:
+        return jsonify({"ok": False, "error": "student_id لازم است"}), 400
+
+    student = Student.query.get_or_404(sid)
+    if getattr(student, "is_deleted", False):
+        return jsonify({"ok": False, "error": "student حذف شده است"}), 400
+
+    # اگر قبلاً ثبت‌نام شده، دوباره چیزی نساز
+    exists = Enrollment.query.filter_by(course_id=course.id, student_id=student.id).first()
+    if exists:
+        return jsonify({"ok": True, "message": "قبلاً ثبت‌نام شده"}), 200
+
+    enr = Enrollment(course_id=course.id, student_id=student.id)
+    db.session.add(enr)
+    db.session.commit()
+
+    return jsonify({"ok": True}), 201
+
+
+@api_bp.route("/courses/<int:course_id>/students/unenroll", methods=["POST"])
+@api_auth_required()
+def api_course_students_unenroll(course_id):
+    """خارج کردن یک دانشجو از دوره (حذف ثبت‌نام)"""
+    from flask import request, jsonify
+
+    course = Course.query.get_or_404(course_id)
+
+    data = request.get_json(silent=True) or request.form or {}
+    sid = data.get("student_id")
+    try:
+        sid = int(sid)
+    except (TypeError, ValueError):
+        sid = None
+
+    if not sid:
+        return jsonify({"ok": False, "error": "student_id لازم است"}), 400
+
+    enr = Enrollment.query.filter_by(course_id=course.id, student_id=sid).first()
+    if not enr:
+        return jsonify({"ok": True, "message": "قبلاً حذف شده / یافت نشد"}), 200
+
+    db.session.delete(enr)
+    db.session.commit()
+    return jsonify({"ok": True}), 200
+def _student_to_dict(st: Student):
+    name = ((st.first_name or '') + ' ' + (st.last_name or '')).strip()
+    if not name and hasattr(st, "full_name"):
+        name = (st.full_name or "").strip()
+    return {
+        "id": st.id,
+        "name": name or "—",
+        "email": st.email or "",
+        "phone": st.phone or "",
+    }
+
+# 🔹 لیست دانشجوهای ثبت‌نام‌شده در یک دوره
+@api_bp.get("/courses/<int:course_id>/enrollments")
+@api_auth_required()
+def api_course_enrollments_list(course_id):
+    Course.query.get_or_404(course_id)
+
+    rows = (
+        db.session.query(Enrollment, Student)
+        .join(Student, Student.id == Enrollment.student_id)
+        .filter(Enrollment.course_id == course_id)
+        .order_by(Student.last_name.asc(), Student.first_name.asc(), Student.id.asc())
+        .all()
+    )
+
+    items = []
+    for e, st in rows:
+        items.append({
+            "id": e.id,                  # id ثبت‌نام (Enrollment)
+            "student_id": st.id,
+            "student": _student_to_dict(st),
+            "status": getattr(e, "status", "ACTIVE") or "ACTIVE",
+        })
+
+    return jsonify({"items": items, "total": len(items)}), 200
+
+
+# 🔹 لیست دانشجوهایی که می‌توانند در این دوره ثبت‌نام شوند
+@api_bp.get("/courses/<int:course_id>/students/available")
+@api_auth_required()
+def api_course_students_available(course_id):
+    Course.query.get_or_404(course_id)
+
+    q = (request.args.get("q") or "").strip()
+    limit = request.args.get("limit", type=int) or 50
+    limit = max(1, min(limit, 100))
+
+    enrolled_ids_subq = (
+        db.session.query(Enrollment.student_id)
+        .filter(Enrollment.course_id == course_id)
+        .subquery()
+    )
+
+    qry = Student.query.filter(~Student.id.in_(enrolled_ids_subq))
+
+    # فقط دانشجوهایی که is_deleted آنها False است (اگر ستون وجود داشته باشد)
+    if hasattr(Student, "is_deleted"):
+        qry = qry.filter(
+            or_(Student.is_deleted.is_(False), Student.is_deleted.is_(None))
+        )
+
+    if q:
+        like = f"%{q}%"
+        id_filter = (Student.id == int(q)) if q.isdigit() else False
+        qry = qry.filter(
+            or_(
+                id_filter,
+                Student.first_name.ilike(like),
+                Student.last_name.ilike(like),
+                Student.email.ilike(like),
+                Student.phone.ilike(like),
+            )
+        )
+
+    students = (
+        qry.order_by(Student.last_name.asc(), Student.first_name.asc())
+        .limit(limit)
+        .all()
+    )
+
+    return jsonify({
+        "items": [_student_to_dict(s) for s in students],
+        "total": len(students),
+    }), 200
+
+
+# 🔹 افزودن یک دانشجو به دوره
+@api_bp.post("/courses/<int:course_id>/enrollments")
+@api_auth_required()
+def api_course_enrollment_add(course_id):
+    Course.query.get_or_404(course_id)
+
+    payload = request.get_json(silent=True) or {}
+    student_id = payload.get("student_id")
+
+    try:
+        student_id = int(student_id)
+    except Exception:
+        student_id = None
+
+    if not student_id:
+        return jsonify({"error": "student_id لازم است"}), 400
+
+    student = Student.query.get_or_404(student_id)
+
+    if hasattr(Student, "is_deleted") and student.is_deleted:
+        return jsonify({"error": "این دانشجو غیرفعال است"}), 400
+
+    exists = (
+        Enrollment.query
+        .filter_by(course_id=course_id, student_id=student_id)
+        .first()
+    )
+    if exists:
+        # از نظر فرانت مهم این است که اوکی است؛ فقط پیام بده که قبلاً بوده
+        return jsonify({"ok": True, "message": "قبلاً ثبت شده"}), 200
+
+    now_utc = datetime.utcnow()
+    e = Enrollment(course_id=course_id, student_id=student_id, status="ACTIVE")
+    if hasattr(Enrollment, "enrolled_at"):
+        e.enrolled_at = now_utc
+    if hasattr(Enrollment, "joined_at"):
+        e.joined_at = now_utc
+
+    db.session.add(e)
+    db.session.commit()
+
+    return jsonify({"ok": True, "id": e.id}), 201
+
+
+# 🔹 حذف ثبت‌نام یک دانشجو از دوره
+@api_bp.delete("/courses/<int:course_id>/enrollments/<int:enrollment_id>")
+@api_auth_required()
+def api_course_enrollment_delete(course_id, enrollment_id):
+    Course.query.get_or_404(course_id)
+
+    e = (
+        Enrollment.query
+        .filter_by(id=enrollment_id, course_id=course_id)
+        .first_or_404()
+    )
+
+    db.session.delete(e)
+    db.session.commit()
+    return jsonify({"ok": True}), 200
+# -----------------------------
+# Helpers
+# -----------------------------
+def _api_student_dict(s: Student):
+    full = f"{(s.first_name or '').strip()} {(s.last_name or '').strip()}".strip()
+    if not full and hasattr(s, "full_name"):
+        full = (s.full_name or "").strip()
+    return {
+        "id": s.id,
+        "name": full or f"دانشجو #{s.id}",
+        "email": s.email or "",
+        "phone": s.phone or "",
+    }
+
+
+# -----------------------------
+# ۲) افزودن دانشجو به دوره
+# -----------------------------
+@api_bp.post("/courses/<int:course_id>/students", endpoint="api_course_students_add")
+@api_auth_required()
+def api_course_students_add(course_id: int):
+    course = Course.query.get_or_404(course_id)
+
+    if request.is_json:
+        payload = request.get_json(silent=True) or {}
+        student_id = payload.get("student_id")
+    else:
+        student_id = request.form.get("student_id")
+
+    try:
+        student_id = int(student_id)
+    except Exception:
+        student_id = None
+
+    if not student_id:
+        return jsonify({"ok": False, "error": "student_id لازم است"}), 400
+
+    exists = Enrollment.query.filter_by(course_id=course.id, student_id=student_id).first()
+    if exists:
+        return jsonify({"ok": False, "error": "قبلاً ثبت شده"}), 409
+
+    now_utc = datetime.utcnow()
+    e = Enrollment(course_id=course.id, student_id=student_id, status="ACTIVE")
+    if hasattr(Enrollment, "enrolled_at"):
+        setattr(e, "enrolled_at", now_utc)
+    if hasattr(Enrollment, "joined_at"):
+        setattr(e, "joined_at", now_utc)
+
+    db.session.add(e)
+    db.session.commit()
+    return jsonify({"ok": True, "id": e.id})
+# -----------------------------
+# ۳) حذف دانشجو از دوره
+# -----------------------------
+@api_bp.delete("/courses/<int:course_id>/students/<int:student_id>", endpoint="api_course_students_remove")
+@api_auth_required()
+def api_course_students_remove(course_id: int, student_id: int):
+    course = Course.query.get_or_404(course_id)
+
+    enr = Enrollment.query.filter_by(course_id=course.id, student_id=student_id).first()
+    if not enr:
+        return jsonify({"ok": True, "message": "قبلاً حذف شده/یافت نشد"}), 200
+
+    db.session.delete(enr)
+    db.session.commit()
+    return jsonify({"ok": True})
+@api_bp.route("/courses/<int:course_id>/sessions/generate", methods=["POST"])
+@api_auth_required()
+def api_course_sessions_generate(course_id):
+    """
+    تولید خودکار جلسات دوره براساس برنامه‌ی زمانی (هم‌منطق با /courses/.../sessions/generate).
+    خروجی: {ok: True, created: n} یا error.
+    """
+    from flask import request, jsonify
+    import json
+
+    course = Course.query.get_or_404(course_id)
+
+    # اگر soft-delete داری
+    if getattr(course, "is_deleted", False):
+        return jsonify({"error": "not_found"}), 404
+
+    # همون ولیدیشن موجود در courses/routes.py
+    ok, err = _validate_schedule_inputs_for(course)
+    if not ok:
+        return jsonify({"ok": False, "error": err}), 400
+
+    # اگر قبلاً جلسه ساخته شده، مثل نسخه‌ی HTML کد 409 بده
+    existing = CourseSession.query.filter_by(course_id=course_id).count()
+    if existing:
+        return jsonify({"ok": False, "error": "جلسات قبلاً ساخته شده"}), 409
+
+    # بدنه‌ی درخواست: exclude, sessions_json و ...
+    body = request.get_json(silent=True) or {}
+    if not body and request.form:
+        try:
+            body = json.loads(request.form.get("payload") or "{}")
+        except Exception:
+            body = {}
+
+    exclude = _norm_dates_str_list(body.get("exclude") or [])
+
+    st = (getattr(course, "schedule_type", "DATES") or "DATES").upper()
+    final_days = set()
+
+    # حالت هفتگی (weekly) – از همون helper استفاده می‌کنیم
+    if st == "WEEKLY":
+        final_days = _generate_dates_weekly(course, exclude)
+    else:
+        # حالت CUSTOM/DATES: یا از body.sessions_json، یا از خود course.sessions_json
+        raw_dates = body.get("sessions_json") or getattr(course, "sessions_json", []) or []
+        cand = _norm_dates_str_list(raw_dates)
+        for d in cand:
+            if course.start_date <= d <= course.end_date and d not in exclude:
+                final_days.add(d)
+
+    if not final_days:
+        return jsonify({"ok": False, "error": "هیچ تاریخی برای ایجاد جلسه یافت نشد."}), 400
+
+    print("تاریخ‌های ایجاد شده برای جلسات (API):")
+    for d in sorted(final_days):
+        print(f"- {d}")
+
+    # ذخیره جلسات – دقیقاً هم‌رفتار با courses/routes.py
+    for d in sorted(final_days):
+        # d از نوع datetime.date است
+        session_dt = datetime.combine(d, datetime.min.time())
+        db.session.add(CourseSession(course_id=course_id, date=session_dt, session_date=d))
+
+    db.session.commit()
+    return jsonify({"ok": True, "created": len(final_days)}), 201
+# -----------------------------
+# Session detail + files (API)
+# -----------------------------
+def _session_file_to_dict(f):
+    return {
+        "id": f.id,
+        "file_path": f.file_path,
+        "description": f.description or "",
+        "uploaded_at": f.uploaded_at.isoformat() if getattr(f, "uploaded_at", None) else None,
+    }
+
+
+
+@api_bp.route("/courses/<int:course_id>/sessions/<int:session_id>", methods=["GET"])
+@api_auth_required()
+def api_course_session_detail(course_id: int, session_id: int):
+    """جزئیات جلسه در کانتکست دوره (برای امنیت و routeهای قدیمی)."""
+    s = CourseSession.query.filter_by(id=session_id, course_id=course_id).first_or_404()
+    data = session_to_dict(s)
+
+    files = []
+    if SessionFile is not None:
+        files = [_session_file_to_dict(f) for f in SessionFile.query.filter_by(session_id=s.id).all()]
+
+    return jsonify({"session": data, "files": files})
+
+
+@api_bp.route("/sessions/<int:session_id>/upload", methods=["POST"])
+@api_auth_required()
+def api_session_upload_file(session_id: int):
+    """آپلود فایل برای یک جلسه. ورودی multipart با کلید 'file'."""
+    if SessionFile is None:
+        return jsonify({"ok": False, "error": "SessionFile model not found"}), 500
+
+    s = CourseSession.query.get_or_404(session_id)
+
+    file = request.files.get("file")
+    if not file:
+        return jsonify({"ok": False, "error": "فایل ارسال نشده است"}), 400
+
+    desc = (request.form.get("description") or "").strip() or None
+
+    rel = save_uploaded_file(file, subdir=f"sessions/{s.id}")
+    if not rel:
+        return jsonify({"ok": False, "error": "فایل معتبر نیست"}), 400
+
+    rec = SessionFile(session_id=s.id, file_path=rel, description=desc)
+    db.session.add(rec)
+    db.session.commit()
+
+    return jsonify({"ok": True, "file": _session_file_to_dict(rec)}), 201
+
+
+@api_bp.route("/courses/<int:course_id>/sessions/<int:session_id>/upload", methods=["POST"])
+@api_auth_required()
+def api_course_session_upload_file(course_id: int, session_id: int):
+    """همان آپلود، ولی زیر URL دوره."""
+    if SessionFile is None:
+        return jsonify({"ok": False, "error": "SessionFile model not found"}), 500
+
+    s = CourseSession.query.filter_by(id=session_id, course_id=course_id).first_or_404()
+
+    file = request.files.get("file")
+    if not file:
+        return jsonify({"ok": False, "error": "فایل ارسال نشده است"}), 400
+
+    desc = (request.form.get("description") or "").strip() or None
+
+    rel = save_uploaded_file(file, subdir=f"sessions/{s.id}")
+    if not rel:
+        return jsonify({"ok": False, "error": "فایل معتبر نیست"}), 400
+
+    rec = SessionFile(session_id=s.id, file_path=rel, description=desc)
+    db.session.add(rec)
+    db.session.commit()
+
+    return jsonify({"ok": True, "file": _session_file_to_dict(rec)}), 201
+
+
+@api_bp.route("/sessions/file/<int:file_id>", methods=["DELETE"])
+@api_auth_required()
+def api_session_delete_file(file_id: int):
+    """حذف فایل یک جلسه (سازگار با فرانت)."""
+    if SessionFile is None:
+        return jsonify({"ok": False, "error": "SessionFile model not found"}), 500
+
+    f = SessionFile.query.get_or_404(file_id)
+    try:
+        # فایل روی دیسک هم حذف شود
+        from app.utils.media import remove_media
+        remove_media(f.file_path)
+    except Exception:
+        pass
+
+    db.session.delete(f)
+    db.session.commit()
+    return jsonify({"ok": True})
+@api_bp.route("/sessions/<int:session_id>", methods=["PATCH"])
+@api_auth_required()
+def api_session_partial_update(session_id: int):
+    """
+    ویرایش ساده‌ی یک جلسه (موضوع، توضیحات، وضعیت)
+    PATCH /api/sessions/<id>
+    Body (JSON):
+      {
+        "topic": "جلسه معرفی پروژه",
+        "description": "مرور کلی سرفصل‌ها و معرفی تیم‌ها",
+        "status": "DONE"
+      }
+    """
+    s = CourseSession.query.get_or_404(session_id)
+    payload = request.get_json(silent=True) or {}
+
+    # موضوع جلسه
+    if "topic" in payload and hasattr(CourseSession, "topic"):
+        s.topic = (payload.get("topic") or "").strip() or "جلسه"
+
+    # توضیحات جلسه
+    if "description" in payload and hasattr(CourseSession, "description"):
+        s.description = (payload.get("description") or "").strip() or None
+
+    # وضعیت (اختیاری)
+    if "status" in payload and hasattr(CourseSession, "status"):
+        raw = (payload.get("status") or "").strip()
+        if raw:
+            s.status = raw.upper()
+
+    db.session.commit()
+    return jsonify(session_to_dict(s)), 200
+
+
+@api_bp.route("/courses/<int:course_id>/sessions/<int:session_id>", methods=["PATCH"])
+@api_auth_required()
+def api_course_session_partial_update(course_id: int, session_id: int):
+    """
+    همان ویرایش جلسه، ولی در کانتکست دوره (برای امنیت بیشتر).
+    PATCH /api/courses/<course_id>/sessions/<session_id>
+    """
+    s = CourseSession.query.filter_by(id=session_id, course_id=course_id).first_or_404()
+    payload = request.get_json(silent=True) or {}
+
+    if "topic" in payload and hasattr(CourseSession, "topic"):
+        s.topic = (payload.get("topic") or "").strip() or "جلسه"
+
+    if "description" in payload and hasattr(CourseSession, "description"):
+        s.description = (payload.get("description") or "").strip() or None
+
+    if "status" in payload and hasattr(CourseSession, "status"):
+        raw = (payload.get("status") or "").strip()
+        if raw:
+            s.status = raw.upper()
+
+    db.session.commit()
+    return jsonify(session_to_dict(s)), 200
+@api_bp.route("/sessions/<int:session_id>", methods=["GET", "OPTIONS"])
+def api_session_detail(session_id):
+    """
+    جزئیات یک جلسه + لیست فایل‌های مربوط به آن
+    """
+    if request.method == "OPTIONS":
+        return jsonify({"ok": True}), 204
+
+    # پیدا کردن جلسه
+    session_obj = CourseSession.query.get_or_404(session_id)
+
+    # چون مدل SessionFile ستونی به نام is_deleted ندارد، فقط بر اساس session_id فیلتر می‌کنیم
+    files = (
+        SessionFile.query
+        .filter_by(session_id=session_obj.id)
+        .order_by(SessionFile.id.desc())
+        .all()
+    )
+
+    return jsonify(
+        {
+            "session": {
+                "id": session_obj.id,
+                "course_id": session_obj.course_id,
+                "date": session_obj.date.isoformat() if session_obj.date else None,
+                "topic": session_obj.topic,
+                "description": session_obj.description,
+            },
+            "files": [
+                {
+                    "id": f.id,
+                    "file_path": f.file_path,
+                    "description": f.description,
+                    # اگر ستونی مثل created_at داری:
+                    "uploaded_at": getattr(f, "created_at", None).isoformat()
+                    if getattr(f, "created_at", None)
+                    else None,
+                }
+                for f in files
+            ],
+        }
+    )
+@api_bp.route("/courses/<int:course_id>/attendance", methods=["GET", "POST", "OPTIONS"])
+def api_course_attendance(course_id):
+    """
+    GET  /api/courses/<course_id>/attendance?session_id=XX
+        -> برگرداندن وضعیت حضور/غیاب برای یک جلسه
+
+    POST /api/courses/<course_id>/attendance
+        body JSON:
+        {
+            "session_id": 20,
+            "items": [
+                {"student_id": 1, "status": "PRESENT"},
+                {"student_id": 2, "status": "ABSENT"},
+                ...
+            ]
+        }
+    """
+
+    # ✅ هندل preflight برای CORS
+    if request.method == "OPTIONS":
+        return "", 204
+
+    # --------- GET: گرفتن لیست حضور/غیاب یک جلسه ----------
+    if request.method == "GET":
+        try:
+            session_id = int(request.args.get("session_id", "0"))
+        except ValueError:
+            return jsonify({"error": "session_id نامعتبر است"}), 400
+
+        if not session_id:
+            return jsonify({"error": "session_id الزامی است"}), 400
+
+        # مطمئن شو جلسه متعلق به همین دوره است
+        session_obj = (
+            CourseSession.query
+            .filter_by(id=session_id, course_id=course_id)
+            .first()
+        )
+        if not session_obj:
+            return jsonify({"error": "جلسه پیدا نشد"}), 404
+
+        # خواندن حضور/غیاب‌ها
+        rows = (
+            Attendance.query
+            .filter_by(session_id=session_obj.id)
+            .all()
+        )
+
+        items = []
+        for a in rows:
+            items.append({
+                "student_id": a.student_id,
+                "status": a.status or "ABSENT",
+            })
+
+        return jsonify({
+            "session_id": session_obj.id,
+            "items": items,
+        }), 200
+
+    # --------- POST: ذخیره حضور/غیاب یک جلسه ----------
+    data = request.get_json(silent=True) or {}
+
+    try:
+        session_id = int(data.get("session_id") or 0)
+    except ValueError:
+        return jsonify({"error": "session_id نامعتبر است"}), 400
+
+    if not session_id:
+        return jsonify({"error": "session_id الزامی است"}), 400
+
+    items = data.get("items") or []
+
+    # اعتبارسنجی جلسه
+    session_obj = (
+        CourseSession.query
+        .filter_by(id=session_id, course_id=course_id)
+        .first()
+    )
+    if not session_obj:
+        return jsonify({"error": "جلسه پیدا نشد"}), 404
+
+    # اول حضور/غیاب‌های قبلی این جلسه را پاک می‌کنیم
+    Attendance.query.filter_by(session_id=session_obj.id).delete(synchronize_session=False)
+
+    # بعد جدیدها را ذخیره می‌کنیم
+    saved = 0
+    for item in items:
+        student_id = item.get("student_id")
+        status = (item.get("status") or "ABSENT").upper()
+
+        if not student_id:
+            continue
+
+        att = Attendance(
+            session_id=session_obj.id,
+            student_id=student_id,
+            status=status,
+        )
+
+        # اگر مدل Attendance ستون course_id داشت، آن را هم ست کن
+        if "course_id" in Attendance.__table__.columns:
+            att.course_id = course_id
+
+        db.session.add(att)
+        saved += 1
+
+    db.session.commit()
+
+    return jsonify({
+        "ok": True,
+        "session_id": session_obj.id,
+        "saved": saved,
+    }), 200
+def _installment_to_dict_api(inst: Installment) -> dict:
+    """خروجی استاندارد یک قسط برای API فرانت."""
+    if not inst:
+        return {}
+    return {
+        "id": inst.id,
+        "plan_id": getattr(inst, "plan_id", None) or getattr(inst, "installment_plan_id", None),
+        "seq": getattr(inst, "seq", None),
+        "title": getattr(inst, "title", None),
+        "amount_base": int((getattr(inst, "amount_base", 0) or 0)),
+        "cheque_fee_amount": int((getattr(inst, "cheque_fee_amount", 0) or 0)),
+        "amount_total": int((getattr(inst, "amount_total", 0) or 0)),
+        "due_date": inst.due_date.isoformat() if getattr(inst, "due_date", None) else None,
+        "status": (getattr(inst, "status", None) or "PENDING").upper(),
+        "note": getattr(inst, "note", None),
+    }
+
+
+def _installment_plan_totals_api(plan_id: int) -> dict:
+    """جمع کل، پرداخت‌شده و باقی‌مانده‌ی یک پلن اقساط."""
+    if not Installment:
+        return {"count": 0, "total": 0, "paid": 0, "remain": 0}
+
+    insts = Installment.query.filter(
+        (Installment.plan_id == plan_id)
+        | (getattr(Installment, "installment_plan_id", None) == plan_id)
+    ).all()
+
+    total = sum((i.amount_total or 0) for i in insts)
+    paid = sum((i.amount_total or 0) for i in insts if (i.status or "").upper() == "PAID")
+
+    return {
+        "count": len(insts),
+        "total": int(total),
+        "paid": int(paid),
+        "remain": int(max(total - paid, 0)),
+    }
+@api_bp.get("/students/<int:student_id>/installments")
+@api_auth_required()
+def api_student_installments(student_id: int):
+    """
+    لیست برنامه‌های اقساط + اقساط یک دانشجو
+    GET /api/students/<id>/installments
+
+    خروجی:
+    {
+      "items": [   # لیست تک‌تک اقساط
+        {
+          "id": 1,
+          "plan_id": 10,
+          "seq": 1,
+          "title": "قسط ۱",
+          "amount_base": 3000000,
+          "cheque_fee_amount": 150000,
+          "amount_total": 3150000,
+          "due_date": "2025-02-01",
+          "status": "PENDING",
+          "note": null,
+          "course_title": "دوره A",
+          "plan_title": "پلن اقساط دانشجو فلانی"
+        },
+        ...
+      ],
+      "plans": [   # خلاصه پلن‌ها
+        {
+          "id": 10,
+          "title": "پلن اقساط ...",
+          "course_id": 3,
+          "student_id": 5,
+          "enrollment_id": 12,
+          "total_amount": 12600000,
+          "installments_count": 4,
+          "paid": 3150000,
+          "remain": 9450000
+        }
+      ],
+      "summary": {
+        "sum_total": 12600000,
+        "sum_paid": 3150000,
+        "sum_remain": 9450000
+      }
+    }
+    """
+    # اگر مدل‌ها در پروژه فعلی هنوز وجود ندارند، خروجی خالی بده
+    if not InstallmentPlan or not Installment:
+        return jsonify({
+            "items": [],
+            "plans": [],
+            "summary": {
+                "sum_total": 0,
+                "sum_paid": 0,
+                "sum_remain": 0,
+            },
+        })
+
+    # خود دانشجو
+    student = Student.query.filter_by(id=student_id, is_deleted=False).first_or_404()
+
+    # ۱) پلن‌هایی که مستقیم به student_id وصل شده‌اند
+    direct_plans = (
+        InstallmentPlan.query
+        .options(db.joinedload(InstallmentPlan.installments))
+        .filter(InstallmentPlan.student_id == student.id)
+        .all()
+    )
+
+    # ۲) پلن‌هایی که از طریق Enrollment وصل شده‌اند
+    enrol_ids: list[int] = []
+    if Enrollment is not None:
+        enrol_ids = [
+            e.id for e in Enrollment.query.filter_by(student_id=student.id).all()
+            if getattr(e, "id", None)
+        ]
+
+    via_enrollment = []
+    if enrol_ids:
+        via_enrollment = (
+            InstallmentPlan.query
+            .options(db.joinedload(InstallmentPlan.installments))
+            .filter(InstallmentPlan.enrollment_id.in_(enrol_ids))
+            .all()
+        )
+
+    # ادغام همه پلن‌ها
+    plans_map: dict[int, InstallmentPlan] = {}
+    for p in direct_plans + via_enrollment:
+        if not getattr(p, "id", None):
+            continue
+        plans_map[p.id] = p
+
+    items: list[dict] = []
+
+    for p in plans_map.values():
+        course = getattr(p, "course", None)
+        course_title = getattr(course, "title", None) if course is not None else None
+
+        for inst in getattr(p, "installments", []) or []:
+            row = _installment_to_dict_api(inst)
+            row["course_title"] = course_title
+            row["plan_title"] = p.title
+            items.append(row)
+
+    # خلاصه هر پلن
+    plans_payload: list[dict] = []
+    sum_total = 0
+    sum_paid = 0
+
+    for p in plans_map.values():
+        stats = _installment_plan_totals_api(p.id)
+        sum_total += stats["total"]
+        sum_paid += stats["paid"]
+
+        plans_payload.append({
+            "id": p.id,
+            "title": p.title,
+            "course_id": getattr(p, "course_id", None),
+            "student_id": getattr(p, "student_id", None),
+            "enrollment_id": getattr(p, "enrollment_id", None),
+            "total_amount": int(getattr(p, "total_amount", 0) or 0),
+            "installments_count": getattr(p, "installments_count", None),
+            "paid": stats["paid"],
+            "remain": stats["remain"],
+        })
+
+    summary = {
+        "sum_total": int(sum_total),
+        "sum_paid": int(sum_paid),
+        "sum_remain": int(max(sum_total - sum_paid, 0)),
+    }
+
+    return jsonify({
+        "items": items,
+        "plans": plans_payload,
+        "summary": summary,
+    })
+@api_bp.get("/students/<int:student_id>/courses")
+@api_auth_required()
+def api_student_courses(student_id):
+    """لیست دوره‌هایی که این دانشجو در آن ثبت‌نام شده است"""
+    student = Student.query.get_or_404(student_id)
+
+    # جوین Enrollment + Course + Mentor
+    rows = (
+        db.session.query(Enrollment, Course, Mentor)
+        .join(Course, Course.id == Enrollment.course_id)
+        .outerjoin(Mentor, Mentor.id == Course.mentor_id)
+        .filter(Enrollment.student_id == student.id)
+        .order_by(Enrollment.enrolled_at.desc())
+        .all()
+    )
+
+    items = []
+    for enr, course, mentor in rows:
+        items.append({
+            "id": enr.id,
+            "course_id": course.id if course else None,
+            "course_title": course.title if course else None,
+            "mentor_name": getattr(mentor, "full_name", None),
+            "status": enr.status or "ONGOING",
+            "enrolled_at": enr.enrolled_at.isoformat() if enr.enrolled_at else None,
+        })
+
+    return jsonify({
+        "student_id": student.id,
+        "items": items,
+    })
+    """
+    لیست دوره‌هایی که این دانشجو در آن‌ها ثبت‌نام شده است.
+    GET /api/students/<id>/courses
+    """
+    s = Student.query.filter_by(id=student_id, is_deleted=False).first_or_404()
+
+    q = (
+        Enrollment.query
+        .join(Course, Enrollment.course_id == Course.id)
+        .filter(Enrollment.student_id == s.id)
+    )
+
+    items = []
+    for enr in q:
+        c = enr.course  # رابطه‌ی backref روی مدل Enrollment
+        # نام منتور
+        mentor_name = "—"
+        mentor = getattr(c, "mentor", None)
+        if mentor is not None:
+            mentor_name = (
+                getattr(mentor, "full_name", None)
+                or (
+                    (getattr(mentor, "first_name", "") + " " + getattr(mentor, "last_name", "")).strip()
+                )
+                or f"منتور #{mentor.id}"
+            )
+
+        items.append({
+            "id": enr.id,
+            "course_id": c.id if c else None,
+            "course_title": getattr(c, "title", None) if c else None,
+            "mentor_name": mentor_name,
+            "status": getattr(enr, "status", None) or "ONGOING",
+            "enrolled_at": getattr(enr, "created_at", None).isoformat()
+                            if getattr(enr, "created_at", None) else None,
+        })
+
+    return jsonify({
+        "items": items,
+        "total": len(items),
+    })

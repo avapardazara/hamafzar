@@ -11,7 +11,7 @@ from .blueprints.auth.routes import bp as auth_bp
 def create_app(config_class=Config):
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config_class)
-
+    app.url_map.strict_slashes = False
     # --- تنظیم SQLite با مسیر مطلق (سازگار با ویندوز) ---
     os.makedirs(app.instance_path, exist_ok=True)
     db_path = os.path.join(app.instance_path, "app.db")
@@ -30,12 +30,28 @@ def create_app(config_class=Config):
 
     # --- CORS برای auth API ---
     CORS(
-            app,
-            resources={r"/*": {"origins": "http://localhost:3000"}},
-            supports_credentials=True,
-            allow_headers=["Content-Type", "Authorization"],
-            methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        )
+        app,
+        resources={
+            r"/api/*": {
+                "origins": [
+                    "http://localhost:3000",
+                    "http://127.0.0.1:3000",
+                ]
+            },
+            r"/auth/*": {
+                "origins": [
+                    "http://localhost:3000",
+                    "http://127.0.0.1:3000",
+                ]
+            },
+        },
+        supports_credentials=True,
+        allow_headers=["Content-Type", "Authorization"],
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        expose_headers=["Content-Type", "Authorization"],
+        max_age=86400,
+    )
+
 
     # --- user loader برای Flask-Login ---
     from .models.user import User
@@ -117,6 +133,19 @@ def create_app(config_class=Config):
         db.session.commit()
         click.echo(f"User {username} created.")
 
+    
+    @app.after_request
+    def add_cors_headers(resp):
+        origin = "http://localhost:3000"
+        if resp.headers.get("Access-Control-Allow-Origin") != origin:
+            resp.headers["Access-Control-Allow-Origin"] = origin
+
+        resp.headers["Access-Control-Allow-Credentials"] = "true"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        return resp    
+    
+    
     # --- CLI: ریست پسورد (برای Invalid salt / هش‌های قدیمی) ---
     @app.cli.command("set-password")
     def set_password():
