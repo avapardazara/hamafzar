@@ -44,6 +44,12 @@ def create_app(config_class=Config):
                     "http://127.0.0.1:3000",
                 ]
             },
+            r"/students/*": {   # 👈 این رو اضافه کن
+                "origins": [
+                    "http://localhost:3000",
+                    "http://127.0.0.1:3000",
+                ]
+            },
         },
         supports_credentials=True,
         allow_headers=["Content-Type", "Authorization"],
@@ -51,6 +57,7 @@ def create_app(config_class=Config):
         expose_headers=["Content-Type", "Authorization"],
         max_age=86400,
     )
+
 
 
     # --- user loader برای Flask-Login ---

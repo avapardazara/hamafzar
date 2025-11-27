@@ -23,6 +23,12 @@ from app.models.installment_plan import InstallmentPlan
 from app.models.installment import Installment
 from app.models.installment_cheque import InstallmentCheque
 
+from app.models.skill import Skill, StudentSkill
+
+from app.models.payment import Payment
+from app.models.enrollment import Enrollment
+from app.blueprints.finance.routes import _enrollment_financials
+
 
 
 from app.blueprints.courses.routes import (
@@ -39,6 +45,51 @@ try:
     from app.models.course_session import SessionFile
 except Exception:
     SessionFile = None
+
+
+#----------------------HELPER------------------------------
+
+def _payment_to_dict_api(p: Payment, course: Course | None = None) -> dict:
+    """خروجی استاندارد برای Payment در API دانشجو."""
+    if not p:
+        return {}
+
+    if course is None and getattr(p, "course_id", None):
+        try:
+            course = Course.query.get(p.course_id)
+        except Exception:
+            course = None
+
+    amount = getattr(p, "amount", 0.0) or 0.0
+    kind = (getattr(p, "kind", None) or "").lower()
+    status = (getattr(p, "status", None) or "").lower()
+
+    # نوع برای UI (IN/OUT)
+    direction = "IN"
+    if kind in ("refund", "expense") or amount < 0:
+        direction = "OUT"
+
+    def _dt_to_str(v):
+        if isinstance(v, (datetime, date)):
+            try:
+                return v.isoformat()
+            except Exception:
+                return None
+        return None
+
+    return {
+        "id": getattr(p, "id", None),
+        "title": getattr(p, "title", None),
+        "note": getattr(p, "note", None),
+        "kind": getattr(p, "kind", None),
+        "status": getattr(p, "status", None),
+        "type": direction,  # برای فرانت همین رو می‌خوان
+        "amount": int(amount),
+        "course_id": getattr(p, "course_id", None),
+        "course_title": getattr(course, "title", None) if course else None,
+        "paid_at": _dt_to_str(getattr(p, "paid_at", None)),
+        "created_at": _dt_to_str(getattr(p, "created_at", None)),
+    }
 
 # -------------------------------------------------
 # ✅ fallback uploader (چون save_uploaded_file در پروژه نیست)
@@ -2381,44 +2432,466 @@ def api_student_courses(student_id):
         "student_id": student.id,
         "items": items,
     })
-    """
-    لیست دوره‌هایی که این دانشجو در آن‌ها ثبت‌نام شده است.
-    GET /api/students/<id>/courses
-    """
-    s = Student.query.filter_by(id=student_id, is_deleted=False).first_or_404()
+# ------------------------- Student Skills APIs (JSON for SPA) -------------------------
+
+@api_bp.get("/students/<int:student_id>/skills")
+@api_auth_required()
+def api_student_skills_list(student_id):
+    """لیست مهارت‌های یک دانشجو برای فرانت Vue"""
+    s = Student.query.get_or_404(student_id)
 
     q = (
-        Enrollment.query
-        .join(Course, Enrollment.course_id == Course.id)
-        .filter(Enrollment.student_id == s.id)
+        StudentSkill.query.filter_by(student_id=s.id)
+        .join(Skill, StudentSkill.skill_id == Skill.id)
+        .order_by(StudentSkill.created_at.desc())
     )
 
     items = []
-    for enr in q:
-        c = enr.course  # رابطه‌ی backref روی مدل Enrollment
-        # نام منتور
-        mentor_name = "—"
-        mentor = getattr(c, "mentor", None)
-        if mentor is not None:
-            mentor_name = (
-                getattr(mentor, "full_name", None)
-                or (
-                    (getattr(mentor, "first_name", "") + " " + getattr(mentor, "last_name", "")).strip()
-                )
-                or f"منتور #{mentor.id}"
-            )
-
+    for ss in q.all():
+        sk = ss.skill
         items.append({
-            "id": enr.id,
-            "course_id": c.id if c else None,
-            "course_title": getattr(c, "title", None) if c else None,
-            "mentor_name": mentor_name,
-            "status": getattr(enr, "status", None) or "ONGOING",
-            "enrolled_at": getattr(enr, "created_at", None).isoformat()
-                            if getattr(enr, "created_at", None) else None,
+            "id": ss.id,
+            "skill_id": sk.id,
+            "type": (sk.type or "").upper(),       # TECH / SOFT
+            "name": sk.name,
+            "date_label": ss.date_label,
+            "hours": ss.hours,
         })
 
     return jsonify({
         "items": items,
         "total": len(items),
-    })
+    }), 200
+
+
+@api_bp.post("/students/<int:student_id>/skills")
+@api_auth_required()
+def api_student_skills_add(student_id):
+    """افزودن یک مهارت برای دانشجو (فنی یا نرم)"""
+    s = Student.query.get_or_404(student_id)
+    data = request.get_json(silent=True) or {}
+
+    stype = (data.get("type") or "").upper()
+    name = (data.get("name") or "").strip()
+    date_label = (data.get("date_label") or "").strip()
+    hours = data.get("hours")
+
+    if stype not in ("TECH", "SOFT") or not name:
+        return jsonify({"ok": False, "error": "invalid_input"}), 400
+
+    # پیدا کردن/ساخت خود Skill
+    skill = Skill.query.filter_by(name=name, type=stype).first()
+    if not skill:
+        skill = Skill(name=name, type=stype)
+        db.session.add(skill)
+        db.session.flush()  # تا skill.id داشته باشیم
+
+    # لینک دانشجو ↔ مهارت
+    ss = StudentSkill(
+        student_id=s.id,
+        skill_id=skill.id,
+        date_label=date_label or None,
+        hours=int(hours) if hours else None,
+    )
+    db.session.add(ss)
+    db.session.commit()
+
+    item = {
+        "id": ss.id,
+        "skill_id": skill.id,
+        "type": (skill.type or "").upper(),
+        "name": skill.name,
+        "date_label": ss.date_label,
+        "hours": ss.hours,
+    }
+
+    return jsonify({"ok": True, "item": item}), 201
+
+
+@api_bp.delete("/students/<int:student_id>/skills/<int:ss_id>")
+@api_auth_required()
+def api_student_skills_delete(student_id, ss_id):
+    """حذف یک مهارت از پروفایل دانشجو"""
+    s = Student.query.get_or_404(student_id)
+    ss = StudentSkill.query.filter_by(id=ss_id, student_id=s.id).first_or_404()
+
+    db.session.delete(ss)
+    db.session.commit()
+    return jsonify({"ok": True}), 200
+
+@api_bp.get("/students/<int:student_id>/finance/summary")
+@api_auth_required()
+def api_student_finance_summary(student_id: int):
+    """
+    خلاصه مالی دانشجو بر اساس منطق فعلی finance:
+    - برای هر Enrollment دانشجو: (fee, paid) از تابع _enrollment_financials
+    - خروجی:
+      {
+        "items": [
+          {
+            "enrollment_id": ...,
+            "course_id": ...,
+            "course_title": ...,
+            "fee": ...,
+            "paid": ...,
+            "balance": ...
+          },
+          ...
+        ],
+        "totals": {
+          "fee": ...,
+          "paid": ...,
+          "balance": ...
+        }
+      }
+    """
+    # اگر Enrollment در این پروژه نباشد، خروجی خالی
+    if not Enrollment:
+        return jsonify({
+            "items": [],
+            "totals": {"fee": 0, "paid": 0, "balance": 0},
+        })
+
+    student = Student.query.filter_by(id=student_id, is_deleted=False).first_or_404()
+
+    q = Enrollment.query.filter(Enrollment.student_id == student.id)
+    if hasattr(Enrollment, "status"):
+        q = q.filter(Enrollment.status.in_(("ACTIVE", "ONGOING", "PENDING")))
+
+    enrollments = q.all()
+
+    items = []
+    sum_fee = 0
+    sum_paid = 0
+
+    for en in enrollments:
+        try:
+            fee, paid = _enrollment_financials(en)
+        except Exception:
+            fee, paid = 0, 0
+
+        sum_fee += fee
+        sum_paid += paid
+
+        course = getattr(en, "course", None)
+        course_title = getattr(course, "title", None) if course is not None else None
+
+        items.append(
+            {
+                "enrollment_id": getattr(en, "id", None),
+                "course_id": getattr(en, "course_id", None),
+                "course_title": course_title,
+                "fee": int(fee),
+                "paid": int(paid),
+                "balance": int(max(fee - paid, 0)),
+            }
+        )
+
+    totals = {
+        "fee": int(sum_fee),
+        "paid": int(sum_paid),
+        "balance": int(max(sum_fee - sum_paid, 0)),
+    }
+
+    return jsonify({"items": items, "totals": totals}), 200
+
+@api_bp.get("/students/<int:student_id>/payments")
+@api_auth_required()
+def api_student_payments_list(student_id: int):
+    """
+    لیست پرداخت‌ها/دریافت‌های مربوط به این دانشجو از جدول payments.
+    GET /api/students/<id>/payments
+    """
+    student = Student.query.filter_by(id=student_id, is_deleted=False).first_or_404()
+
+    q = Payment.query.filter(Payment.student_id == student.id)
+
+    # مرتب‌سازی: ابتدا بر اساس paid_at، بعد created_at
+    try:
+        q = q.order_by(
+            Payment.paid_at.desc().nullslast(),
+            Payment.created_at.desc().nullslast(),
+        )
+    except Exception:
+        q = q.order_by(Payment.id.desc())
+
+    payments = q.all()
+
+    items = []
+    for p in payments:
+        course = None
+        if getattr(p, "course_id", None):
+            try:
+                course = Course.query.get(p.course_id)
+            except Exception:
+                course = None
+        items.append(_payment_to_dict_api(p, course))
+
+    return jsonify({"items": items, "total": len(items)}), 200
+@api_bp.post("/students/<int:student_id>/payments")
+@api_auth_required()
+def api_student_payment_create(student_id: int):
+    """
+    ساخت یک پرداخت/دریافت برای دانشجو.
+    بدنهٔ JSON ورودی:
+      {
+        "title": "شهریه ترم ۱",
+        "amount": 12000000,
+        "type": "IN" | "OUT",
+        "course_id": 3   # اختیاری
+      }
+    """
+    student = Student.query.filter_by(id=student_id, is_deleted=False).first_or_404()
+
+    data = request.get_json(silent=True) or {}
+    title = (data.get("title") or "").strip()
+    amount_raw = data.get("amount")
+    pay_type = (data.get("type") or "IN").upper().strip()
+    course_id = data.get("course_id")
+
+    try:
+        amount = float(amount_raw)
+    except Exception:
+        amount = 0.0
+
+    if not title or amount <= 0:
+        return jsonify({"ok": False, "error": "عنوان و مبلغ معتبر الزامی است."}), 400
+
+    if pay_type not in ("IN", "OUT"):
+        pay_type = "IN"
+
+    p = Payment()
+    p.student_id = student.id
+    if course_id:
+        try:
+            p.course_id = int(course_id)
+        except Exception:
+            p.course_id = None
+
+    p.title = title
+    p.amount = amount
+    p.status = "paid"
+
+    # kind را طوری تنظیم می‌کنیم که با منطق KPIهای فعلی سازگار باشد
+    if pay_type == "IN":
+        p.kind = "tuition"    # دریافتی شهریه
+    else:
+        p.kind = "refund"     # برگشت/تخفیف/هزینهٔ معکوس
+
+    try:
+        p.paid_at = datetime.utcnow()
+    except Exception:
+        p.paid_at = None
+
+    db.session.add(p)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": "ثبت تراکنش ناموفق بود."}), 500
+
+    return jsonify({"ok": True, "id": p.id, "item": _payment_to_dict_api(p)}), 201
+@api_bp.delete("/students/<int:student_id>/payments/<int:payment_id>")
+@api_auth_required()
+def api_student_payment_delete(student_id: int, payment_id: int):
+    """
+    حذف یک Payment متعلق به دانشجو.
+    """
+    student = Student.query.filter_by(id=student_id, is_deleted=False).first_or_404()
+
+    p = (
+        Payment.query
+        .filter(Payment.id == payment_id, Payment.student_id == student.id)
+        .first_or_404()
+    )
+
+    db.session.delete(p)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": "حذف تراکنش ناموفق بود."}), 500
+
+    return jsonify({"ok": True}), 200
+
+@api_bp.post("/students/<int:student_id>/installments")
+@api_auth_required()
+def api_student_installment_create(student_id: int):
+    """
+    ساخت یک ردیف قسط برای دانشجو.
+
+    Body (JSON مثال):
+
+    {
+      "title": "قسط ۱",
+      "amount_total": 3150000,
+      "due_date": "2025-12-01",
+      "course_id": 3,          # اختیاری، برای وصل‌کردن به دوره
+      "plan_id": 10,           # اختیاری، برای اضافه‌کردن به یک پلن موجود
+      "plan_title": "پلن جدید" # اختیاری، اگر plan_id ندادیم و می‌خواهیم پلن تازه بسازیم
+    }
+    """
+    # اگر مدل‌ها در این پروژه فعال نباشند
+    if not InstallmentPlan or not Installment:
+        return jsonify({"ok": False, "error": "Installments not supported"}), 400
+
+    student = Student.query.filter_by(id=student_id, is_deleted=False).first_or_404()
+
+    data = request.get_json(silent=True) or {}
+    title = (data.get("title") or "").strip()
+    amount_raw = data.get("amount_total") or data.get("amount")
+    course_id = data.get("course_id")
+    plan_id = data.get("plan_id")
+    plan_title = (data.get("plan_title") or "").strip()
+    due_date_raw = data.get("due_date")
+
+    # اعتبارسنجی حداقلی
+    try:
+        amount = float(amount_raw)
+    except Exception:
+        amount = 0.0
+
+    if not title or amount <= 0:
+        return jsonify({"ok": False, "error": "عنوان و مبلغ معتبر الزامی است."}), 400
+
+    # 🔹 پیدا کردن / ساختن InstallmentPlan
+    plan = None
+
+    # ۱) اگر plan_id مستقیم داده شده باشد
+    if plan_id:
+        try:
+            plan = (
+                InstallmentPlan.query
+                .filter(InstallmentPlan.id == int(plan_id))
+                .filter(InstallmentPlan.student_id == student.id)
+                .first()
+            )
+        except Exception:
+            plan = None
+
+    # ۲) اگر plan_id نبود، ولی course_id هست: سعی می‌کنیم پلن موجود را برای همین دانشجو + دوره پیدا کنیم
+    if not plan and course_id:
+        try:
+            plan = (
+                InstallmentPlan.query
+                .filter(InstallmentPlan.student_id == student.id)
+                .filter(InstallmentPlan.course_id == int(course_id))
+                .first()
+            )
+        except Exception:
+            plan = None
+
+    # ۳) اگر هنوز پلنی پیدا نشد، پلن جدید می‌سازیم
+    if not plan:
+        title_default = plan_title or f"پلن اقساط دانشجو {getattr(student, 'first_name', '')} {getattr(student, 'last_name', '')}".strip()
+        if not title_default:
+            title_default = "پلن اقساط"
+
+        plan = InstallmentPlan(
+            student_id=student.id,
+            title=title_default,
+        )
+        if course_id:
+            try:
+                plan.course_id = int(course_id)
+            except Exception:
+                plan.course_id = None
+
+        plan.total_amount = 0
+        plan.installments_count = 0
+        db.session.add(plan)
+        db.session.flush()  # تا plan.id داشته باشیم
+
+    # 🔹 تعیین شماره قسط (seq)
+    existing_count = (
+        Installment.query
+        .filter(
+            (Installment.plan_id == plan.id)
+            | (getattr(Installment, "installment_plan_id", None) == plan.id)
+        )
+        .count()
+    )
+    seq = existing_count + 1
+
+    # 🔹 تبدیل تاریخ سررسید
+    due_date = None
+    if due_date_raw:
+        try:
+            # قبول فرمت yyyy-mm-dd یا iso
+            due_date = datetime.fromisoformat(due_date_raw).date()
+        except Exception:
+            due_date = None
+
+    # 🔹 ساخت خود قسط
+    inst = Installment(
+        plan_id=getattr(plan, "id", None),
+        seq=seq,
+        title=title,
+        amount_base=amount,
+        cheque_fee_amount=0,
+        amount_total=amount,
+        status="PENDING",
+    )
+    if hasattr(inst, "due_date"):
+        inst.due_date = due_date
+
+    db.session.add(inst)
+
+    # آپدیت خلاصهٔ پلن
+    try:
+        plan.total_amount = (plan.total_amount or 0) + amount
+        plan.installments_count = (plan.installments_count or 0) + 1
+    except Exception:
+        pass
+
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": "ثبت قسط ناموفق بود."}), 500
+
+    return jsonify({
+        "ok": True,
+        "item": _installment_to_dict_api(inst),
+    }), 201
+
+@api_bp.post("/installments/<int:installment_id>/status")
+@api_auth_required()
+def api_installment_update_status(installment_id: int):
+    """
+    تغییر وضعیت یک قسط
+    POST /api/installments/<id>/status
+    Body (JSON):
+      {
+        "status": "PAID" | "PENDING" | "CANCELLED"
+      }
+    """
+    inst = Installment.query.get_or_404(installment_id)
+
+    payload = request.get_json(silent=True) or {}
+    new_status = (payload.get("status") or "").upper()
+
+    allowed = {"PENDING", "PAID", "CANCELLED"}
+    if new_status not in allowed:
+        return jsonify({"error": "status نامعتبر است"}), 400
+
+    inst.status = new_status
+
+    # اگر در مدل ستون paid_at داری، این منطق قشنگه:
+    if hasattr(Installment, "paid_at"):
+        if new_status == "PAID":
+            # اگر فرانت تاریخ خاصی فرستاد، از همون استفاده کن
+            paid_at_raw = payload.get("paid_at")
+            if paid_at_raw:
+                try:
+                    inst.paid_at = datetime.fromisoformat(paid_at_raw)
+                except Exception:
+                    inst.paid_at = datetime.utcnow()
+            else:
+                inst.paid_at = datetime.utcnow()
+        else:
+            # اگر دوباره Pending/Cancelled شد، می‌تونیم paid_at را خالی کنیم
+            inst.paid_at = None
+
+    db.session.commit()
+    return jsonify(_installment_to_dict_api(inst)), 200
