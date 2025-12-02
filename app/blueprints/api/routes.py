@@ -1,5 +1,6 @@
 from datetime import datetime, date
-
+from app.models.asset import Asset
+from app.models.expense import Expense
 from flask import jsonify, g, request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.attributes import InstrumentedAttribute
@@ -27,8 +28,11 @@ from app.models.skill import Skill, StudentSkill
 
 from app.models.payment import Payment
 from app.models.enrollment import Enrollment
-from app.blueprints.finance.routes import _enrollment_financials
-
+from app.blueprints.finance.routes import (
+    _enrollment_financials,
+    _inst_total,
+    _inst_paid_amount,
+)
 
 
 from app.blueprints.courses.routes import (
@@ -606,15 +610,22 @@ def mentor_payment_to_dict(p: MentorPayment) -> dict:
             last = getattr(mentor, "last_name", "") or ""
             mentor_name = f"{first} {last}".strip() or None
 
+    course = getattr(p, "course", None)
+    course_title = None
+    if course is not None:
+        course_title = getattr(course, "title", None)
+
     return {
         "id": p.id,
         "mentor_id": p.mentor_id,
-        "amount": p.amount,
-        "kind": p.kind,  # 'INCOME' یا 'EXPENSE'
+        "amount": int(p.amount or 0),
+        "kind": (p.kind or "").upper(),  # 'INCOME' یا 'EXPENSE'
         "title": p.title,
         "note": p.note,
         "paid_at": p.paid_at.isoformat() if getattr(p, "paid_at", None) else None,
         "mentor_name": mentor_name,
+        "course_id": getattr(p, "course_id", None),
+        "course_title": course_title,
     }
 
 
@@ -665,38 +676,184 @@ def api_mentors_list():
 @api_auth_required()
 def api_mentor_detail(mentor_id: int):
     """
-    جزئیات یک منتور
+    جزئیات یک منتور برای پروفایل Nuxt
     GET /api/mentors/<id>
+
+    خروجی:
+    {
+      "mentor": {.},
+      "stats": {
+        "courses_count": .,
+        "students_count": .,
+        "balance": .
+      },
+      "finance": {
+        "totals": {
+          "income": .,
+          "expense": .,
+          "balance": .,
+          "courses_face": .,
+          "courses_received": .,
+          "courses_remain": .
+        },
+        "items": [ ... لیست تراکنش‌ها ... ]
+      },
+      "courses": [
+        {
+          ... فیلدهای course_to_dict ...,
+          "students_count": .,
+          "finance": {
+            "face": .,
+            "received": .,
+            "remain": .
+          }
+        },
+        ...
+      ]
+    }
     """
+    # ---------- خود منتور ----------
     query = Mentor.query
     if hasattr(Mentor, "is_deleted"):
         query = query.filter(Mentor.is_deleted.is_(False))
 
     m = query.filter(Mentor.id == mentor_id).first_or_404()
-
     mentor_data = mentor_to_dict(m)
 
-    stats = {
-        "courses_count": 0,
-        "skills_count": 0,
-        "balance": 0,
-    }
-    finance = {
-        "totals": {
-            "balance": 0,
-            "installments_active": 0,
-            "paid": 0,
-        },
-        "items": [],
-    }
-    courses = []
+    # ---------- دوره‌های منتور ----------
+    courses_q = Course.query
+    if hasattr(Course, "is_deleted"):
+        courses_q = courses_q.filter(Course.is_deleted.is_(False))
 
-    return jsonify({
-        "mentor": mentor_data,
-        "stats": stats,
-        "finance": finance,
-        "courses": courses,
-    }), 200
+    courses_q = (
+        courses_q
+        .filter(Course.mentor_id == m.id)
+        .order_by(Course.id.desc())
+    )
+
+    courses_items: list[dict] = []
+    total_students_all_courses = 0
+    total_face_all_courses = 0
+    total_received_all_courses = 0
+
+    for c in courses_q.all():
+        c_dict = course_to_dict(c)
+
+        # تعداد دانشجو در این دوره (اگر Enrollment و جدولش موجود باشد)
+        students_count = 0
+        if Enrollment is not None:
+            try:
+                students_count = (
+                    db.session.query(func.count(Enrollment.id))
+                    .filter(Enrollment.course_id == c.id)
+                    .scalar()
+                    or 0
+                )
+            except Exception:
+                # اگر جدول Enrollment هنوز ساخته نشده باشد، صفر می‌گذاریم
+                students_count = 0
+
+        students_count = int(students_count or 0)
+        c_dict["students_count"] = students_count
+
+        # مالی ساده دوره: face = fee_per_student * students_count
+        fee_per_student = getattr(c, "fee_per_student", None) or 0
+        try:
+            face = int(fee_per_student * students_count)
+        except Exception:
+            face = 0
+
+        # مجموع دریافتی از جدول Payment برای این دوره (اگر جدول موجود باشد)
+        received = 0
+        try:
+            received = (
+                db.session.query(func.coalesce(func.sum(Payment.amount), 0))
+                .filter(Payment.course_id == c.id)
+                .scalar()
+                or 0
+            )
+            received = int(received)
+        except Exception:
+            received = 0
+
+        remain = int(max(face - received, 0))
+
+        c_dict["finance"] = {
+            "face": face,
+            "received": received,
+            "remain": remain,
+        }
+
+        total_students_all_courses += students_count
+        total_face_all_courses += face
+        total_received_all_courses += received
+
+        courses_items.append(c_dict)
+
+    # ---------- تراکنش‌های مالی منتور ----------
+    finance_items: list[dict] = []
+    income = 0
+    expense = 0
+
+    try:
+        payments_q = (
+            MentorPayment.query
+            .filter_by(mentor_id=m.id)
+            .order_by(MentorPayment.paid_at.desc())
+            .all()
+        )
+
+        finance_items = [mentor_payment_to_dict(p) for p in payments_q]
+
+        income = sum(
+            (p.amount or 0) for p in payments_q
+            if (getattr(p, "kind", "") or "").upper() == "INCOME"
+        )
+        expense = sum(
+            (p.amount or 0) for p in payments_q
+            if (getattr(p, "kind", "") or "").upper() == "EXPENSE"
+        )
+    except Exception:
+        # اگر جدول mentor_payments هنوز ساخته نشده باشد، همه‌چیز صفر می‌ماند
+        income = 0
+        expense = 0
+        finance_items = []
+
+    income = int(income or 0)
+    expense = int(expense or 0)
+    balance = int(income - expense)
+
+    # ---------- خلاصه مالی + استت‌ها ----------
+    finance_totals = {
+        "income": income,
+        "expense": expense,
+        "balance": balance,
+        "courses_face": int(total_face_all_courses),
+        "courses_received": int(total_received_all_courses),
+        "courses_remain": int(
+            max(total_face_all_courses - total_received_all_courses, 0)
+        ),
+    }
+
+    stats = {
+        "courses_count": len(courses_items),
+        "students_count": int(total_students_all_courses),
+        "balance": balance,
+    }
+
+    finance = {
+        "totals": finance_totals,
+        "items": finance_items,
+    }
+
+    return jsonify(
+        {
+            "mentor": mentor_data,
+            "stats": stats,
+            "finance": finance,
+            "courses": courses_items,
+        }
+    ), 200
 
 
 @api_bp.post("/mentors")
@@ -1127,6 +1284,15 @@ def api_finance_mentors_summary():
     """
     خلاصه مالی منتورها برای داشبورد/لیست در فرانت Nuxt.
 
+    منطق:
+      - برای هر منتور، تمام دوره‌هایی که mentor_id او هستند را می‌گیریم
+      - برای هر دوره:
+          face = fee_per_student * تعداد ثبت‌نام‌های فعال
+          mentor_share = face * (mentor_share_percent / 100)
+      - share = مجموع mentor_share همهٔ دوره‌ها
+      - paid  = مجموع MentorPayment (kind = 'EXPENSE') برای آن منتور
+      - due   = max(share - paid, 0)
+
     خروجی:
       {
         "items": [
@@ -1134,74 +1300,113 @@ def api_finance_mentors_summary():
             "mentor_id": 1,
             "mentor_name": "...",
             "email": "...",
-            "courses_count": 0,
-            "received": 0,
-            "share": 0,
-            "paid": 0,
-            "due": 0
+            "courses_count": 3,
+            "received": 9000000,   # فعلاً = share
+            "share": 9000000,
+            "paid": 3000000,
+            "due": 6000000
           },
           ...
         ],
         "total": <تعداد منتور>
       }
     """
-    # این جمع فعلاً فقط بر اساس MentorPayment است.
-    # منطق دقیق‌تر سهم منتور از شهریه دوره‌ها را اگر خواستی بعداً
-    # بر اساس مدل‌های enrollment/finance می‌توانیم هوشمندتر کنیم.
-    rows = (
-        db.session.query(
-            Mentor.id.label("mentor_id"),
-            Mentor.first_name,
-            Mentor.last_name,
-            Mentor.email,
-            func.coalesce(
-                func.sum(
-                    case((MentorPayment.kind == "INCOME", MentorPayment.amount), else_=0)
-                ),
-                0,
-            ).label("income"),
-            func.coalesce(
-                func.sum(
-                    case((MentorPayment.kind == "EXPENSE", MentorPayment.amount), else_=0)
-                ),
-                0,
-            ).label("expense"),
+    # منتورهای فعال (اگر is_deleted داری، بر همون اساس فیلتر می‌کنیم)
+    q_mentors = Mentor.query
+    if hasattr(Mentor, "is_deleted"):
+        q_mentors = q_mentors.filter(
+            or_(Mentor.is_deleted.is_(False), Mentor.is_deleted.is_(None))
         )
-        .outerjoin(MentorPayment, MentorPayment.mentor_id == Mentor.id)
-        .group_by(Mentor.id, Mentor.first_name, Mentor.last_name, Mentor.email)
-        .order_by(Mentor.id.desc())
-        .all()
-    )
+
+    mentors = q_mentors.order_by(Mentor.id.desc()).all()
 
     items = []
-    for r in rows:
-        income = int(r.income or 0)
-        expense = int(r.expense or 0)
-        balance = income - expense
 
-        full_name = (r.first_name or "") + " " + (r.last_name or "")
-        full_name = full_name.strip() or None
+    for m in mentors:
+        # ---------- دوره‌های منتور ----------
+        q_courses = Course.query.filter(Course.mentor_id == m.id)
+        if hasattr(Course, "is_deleted"):
+            q_courses = q_courses.filter(
+                or_(Course.is_deleted.is_(False), Course.is_deleted.is_(None))
+            )
+        courses = q_courses.all()
+
+        courses_count = len(courses)
+        total_face = 0.0
+        total_share = 0.0
+
+        for c in courses:
+            students_count = 0
+            if Enrollment is not None:
+                q = db.session.query(func.count(Enrollment.id)).filter(
+                    Enrollment.course_id == c.id
+                )
+
+            # فقط ACTIVE اگر ستون status داریم
+                if hasattr(Enrollment, "status"):
+                    q = q.filter(Enrollment.status == "ACTIVE")
+
+            # فقط دانشجوهای حذف‌نشده
+                if Student is not None and hasattr(Student, "is_deleted"):
+                    q = (
+                        q.join(Student, Enrollment.student_id == Student.id)
+                        .filter(or_(Student.is_deleted.is_(False),
+                                 Student.is_deleted.is_(None)))
+                    )
+
+            students_count = q.scalar() or 0
+
+            fee_per_student = _safe_num(getattr(c, "fee_per_student", 0.0), 0.0)
+            face = fee_per_student * students_count
+            total_face += face
+
+            share_ratio = _mentor_share_percent(c)  # 0..1
+            total_share += face * share_ratio
+
+        # ---------- مجموع پرداخت‌های منتور (EXPENSE) ----------
+        paid_total = (
+            db.session.query(func.coalesce(func.sum(MentorPayment.amount), 0))
+            .filter(
+                MentorPayment.mentor_id == m.id,
+                MentorPayment.kind == "EXPENSE",
+            )
+            .scalar()
+            or 0
+        )
+
+        share_int = int(round(total_share))
+        paid_int = int(paid_total)
+        due_int = max(share_int - paid_int, 0)
+
+        # نام کامل منتور
+        mentor_name = None
+        if hasattr(m, "full_name") and m.full_name:
+            mentor_name = m.full_name
+        else:
+            first = getattr(m, "first_name", "") or ""
+            last = getattr(m, "last_name", "") or ""
+            mentor_name = f"{first} {last}".strip() or None
 
         items.append(
             {
-                "mentor_id": r.mentor_id,
-                "mentor_name": full_name,
-                "email": r.email,
-                # فعلاً تعداد دوره 0؛ اگر مدل مربوط به دوره‌ها را وصل کنیم این را هم پر می‌کنیم
-                "courses_count": 0,
-                # فرض ساده:
-                # received = مجموع INCOME
-                # share    = فعلاً همان received
-                # paid     = مجموع EXPENSE
-                # due      = share - paid
-                "received": income,
-                "share": income,
-                "paid": expense,
-                "due": balance,
+                "mentor_id": m.id,
+                "mentor_name": mentor_name,
+                "email": getattr(m, "email", None),
+                "courses_count": courses_count,
+                # فعلاً received = share (درآمد اسمی منتور از دوره‌ها)
+                "received": share_int,
+                "share": share_int,
+                # مجموع پرداختی‌های ثبت‌شده به منتور
+                "paid": paid_int,
+                "due": due_int,
             }
         )
 
     return jsonify({"items": items, "total": len(items)})
+
+
+
+
 @api_bp.get("/finance/mentors/<int:mentor_id>/payments")
 @api_auth_required()
 def api_finance_mentor_payments(mentor_id: int):
@@ -1213,13 +1418,14 @@ def api_finance_mentor_payments(mentor_id: int):
 
     q = (
         MentorPayment.query.filter_by(mentor_id=mentor.id)
-        .order_by(MentorPayment.paid_at.desc())
+        .order_by(MentorPayment.paid_at.desc(), MentorPayment.id.desc())
         .all()
     )
 
     items = [mentor_payment_to_dict(p) for p in q]
-    income = sum(p.amount for p in q if p.kind == "INCOME")
-    expense = sum(p.amount for p in q if p.kind == "EXPENSE")
+
+    income = sum(int(p.amount or 0) for p in q if (p.kind or "").upper() == "INCOME")
+    expense = sum(int(p.amount or 0) for p in q if (p.kind or "").upper() == "EXPENSE")
 
     return jsonify(
         {
@@ -1247,12 +1453,15 @@ def api_finance_mentor_payment_create(mentor_id: int):
         "kind": "EXPENSE",       # 'INCOME' یا 'EXPENSE' (پیش‌فرض EXPENSE)
         "title": "تسویه قسط اول",
         "note": "...",
-        "paid_at": "2025-01-10T12:30:00"   # اختیاری، ISO 8601
+        "paid_at": "2025-01-10T12:30:00",   # اختیاری، ISO 8601
+        "course_id": 12                     # اختیاری، نسبت دادن پرداخت به یک دوره
       }
     """
     mentor = Mentor.query.get_or_404(mentor_id)
 
     payload = request.get_json(silent=True) or {}
+
+    # مبلغ
     try:
         amount = int(payload.get("amount") or 0)
     except (TypeError, ValueError):
@@ -1261,6 +1470,7 @@ def api_finance_mentor_payment_create(mentor_id: int):
     if amount <= 0:
         return jsonify({"error": "مبلغ معتبر نیست."}), 400
 
+    # نوع تراکنش
     kind = (payload.get("kind") or "EXPENSE").upper()
     if kind not in ("INCOME", "EXPENSE"):
         return jsonify({"error": "نوع تراکنش نامعتبر است (فقط INCOME یا EXPENSE)."}), 400
@@ -1268,15 +1478,28 @@ def api_finance_mentor_payment_create(mentor_id: int):
     title = (payload.get("title") or "").strip() or None
     note = (payload.get("note") or "").strip() or None
 
+    # تاریخ پرداخت
     paid_at_raw = payload.get("paid_at")
     if paid_at_raw:
         try:
-            # رشته ISO 8601
             paid_at = datetime.fromisoformat(paid_at_raw)
         except Exception:
             paid_at = datetime.utcnow()
     else:
         paid_at = datetime.utcnow()
+
+    # course_id (اختیاری)
+    course_id = None
+    if "course_id" in payload and payload.get("course_id") not in (None, "", "null"):
+        try:
+            course_id = int(payload.get("course_id"))
+        except Exception:
+            return jsonify({"error": "course_id نامعتبر است."}), 400
+
+        # اگر خواستی سخت‌گیر باشی، چک کن دوره وجود دارد
+        c = Course.query.get(course_id)
+        if not c:
+            return jsonify({"error": "دوره یافت نشد."}), 404
 
     p = MentorPayment(
         mentor_id=mentor.id,
@@ -1287,10 +1510,19 @@ def api_finance_mentor_payment_create(mentor_id: int):
         paid_at=paid_at,
     )
 
+    if course_id:
+        p.course_id = course_id
+
     db.session.add(p)
     db.session.commit()
 
     return jsonify(mentor_payment_to_dict(p)), 201
+
+
+
+
+
+
 @api_bp.patch("/finance/payments/<int:payment_id>")
 @api_auth_required()
 def api_finance_payment_update(payment_id: int):
@@ -1407,57 +1639,369 @@ def api_course_sessions(course_id: int):
 
 # ---------- Finance Dashboard (API for Nuxt) ----------
 
+# ---------- Finance Dashboard (API for Nuxt) ----------
+from datetime import date, datetime
+from sqlalchemy import func
+from sqlalchemy.orm.attributes import InstrumentedAttribute
+
+# مطمئن شو این‌ها بالای فایل ایمپورت شده باشند:
+# from app import db
+# from app.models.course import Course
+# from app.models.enrollment import Enrollment
+# from app.models.installment import Installment
+# از هرجا که قبلاً _enrollment_financials را تعریف کرده‌ای، همانجا import کن.
+
+# ---------- Finance Dashboard (API for Nuxt) ----------
+
 @api_bp.get("/finance/dashboard")
 @api_auth_required()
 def api_finance_dashboard():
     """
     داشبورد مالی برای Nuxt.
-    فعلاً نسخه‌ی ساده (stub) که فقط ساختار می‌دهد؛ بعداً آمار واقعی وصل می‌کنیم.
 
     GET /api/finance/dashboard
+
+    kpis:
+      - total_face:         شهریه اسمی کل (جمع fee همه‌ی ثبت‌نام‌های فعال و معتبر)
+      - total_received:     مجموع دریافتی واقعی
+      - total_receivables:  مطالبات باز = face - received
+      - overdue_count:      تعداد دانشجوهایی که قسط سررسیدگذشته دارند
+
+    receivables:
+      لیست مطالبات دانشجو برای تب «مطالبات دانشجو» در فرانت.
+
+    courses:
+      صورت‌حساب دوره‌ها برای تب «صورت‌حساب دوره‌ها» در فرانت.
     """
+    from datetime import datetime
+
+    # اسکلت KPIها
     kpis = {
         "total_face": 0,          # شهریه اسمی کل
         "total_received": 0,      # مجموع دریافتی
         "total_receivables": 0,   # مطالبات باز (face - received)
-        "overdue_count": 0,       # تعداد اقساط سررسید گذشته
-        "aging": {                # A/R Aging
+        "overdue_count": 0,       # تعداد دانشجوهای دارای قسط سررسیدگذشته
+        "aging": {                # A/R Aging (فعلاً ساده / صفر)
             "0-30": 0,
             "31-60": 0,
             "61-90": 0,
             "90+": 0,
         },
-        "mtd_expense": 0,         # هزینه ماه جاری
-        "total_expense": 0,       # مجموع کل هزینه‌ها
+        "mtd_expense": 0,         # هزینه ماه جاری (بعداً پر می‌کنیم)
+        "total_expense": 0,       # مجموع کل هزینه‌ها (بعداً پر می‌کنیم)
     }
 
+    # اگر Enrollment اصلاً در این پروژه فعال نیست، payload خالی بده
+    try:
+        Enrollment  # noqa
+    except NameError:
+        payload = {
+            "kpis": kpis,
+            "monthly": [],
+            "receivables": [],
+            "courses": [],
+            "mentors": [],
+            "installments": [],
+            "assets": [],
+            "expenses": [],
+        }
+        return jsonify(payload), 200
+
+    # -----------------------------
+    # 1) جمع کردن شهریه و دریافتی از روی تمام ثبت‌نام‌های فعال
+    #    و ساخت لیست مطالبات دانشجو + آمار دوره‌ها
+    # -----------------------------
+    enr_q = Enrollment.query
+
+    # فقط ثبت‌نام‌های ACTIVE/ONGOING/PENDING
+    if hasattr(Enrollment, "status"):
+        enr_q = enr_q.filter(Enrollment.status.in_(("ACTIVE", "ONGOING", "PENDING")))
+
+    # جوین به دانشجو برای حذف is_deleted = True
+    if Student is not None:
+        enr_q = enr_q.join(Student, Enrollment.student_id == Student.id)
+        if hasattr(Student, "is_deleted"):
+            enr_q = enr_q.filter(Student.is_deleted.is_(False))
+
+    # جوین به دوره برای حذف دوره‌های حذف‌شده
+    if Course is not None:
+        enr_q = enr_q.join(Course, Enrollment.course_id == Course.id)
+        if hasattr(Course, "is_deleted"):
+            enr_q = enr_q.filter(Course.is_deleted.is_(False))
+
+    # distinct روی Enrollment تا جوین‌ها باعث تکرار نشن
+    enr_q = enr_q.distinct(Enrollment.id)
+    enrollments = enr_q.all()
+
+    total_face = 0
+    total_received = 0
+    receivables_list = []
+    overdue_students_count = 0
+
+    today = datetime.utcnow().date()
+
+    # آمار دوره‌ها: course_id -> dict
+    course_map: dict[int, dict] = {}
+
+    for en in enrollments:
+        # ---- محاسبه fee و paid برای هر ثبت‌نام ----
+        try:
+            # امضای جدید: _enrollment_financials(en)
+            fee, paid = _enrollment_financials(en)
+        except TypeError:
+            # اگر در پروژه‌ی تو هنوز امضا دو آرگومانی باشد: _enrollment_financials(en, course)
+            course_obj = getattr(en, "course", None)
+            try:
+                fee, paid = _enrollment_financials(en, course_obj)
+            except Exception:
+                fee, paid = 0, 0
+        except Exception:
+            fee, paid = 0, 0
+
+        fee = float(fee or 0)
+        paid = float(paid or 0)
+
+        total_face += fee
+        total_received += paid
+
+        balance = max(fee - paid, 0)
+
+        student = getattr(en, "student", None)
+        course = getattr(en, "course", None)
+
+        # -----------------------------
+        # آمار دوره‌ها (برای تب "صورت‌حساب دوره‌ها")
+        # -----------------------------
+        course_id = getattr(en, "course_id", None) or (getattr(course, "id", None) if course else None)
+        course_title = getattr(course, "title", None) if course is not None else None
+
+        if course_id:
+            cstat = course_map.get(course_id)
+            if not cstat:
+                # نام منتور (اگر خواستی در جدول نشان بدهی)
+                mentor_id = getattr(course, "mentor_id", None) if course is not None else None
+                mentor_name = None
+                mentor = getattr(course, "mentor", None) if course is not None else None
+                if mentor is not None:
+                    mentor_name = getattr(mentor, "full_name", None)
+                    if not mentor_name:
+                        first = getattr(mentor, "first_name", "") or ""
+                        last = getattr(mentor, "last_name", "") or ""
+                        mentor_name = f"{first} {last}".strip() or None
+
+                fee_per_student = float(getattr(course, "fee_per_student", None) or 0)
+                mentor_share_percent = float(getattr(course, "mentor_share_percent", None) or 0)
+
+                cstat = {
+                    "course_id": course_id,
+                    "course_title": course_title or "—",
+                    "students_count": 0,
+                    "fee_per_student": fee_per_student,
+                    # دانشجو:
+                    "nominal_total": 0.0,        # شهریه اسمی کل (face)
+                    "received_total": 0.0,       # مجموع دریافتی
+                    "receivable_total": 0.0,     # مطالبات دانشجو
+                    # منتور:
+                    "mentor_id": mentor_id,
+                    "mentor_name": mentor_name,
+                    "mentor_share_percent": mentor_share_percent,
+                    "mentor_share_total": 0.0,   # سهم اسمی منتور از این دوره
+                    "mentor_paid_total": 0.0,    # پرداختی انجام‌شده به منتور (از MentorPayment)
+                    "mentor_due_total": 0.0,     # مطالبات منتور
+                }
+                course_map[course_id] = cstat
+
+            # به‌ازای هر enrollment:
+            cstat["students_count"] += 1
+            cstat["nominal_total"] += fee
+            cstat["received_total"] += paid
+
+            share_pct = cstat["mentor_share_percent"] or 0.0
+            # سهم منتور از این ثبت‌نام
+            cstat["mentor_share_total"] += (fee * share_pct / 100.0)
+
+        # -----------------------------
+        # ساخت ردیف «مطالبات دانشجو» برای این ثبت‌نام
+        # -----------------------------
+        if balance > 0:
+            # نام دانشجو
+            if student is not None:
+                student_name = (
+                    getattr(student, "full_name", None)
+                    or " ".join(
+                        [
+                            getattr(student, "first_name", "") or "",
+                            getattr(student, "last_name", "") or "",
+                        ]
+                    ).strip()
+                )
+                phone = (
+                    getattr(student, "phone", None)
+                    or getattr(student, "mobile", None)
+                    or getattr(student, "mobile_phone", None)
+                )
+            else:
+                student_name = None
+                phone = None
+
+            # عنوان دوره
+            course_title = getattr(course, "title", None) if course is not None else None
+
+            # محاسبه اقساط سررسیدگذشته و اولین سررسید بعدی
+            overdue_amount = 0
+            max_overdue_days = 0
+            next_due_date = None
+
+            installment_plans = []
+
+            if hasattr(en, "installment_plans") and en.installment_plans:
+                installment_plans = en.installment_plans
+            elif "InstallmentPlan" in globals() and InstallmentPlan is not None:
+                try:
+                    installment_plans = (
+                        InstallmentPlan.query.filter_by(enrollment_id=en.id).all()
+                    )
+                except Exception:
+                    installment_plans = []
+
+            for plan in installment_plans or []:
+                for inst in getattr(plan, "installments", []):
+                    due = getattr(inst, "due_date", None) or getattr(inst, "due_on", None)
+                    amount_inst = float(getattr(inst, "amount", 0) or 0)
+                    paid_inst = float(getattr(inst, "paid_amount", 0) or 0)
+                    is_paid = bool(getattr(inst, "is_paid", False))
+                    status = (getattr(inst, "status", None) or "").upper()
+
+                    # اگر قسط کنسل شده، بی‌خیال
+                    if status == "CANCELLED":
+                        continue
+
+                    remain_inst = max(amount_inst - paid_inst, 0)
+
+                    if not due or remain_inst <= 0:
+                        continue
+
+                    if hasattr(due, "toordinal"):  # date/datetime
+                        due_date = due.date() if hasattr(due, "date") else due
+                        days_diff = (today - due_date).days
+
+                        if days_diff > 0 and not is_paid:
+                            overdue_amount += remain_inst
+                            if days_diff > max_overdue_days:
+                                max_overdue_days = days_diff
+
+                        if days_diff <= 0 and remain_inst > 0:
+                            if next_due_date is None or due_date < next_due_date:
+                                next_due_date = due_date
+
+            if overdue_amount > 0:
+                overdue_students_count += 1
+
+            receivables_list.append(
+                {
+                    "enrollment_id": en.id,
+                    "student_id": getattr(en, "student_id", None),
+                    "student_name": (student_name or "—"),
+                    "phone": phone,
+                    "course_id": getattr(en, "course_id", None),
+                    "course_title": course_title or "—",
+                    "fee": int(fee),
+                    "paid": int(paid),
+                    "balance": int(balance),
+                    "overdue_amount": int(overdue_amount),
+                    "max_overdue_days": int(max_overdue_days),
+                    "next_due_date": next_due_date.isoformat()
+                    if next_due_date is not None
+                    else None,
+                }
+            )
+
+    # مقداردهی نهایی KPIها
+    kpis["total_face"] = int(total_face)
+    kpis["total_received"] = int(total_received)
+    kpis["total_receivables"] = int(max(total_face - total_received, 0))
+    kpis["overdue_count"] = int(overdue_students_count)
+
+    # -----------------------------
+    # 2) تجمیع پرداخت‌های منتورها روی course_id
+    # -----------------------------
+    courses_payload = []
+
+    course_ids = [cid for cid in course_map.keys() if cid]
+
+    if MentorPayment is not None and course_ids:
+        rows = (
+            db.session.query(
+                MentorPayment.course_id.label("cid"),
+                func.coalesce(func.sum(MentorPayment.amount), 0).label("sum_amount"),
+            )
+            .filter(
+                MentorPayment.course_id.in_(course_ids),
+                func.upper(MentorPayment.kind) == "EXPENSE",
+            )
+            .group_by(MentorPayment.course_id)
+            .all()
+        )
+
+        paid_map = {int(r.cid): int(r.sum_amount or 0) for r in rows}
+    else:
+        paid_map = {}
+
+    for cid, cstat in course_map.items():
+        nominal_total = int(cstat.get("nominal_total") or 0)
+        received_total = int(cstat.get("received_total") or 0)
+        receivable_total = int(max(nominal_total - received_total, 0))
+
+        mentor_share_total = int(cstat.get("mentor_share_total") or 0)
+        mentor_paid_total = int(paid_map.get(cid, 0))
+        mentor_due_total = int(max(mentor_share_total - mentor_paid_total, 0))
+
+        item = {
+            "course_id": cid,
+            "course_title": cstat.get("course_title") or "—",
+            "students_count": int(cstat.get("students_count") or 0),
+            "fee_per_student": float(cstat.get("fee_per_student") or 0),
+            # دانشجو
+            "nominal_total": nominal_total,
+            "received_total": received_total,
+            "receivable_total": receivable_total,
+            # منتور
+            "mentor_id": cstat.get("mentor_id"),
+            "mentor_name": cstat.get("mentor_name"),
+            "mentor_share_percent": float(cstat.get("mentor_share_percent") or 0),
+            "mentor_share_total": mentor_share_total,
+            "mentor_paid_total": mentor_paid_total,
+            "mentor_due_total": mentor_due_total,
+        }
+        courses_payload.append(item)
+
+    # می‌تونی اگر خواستی sort کنی
+    courses_payload.sort(key=lambda x: x["course_id"] or 0, reverse=True)
+
+    # -----------------------------
+    # 3) خروجی نهایی
+    # -----------------------------
     payload = {
         "kpis": kpis,
 
-        # درآمد ماهانه (برای چارت بالا)
-        # انتظار front: هر آیتم چیزی شبیه {"ym": "2025-11", "amount": 123456}
+        # درآمد ماهانه (برای چارت بالا) — بعداً پر می‌کنیم
         "monthly": [],
 
-        # مطالبات دانشجو (تب "مطالبات")
-        "receivables": [],
+        # ✅ مطالبات دانشجو (برای تب Receivables در فرانت)
+        "receivables": receivables_list,
 
-        # صورت‌حساب دوره‌ها (تب "دوره‌ها")
-        "courses": [],
+        # ✅ صورت‌حساب دوره‌ها (تب "دوره‌ها")
+        "courses": courses_payload,
 
-        # تسویه منتورها (تب "منتورها")
+        # این‌ها را در مراحل بعدی پر می‌کنیم
         "mentors": [],
-
-        # اقساط (تب "اقساط")
         "installments": [],
-
-        # دارایی‌ها (تب "دارایی‌ها")
         "assets": [],
-
-        # هزینه‌ها (تب "هزینه‌ها")
         "expenses": [],
     }
 
     return jsonify(payload), 200
+
 # ---------- دانشجوهای یک دوره ----------
 
 def _enrollment_to_dict(en, st: Student | None = None) -> dict:
@@ -2895,3 +3439,54 @@ def api_installment_update_status(installment_id: int):
 
     db.session.commit()
     return jsonify(_installment_to_dict_api(inst)), 200
+def _safe_num(value, default=0.0) -> float:
+    """تبدیل امن به عدد float"""
+    try:
+        return float(value or 0)
+    except Exception:
+        return float(default)
+
+
+def _mentor_share_percent(course: Course) -> float:
+    """
+    درصد سهم منتور از دوره به صورت عدد بین 0 و 1
+    اگر در مدل Course فیلد mentor_share_percent نداشتی، خروجی 0 می‌شود.
+    """
+    raw = getattr(course, "mentor_share_percent", None)
+    try:
+        pct = float(raw or 0)
+    except Exception:
+        pct = 0.0
+
+    # محدود کردن به بازه 0 تا 100 برای احتیاط
+    if pct < 0:
+        pct = 0.0
+    if pct > 100:
+        pct = 100.0
+
+    return pct / 100.0
+@api_bp.delete("/finance/mentors/<int:mentor_id>/payments/<int:payment_id>")
+@api_auth_required()
+def api_finance_mentor_payment_delete(mentor_id: int, payment_id: int):
+    """
+    حذف یک تراکنش منتور
+
+    DELETE /api/finance/mentors/<mentor_id>/payments/<payment_id>
+    """
+    # اگر بالای فایل از قبل ایمپورت نکردی:
+    # from app.models.mentor_payment import MentorPayment
+    # from app import db
+
+    payment = (
+        MentorPayment.query
+        .filter_by(id=payment_id, mentor_id=mentor_id)
+        .first()
+    )
+
+    if not payment:
+        return jsonify({"error": "تراکنش پیدا نشد."}), 404
+
+    db.session.delete(payment)
+    db.session.commit()
+
+    return jsonify({"ok": True}), 200
