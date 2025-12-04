@@ -1278,40 +1278,17 @@ def api_course_partial_update(course_id):
 #   Finance – Mentors
 # =========================
 
-@api_bp.get("/finance/mentors/summary")
-@api_auth_required()
-def api_finance_mentors_summary():
-    """
-    خلاصه مالی منتورها برای داشبورد/لیست در فرانت Nuxt.
 
-    منطق:
-      - برای هر منتور، تمام دوره‌هایی که mentor_id او هستند را می‌گیریم
-      - برای هر دوره:
-          face = fee_per_student * تعداد ثبت‌نام‌های فعال
-          mentor_share = face * (mentor_share_percent / 100)
-      - share = مجموع mentor_share همهٔ دوره‌ها
-      - paid  = مجموع MentorPayment (kind = 'EXPENSE') برای آن منتور
-      - due   = max(share - paid, 0)
-
-    خروجی:
-      {
-        "items": [
-          {
-            "mentor_id": 1,
-            "mentor_name": "...",
-            "email": "...",
-            "courses_count": 3,
-            "received": 9000000,   # فعلاً = share
-            "share": 9000000,
-            "paid": 3000000,
-            "due": 6000000
-          },
-          ...
-        ],
-        "total": <تعداد منتور>
-      }
+def _compute_mentors_summary_items() -> list[dict]:
     """
-    # منتورهای فعال (اگر is_deleted داری، بر همون اساس فیلتر می‌کنیم)
+    منطق محاسبه‌ی خلاصهٔ مالی منتورها برای استفاده در:
+      - /api/finance/mentors/summary
+      - /api/finance/dashboard  (فیلد mentors)
+
+    خروجی: لیستی از dict با فیلدهای:
+      mentor_id, mentor_name, email, courses_count, received, share, paid, due
+    """
+    # منتورهای فعال (اگر ستون is_deleted داریم، بر همون اساس فیلتر می‌کنیم)
     q_mentors = Mentor.query
     if hasattr(Mentor, "is_deleted"):
         q_mentors = q_mentors.filter(
@@ -1319,8 +1296,7 @@ def api_finance_mentors_summary():
         )
 
     mentors = q_mentors.order_by(Mentor.id.desc()).all()
-
-    items = []
+    items: list[dict] = []
 
     for m in mentors:
         # ---------- دوره‌های منتور ----------
@@ -1342,19 +1318,23 @@ def api_finance_mentors_summary():
                     Enrollment.course_id == c.id
                 )
 
-            # فقط ACTIVE اگر ستون status داریم
+                # فقط ACTIVE اگر ستون status داریم
                 if hasattr(Enrollment, "status"):
                     q = q.filter(Enrollment.status == "ACTIVE")
 
-            # فقط دانشجوهای حذف‌نشده
+                # فقط دانشجوهای حذف‌نشده
                 if Student is not None and hasattr(Student, "is_deleted"):
                     q = (
                         q.join(Student, Enrollment.student_id == Student.id)
-                        .filter(or_(Student.is_deleted.is_(False),
-                                 Student.is_deleted.is_(None)))
+                        .filter(
+                            or_(
+                                Student.is_deleted.is_(False),
+                                Student.is_deleted.is_(None),
+                            )
+                        )
                     )
 
-            students_count = q.scalar() or 0
+                students_count = q.scalar() or 0
 
             fee_per_student = _safe_num(getattr(c, "fee_per_student", 0.0), 0.0)
             face = fee_per_student * students_count
@@ -1379,7 +1359,6 @@ def api_finance_mentors_summary():
         due_int = max(share_int - paid_int, 0)
 
         # نام کامل منتور
-        mentor_name = None
         if hasattr(m, "full_name") and m.full_name:
             mentor_name = m.full_name
         else:
@@ -1402,6 +1381,18 @@ def api_finance_mentors_summary():
             }
         )
 
+    return items
+
+
+@api_bp.get("/finance/mentors/summary")
+@api_auth_required()
+def api_finance_mentors_summary():
+    """
+    خلاصه مالی منتورها برای داشبورد/لیست در فرانت Nuxt.
+
+    GET /api/finance/mentors/summary
+    """
+    items = _compute_mentors_summary_items()
     return jsonify({"items": items, "total": len(items)})
 
 
@@ -1671,9 +1662,17 @@ def api_finance_dashboard():
       لیست مطالبات دانشجو برای تب «مطالبات دانشجو» در فرانت.
 
     courses:
-      صورت‌حساب دوره‌ها برای تب «صورت‌حساب دوره‌ها» در فرانت.
+      صورت‌حساب دوره‌ها (شهریه اسمی، دریافتی، سهم منتور، بدهی‌ها).
+
+    mentors:
+      خلاصه‌ی تسویهٔ منتورها (سهم، پرداخت‌شده، مانده).
+
+    installments:
+      لیست اقساط باز/معوق برای تب «اقساط».
+
+    assets:
+      فهرست دارایی‌ها + مجموع ارزش (assets_total، AssetModelPresent).
     """
-    from datetime import datetime
 
     # اسکلت KPIها
     kpis = {
@@ -1703,6 +1702,8 @@ def api_finance_dashboard():
             "mentors": [],
             "installments": [],
             "assets": [],
+            "assets_total": 0,
+            "AssetModelPresent": False,
             "expenses": [],
         }
         return jsonify(payload), 200
@@ -1733,9 +1734,9 @@ def api_finance_dashboard():
     enr_q = enr_q.distinct(Enrollment.id)
     enrollments = enr_q.all()
 
-    total_face = 0
-    total_received = 0
-    receivables_list = []
+    total_face = 0.0
+    total_received = 0.0
+    receivables_list: list[dict] = []
     overdue_students_count = 0
 
     today = datetime.utcnow().date()
@@ -1760,37 +1761,47 @@ def api_finance_dashboard():
 
         fee = float(fee or 0)
         paid = float(paid or 0)
+        balance = max(fee - paid, 0.0)
 
         total_face += fee
         total_received += paid
 
-        balance = max(fee - paid, 0)
-
+        # شیء دانشجو و دوره
         student = getattr(en, "student", None)
         course = getattr(en, "course", None)
 
         # -----------------------------
-        # آمار دوره‌ها (برای تب "صورت‌حساب دوره‌ها")
+        # تجمیع آمار در سطح دوره (course_map)
         # -----------------------------
-        course_id = getattr(en, "course_id", None) or (getattr(course, "id", None) if course else None)
-        course_title = getattr(course, "title", None) if course is not None else None
-
+        course_id = getattr(en, "course_id", None)
         if course_id:
             cstat = course_map.get(course_id)
-            if not cstat:
-                # نام منتور (اگر خواستی در جدول نشان بدهی)
-                mentor_id = getattr(course, "mentor_id", None) if course is not None else None
-                mentor_name = None
-                mentor = getattr(course, "mentor", None) if course is not None else None
-                if mentor is not None:
-                    mentor_name = getattr(mentor, "full_name", None)
-                    if not mentor_name:
-                        first = getattr(mentor, "first_name", "") or ""
-                        last = getattr(mentor, "last_name", "") or ""
-                        mentor_name = f"{first} {last}".strip() or None
+            if cstat is None:
+                # اطلاعات پایه‌ی دوره
+                course_title = getattr(course, "title", None) if course is not None else None
 
-                fee_per_student = float(getattr(course, "fee_per_student", None) or 0)
-                mentor_share_percent = float(getattr(course, "mentor_share_percent", None) or 0)
+                # اطلاعات منتور
+                mentor_id = None
+                mentor_name = None
+                mentor_share_percent = 0.0
+
+                if course is not None:
+                    mentor_id = getattr(course, "mentor_id", None)
+
+                    mentor_obj = getattr(course, "mentor", None)
+                    if mentor_obj is not None:
+                        mentor_name = getattr(mentor_obj, "full_name", None)
+                        if not mentor_name:
+                            m_first = getattr(mentor_obj, "first_name", "") or ""
+                            m_last = getattr(mentor_obj, "last_name", "") or ""
+                            mentor_name = f"{m_first} {m_last}".strip() or None
+
+                    mentor_share_percent = _safe_num(
+                        getattr(course, "mentor_share_percent", 0.0),
+                        0.0,
+                    )
+
+                fee_per_student = _safe_num(getattr(course, "fee_per_student", 0.0), 0.0)
 
                 cstat = {
                     "course_id": course_id,
@@ -1925,7 +1936,7 @@ def api_finance_dashboard():
     # -----------------------------
     # 2) تجمیع پرداخت‌های منتورها روی course_id
     # -----------------------------
-    courses_payload = []
+    courses_payload: list[dict] = []
 
     course_ids = [cid for cid in course_map.keys() if cid]
 
@@ -1978,8 +1989,190 @@ def api_finance_dashboard():
     # می‌تونی اگر خواستی sort کنی
     courses_payload.sort(key=lambda x: x["course_id"] or 0, reverse=True)
 
+    # خلاصه مالی منتورها (برای تب "تسویه منتورها")
+    try:
+        mentors_payload = _compute_mentors_summary_items()
+    except Exception:
+        mentors_payload = []
+
     # -----------------------------
-    # 3) خروجی نهایی
+    # 3) لیست اقساط باز و معوق برای تب «اقساط»
+    # -----------------------------
+    installments_payload: list[dict] = []
+    try:
+        if (
+            "Installment" in globals()
+            and Installment is not None
+            and "InstallmentPlan" in globals()
+            and InstallmentPlan is not None
+        ):
+            today_inst = datetime.utcnow().date()
+
+            q_inst = (
+                db.session.query(
+                    Installment, InstallmentPlan, Enrollment, Student, Course
+                )
+                .join(InstallmentPlan, Installment.plan_id == InstallmentPlan.id)
+                .outerjoin(Enrollment, Enrollment.id == InstallmentPlan.enrollment_id)
+                .outerjoin(Student, Student.id == InstallmentPlan.student_id)
+                .outerjoin(Course, Course.id == InstallmentPlan.course_id)
+            )
+
+            rows_inst = q_inst.all()
+
+            for inst, plan, en2, st2, course2 in rows_inst:
+                try:
+                    total_inst = float(_inst_total(inst))
+                except Exception:
+                    total_inst = float(
+                        getattr(inst, "amount_total", 0)
+                        or getattr(inst, "amount", 0)
+                        or 0
+                    )
+
+                try:
+                    paid_inst = float(_inst_paid_amount(inst))
+                except Exception:
+                    paid_inst = float(getattr(inst, "paid_amount", 0) or 0)
+
+                remain_inst = max(total_inst - paid_inst, 0.0)
+                status_inst = (getattr(inst, "status", None) or "").upper()
+
+                # اقساط کنسل یا بدون مانده را نشان نده
+                if status_inst == "CANCELLED" or remain_inst <= 0:
+                    continue
+
+                due = getattr(inst, "due_date", None) or getattr(inst, "due_on", None)
+                due_date = None
+                overdue_flag = False
+
+                if due is not None and hasattr(due, "toordinal"):
+                    due_date = due.date() if hasattr(due, "date") else due
+                    days_diff2 = (today_inst - due_date).days
+                    if days_diff2 > 0 and remain_inst > 0:
+                        overdue_flag = True
+
+                # student_id / course_id از plan یا enrollment
+                student_id2 = getattr(plan, "student_id", None) or (
+                    getattr(en2, "student_id", None) if en2 is not None else None
+                )
+                course_id2 = getattr(plan, "course_id", None) or (
+                    getattr(en2, "course_id", None) if en2 is not None else None
+                )
+
+                # نام دانشجو
+                student_name2 = None
+                if st2 is not None:
+                    student_name2 = getattr(st2, "full_name", None)
+                    if not student_name2:
+                        s_first = getattr(st2, "first_name", "") or ""
+                        s_last = getattr(st2, "last_name", "") or ""
+                        student_name2 = f"{s_first} {s_last}".strip() or None
+
+                course_title2 = getattr(course2, "title", None) if course2 is not None else None
+
+                installments_payload.append(
+                    {
+                        "id": getattr(inst, "id", None),
+                        "plan_id": getattr(plan, "id", None) if plan is not None else None,
+                        "student_id": student_id2,
+                        "student_name": student_name2,
+                        "course_id": course_id2,
+                        "course_title": course_title2 or "—",
+                        "seq": getattr(inst, "seq", None),
+                        "title": getattr(inst, "title", None)
+                        or (
+                            f"قسط {getattr(inst, 'seq', None)}"
+                            if getattr(inst, "seq", None)
+                            else "قسط"
+                        ),
+                        "due_date": due_date.isoformat() if due_date is not None else None,
+                        "amount_total": int(total_inst),
+                        "remain": int(remain_inst),
+                        "status": status_inst,
+                        "overdue": bool(overdue_flag),
+                    }
+                )
+
+            try:
+                installments_payload.sort(
+                    key=lambda x: (
+                        0 if x.get("overdue") else 1,
+                        x.get("due_date") or "",
+                    )
+                )
+            except Exception:
+                pass
+    except Exception:
+        installments_payload = []
+
+    # -----------------------------
+    # 4) دارایی‌ها (Assets)
+    # -----------------------------
+    AssetModelPresent = False
+    assets_payload: list[dict] = []
+    assets_total = 0
+
+    try:
+        AssetModelPresent = True
+
+        # همان ترتیب Jinja: جدیدترین تاریخ خرید، بعد created_at، بعد id
+        assets_q = Asset.query.order_by(
+            Asset.purchase_date.desc().nullslast(),
+            getattr(Asset, "created_at", Asset.id).desc().nullslast()
+            if hasattr(Asset, "created_at")
+            else Asset.id.desc(),
+            Asset.id.desc(),
+        )
+
+        assets = assets_q.all()
+
+        for a in assets:
+            purchase_date = getattr(a, "purchase_date", None)
+            purchase_price = getattr(a, "purchase_price", None)
+
+            assets_payload.append(
+                {
+                    "id": getattr(a, "id", None),
+                    "name": getattr(a, "name", None),
+                    "category": getattr(a, "category", None),
+                    "code": getattr(a, "code", None),
+                    "quantity": getattr(a, "quantity", None),
+                    "unit": getattr(a, "unit", None),
+                    "location": getattr(a, "location", None),
+                    "status": getattr(a, "status", None),
+                    "purchase_date": purchase_date.isoformat()
+                    if purchase_date is not None and hasattr(purchase_date, "isoformat")
+                    else None,
+                    "purchase_price": int(purchase_price)
+                    if purchase_price is not None
+                    else None,
+                    "notes": getattr(a, "notes", None),
+                }
+            )
+
+        # مجموع ارزش = sum(purchase_price * quantity)
+        assets_total_val = (
+            db.session.query(
+                func.coalesce(
+                    func.sum(
+                        func.coalesce(Asset.purchase_price, 0)
+                        * func.coalesce(Asset.quantity, 0)
+                    ),
+                    0,
+                )
+            ).scalar()
+            or 0
+        )
+        assets_total = int(assets_total_val)
+
+    except Exception:
+        AssetModelPresent = False
+        assets_payload = []
+        assets_total = 0
+
+    # -----------------------------
+    # 5) خروجی نهایی
     # -----------------------------
     payload = {
         "kpis": kpis,
@@ -1993,10 +2186,18 @@ def api_finance_dashboard():
         # ✅ صورت‌حساب دوره‌ها (تب "دوره‌ها")
         "courses": courses_payload,
 
-        # این‌ها را در مراحل بعدی پر می‌کنیم
-        "mentors": [],
-        "installments": [],
-        "assets": [],
+        # ✅ تسویه منتورها
+        "mentors": mentors_payload,
+
+        # ✅ اقساط باز/معوق
+        "installments": installments_payload,
+
+        # ✅ دارایی‌ها
+        "assets": assets_payload,
+        "assets_total": assets_total,
+        "AssetModelPresent": AssetModelPresent,
+
+        # هزینه‌ها را بعداً پر می‌کنیم
         "expenses": [],
     }
 
@@ -3490,3 +3691,32 @@ def api_finance_mentor_payment_delete(mentor_id: int, payment_id: int):
     db.session.commit()
 
     return jsonify({"ok": True}), 200
+def asset_to_dict(a: Asset) -> dict:
+    """
+    تبدیل آبجکت Asset به دیکشنری مناسب برای API.
+    """
+    purchase_date = a.purchase_date.isoformat() if a.purchase_date else None
+    qty = a.quantity or 0
+    try:
+        price = float(a.purchase_price or 0)
+    except Exception:
+        price = 0.0
+
+    total_val = int(price * qty)
+
+    return {
+        "id": a.id,
+        "name": a.name,
+        "category": a.category,
+        "code": a.code,
+        "quantity": qty,
+        "unit": a.unit,
+        "location": a.location,
+        "status": a.status,
+        "purchase_date": purchase_date,
+        "purchase_price": int(price) if price else None,
+        "notes": a.notes,
+        "total_value": total_val,
+        "created_at": a.created_at.isoformat() if a.created_at else None,
+        "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+    }
